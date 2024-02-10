@@ -1,0 +1,17 @@
+[package]
+name = "rzfs_userspace"
+version = "0.0.0"
+edition = "2021"
+categories = ["filesystem"]
+description = "Rust userspace tool for parsing ZFS data structures."
+license = "GPL-2.0 OR MIT"
+homepage = "https://github.com/cybojanek/rzfs"
+
+[lib]
+name = "rzfs_bin"
+
+[[bin]]
+name = "zdb"
+
+[dependencies]
+rzfs_lib = { "version" = "0.0.0" }
