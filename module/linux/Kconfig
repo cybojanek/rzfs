@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0 OR MIT
+#
+
+config RZFS_FS
+	tristate "Rust ZFS file system support"
+	depends on RUST
+	help
+		This option builds RZFS, the Rust ZFS file system.
+
+		To compile this as a module, choose M here:
+		the module will be called rzfs.
+
+		If unsure, say N.
