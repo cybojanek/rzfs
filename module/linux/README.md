@@ -46,7 +46,7 @@ make LLVM=-16
 make LLVM=-16 modules_prepare
 
 # Then run this command in this directory
-make LLVM=-16 KDIR=PATH_TO_LINUX_DIRECTORY
+make LLVM=-16 KDIR=PATH_TO_LINUX_DIRECTORY CONFIG_RZFS_FS=m
 ```
 
 Qemu Setup
