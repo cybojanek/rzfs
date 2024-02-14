@@ -1,0 +1,18 @@
+[package]
+name = "rzfs_fuse"
+version = "0.0.0"
+edition = "2021"
+categories = ["filesystem"]
+description = "Rust FUSE ZFS implementation."
+license = "GPL-2.0 OR MIT"
+homepage = "https://github.com/cybojanek/rzfs"
+
+[lib]
+name = "rzfs_fuse"
+
+[[bin]]
+name = "rzfs_fuse"
+
+[dependencies]
+fuser = { "version" = "0.14.0" }
+rzfs_lib = { "version" = "0.0.0" }

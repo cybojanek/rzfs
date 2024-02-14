@@ -2,6 +2,7 @@
 
 members = [
     "exe",
+    "fuse",
     "lib",
 ]
 
