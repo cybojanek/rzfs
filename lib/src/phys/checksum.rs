@@ -33,7 +33,7 @@ use std::error;
  * ```
  */
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ChecksumType {
+pub enum Type {
     Inherit = 0,
     On = 1,
     Off = 2,
@@ -53,61 +53,61 @@ pub enum ChecksumType {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Display for ChecksumType {
+impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumType::Inherit => write!(f, "Inherit"),
-            ChecksumType::On => write!(f, "On"),
-            ChecksumType::Off => write!(f, "Off"),
-            ChecksumType::Label => write!(f, "Label"),
-            ChecksumType::GangHeader => write!(f, "GangHeader"),
-            ChecksumType::Zilog => write!(f, "Zilog"),
-            ChecksumType::Fletcher2 => write!(f, "Fletcher2"),
-            ChecksumType::Fletcher4 => write!(f, "Fletcher4"),
-            ChecksumType::Sha256 => write!(f, "Sha256"),
-            ChecksumType::Zilog2 => write!(f, "Zilog2"),
-            ChecksumType::NoParity => write!(f, "NoParity"),
-            ChecksumType::Sha512_256 => write!(f, "Sha512_256"),
-            ChecksumType::Skein => write!(f, "Skein"),
-            ChecksumType::Edonr => write!(f, "Edonr"),
-            ChecksumType::Blake3 => write!(f, "Blake3"),
+            Type::Inherit => write!(f, "Inherit"),
+            Type::On => write!(f, "On"),
+            Type::Off => write!(f, "Off"),
+            Type::Label => write!(f, "Label"),
+            Type::GangHeader => write!(f, "GangHeader"),
+            Type::Zilog => write!(f, "Zilog"),
+            Type::Fletcher2 => write!(f, "Fletcher2"),
+            Type::Fletcher4 => write!(f, "Fletcher4"),
+            Type::Sha256 => write!(f, "Sha256"),
+            Type::Zilog2 => write!(f, "Zilog2"),
+            Type::NoParity => write!(f, "NoParity"),
+            Type::Sha512_256 => write!(f, "Sha512_256"),
+            Type::Skein => write!(f, "Skein"),
+            Type::Edonr => write!(f, "Edonr"),
+            Type::Blake3 => write!(f, "Blake3"),
         }
     }
 }
 
-impl From<ChecksumType> for u8 {
-    fn from(val: ChecksumType) -> u8 {
+impl From<Type> for u8 {
+    fn from(val: Type) -> u8 {
         val as u8
     }
 }
 
-impl TryFrom<u8> for ChecksumType {
-    type Error = ChecksumTypeError;
+impl TryFrom<u8> for Type {
+    type Error = TypeError;
 
-    /** Try converting from a [`u8`] to a [`ChecksumType`].
+    /** Try converting from a [`u8`] to a [`Type`].
      *
      * # Errors
      *
-     * Returns [`ChecksumTypeError`] in case of an invalid checksum.
+     * Returns [`TypeError`] in case of an invalid checksum.
      */
     fn try_from(checksum: u8) -> Result<Self, Self::Error> {
         match checksum {
-            0 => Ok(ChecksumType::Inherit),
-            1 => Ok(ChecksumType::On),
-            2 => Ok(ChecksumType::Off),
-            3 => Ok(ChecksumType::Label),
-            4 => Ok(ChecksumType::GangHeader),
-            5 => Ok(ChecksumType::Zilog),
-            6 => Ok(ChecksumType::Fletcher2),
-            7 => Ok(ChecksumType::Fletcher4),
-            8 => Ok(ChecksumType::Sha256),
-            9 => Ok(ChecksumType::Zilog2),
-            10 => Ok(ChecksumType::NoParity),
-            11 => Ok(ChecksumType::Sha512_256),
-            12 => Ok(ChecksumType::Skein),
-            13 => Ok(ChecksumType::Edonr),
-            14 => Ok(ChecksumType::Blake3),
-            _ => Err(ChecksumTypeError::InvalidValue { value: checksum }),
+            0 => Ok(Type::Inherit),
+            1 => Ok(Type::On),
+            2 => Ok(Type::Off),
+            3 => Ok(Type::Label),
+            4 => Ok(Type::GangHeader),
+            5 => Ok(Type::Zilog),
+            6 => Ok(Type::Fletcher2),
+            7 => Ok(Type::Fletcher4),
+            8 => Ok(Type::Sha256),
+            9 => Ok(Type::Zilog2),
+            10 => Ok(Type::NoParity),
+            11 => Ok(Type::Sha512_256),
+            12 => Ok(Type::Skein),
+            13 => Ok(Type::Edonr),
+            14 => Ok(Type::Blake3),
+            _ => Err(TypeError::InvalidChecksum { value: checksum }),
         }
     }
 }
@@ -115,18 +115,18 @@ impl TryFrom<u8> for ChecksumType {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
-pub enum ChecksumTypeError {
+pub enum TypeError {
     /** Invalid checksum type value.
      *
      * - `value` - Invalid value.
      */
-    InvalidValue { value: u8 },
+    InvalidChecksum { value: u8 },
 }
 
-impl fmt::Display for ChecksumTypeError {
+impl fmt::Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTypeError::InvalidValue { value } => {
+            TypeError::InvalidChecksum { value } => {
                 write!(f, "Checksum Type invalid value: {value}")
             }
         }
@@ -134,7 +134,7 @@ impl fmt::Display for ChecksumTypeError {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for ChecksumTypeError {
+impl error::Error for TypeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
