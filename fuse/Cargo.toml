@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0 OR MIT
+
 [package]
 name = "rzfs_fuse"
 version = "0.0.0"

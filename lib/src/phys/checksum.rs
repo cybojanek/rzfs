@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+
 use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;

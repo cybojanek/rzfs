@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+
 /*! A binary endian decoder and encoder.
  *
  * - [`Decoder`] uses an internal [`Cell`] field for the `offset` field

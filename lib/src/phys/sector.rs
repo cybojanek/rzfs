@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+
 /** ZFS sector shift.
  *
  * Power of two of a ZFS sector.
