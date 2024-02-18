@@ -6,6 +6,9 @@ pub use checksum::{
     ChecksumTypeError, ChecksumValue, ChecksumValueDecodeError, ChecksumValueEncodeError,
 };
 
+pub(crate) mod dva;
+pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
+
 pub(crate) mod endian;
 pub use endian::{
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder,
