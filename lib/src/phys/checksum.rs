@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-/*! Checksum type, value, and tail encoding.
- */
 use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;
@@ -18,16 +16,20 @@ use crate::phys::{
 
 /** Checksum type.
  *
- * - `Inherit` uses the value from the parent.
- * - `On` uses Fletcher4, and Sha256 for dedup.
- * - `Label` is for data in the ZFS Label (Blank, BootHeader, NvPairs, UberBlock).
- * - `GangHeader` is for verifying Gang blocks.
- * - `Zilog` and `Zilog2` are for data in the ZFS Intent Log.
- * - `NoParity` was added at the same time as Sha512-256, Skein, and Edonr, but
- *   it does not have a feature flag.
- * - Other ZFS implementations refer to Sha512-256 as just Sha512, but here it
- *   is purposefully Sha512-256, because Sha512-256 is not the same as Sha512
- *   truncated to 256 bits.
+ * - [`ChecksumType::Inherit`] uses the value from the parent.
+ * - [`ChecksumType::On`] uses [`ChecksumType::Fletcher4`], and
+ *   [`ChecksumType::Sha256`] for dedup.
+ * - [`ChecksumType::Label`] is for data in the ZFS Label (Blank, BootHeader,
+ *   NvPairs, UberBlock).
+ * - [`ChecksumType::GangHeader`] is for verifying Gang blocks.
+ * - [`ChecksumType::Zilog`] and [`ChecksumType::Zilog2`] are for data in the
+ *   ZFS Intent Log.
+ * - [`ChecksumType::NoParity`] was added at the same time as
+ *   [`ChecksumType::Sha512_256`], [`ChecksumType::Skein`], and
+ *   [`ChecksumType::Edonr`], but it does not have a feature flag.
+ * - Other ZFS implementations refer to [`ChecksumType::Sha512_256`] as just
+ *   `Sha512`, but here it is purposefully `Sha512_256`, because Sha512-256 is
+ *   not the same as Sha512 truncated to 256 bits.
  *
  * ```text
  * +------------+---------+--------------------+
@@ -55,7 +57,7 @@ use crate::phys::{
  * +------------+---------+--------------------+
  * | NoParity   |    5000 |                    |
  * +------------+---------+--------------------+
- * | Sha512-256 |    5000 | org.illumos:sha512 |
+ * | Sha512_256 |    5000 | org.illumos:sha512 |
  * +------------+---------+--------------------+
  * | Skein      |    5000 | org.illumos:skein  |
  * +------------+---------+--------------------+
@@ -65,7 +67,7 @@ use crate::phys::{
  * +------------+---------+--------------------+
  * ```
  */
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChecksumType {
     Inherit = 0,
     On = 1,
@@ -121,7 +123,7 @@ impl TryFrom<u8> for ChecksumType {
      *
      * # Errors
      *
-     * Returns [`ChecksumTypeError`] in case of an invalid checksum.
+     * Returns [`ChecksumTypeError`] in case of an invalid [`ChecksumType`].
      */
     fn try_from(checksum: u8) -> Result<Self, Self::Error> {
         match checksum {
@@ -151,7 +153,7 @@ impl TryFrom<u8> for ChecksumType {
  */
 #[derive(Debug)]
 pub enum ChecksumTypeError {
-    /** Invalid checksum type value.
+    /** Invalid [`ChecksumType`].
      *
      * - `value` - Invalid value.
      */
@@ -179,6 +181,8 @@ impl error::Error for ChecksumTypeError {
 
 /** Checksum value.
  *
+ * ### Byte layout.
+ *
  * - Bytes: 32
  *
  * ```text
@@ -194,6 +198,10 @@ impl error::Error for ChecksumTypeError {
  * | words[3] |    8 |
  * +----------+------+
  * ```
+ *
+ * ### words
+ *
+ * 256 bit checksum, stored as 4 [`u64`] values.
  */
 #[derive(Debug)]
 pub struct ChecksumValue {
@@ -208,7 +216,7 @@ impl ChecksumValue {
      *
      * # Errors
      *
-     * Returns [`ChecksumValueDecodeError`] if there are not enough bytes.
+     * Returns [`ChecksumValueDecodeError`] in case of decoding error.
      */
     pub fn from_decoder(
         decoder: &EndianDecoder<'_>,
@@ -227,7 +235,7 @@ impl ChecksumValue {
      *
      * # Errors
      *
-     * Returns [`ChecksumValueEncodeError`] if there is not enough space.
+     * Returns [`ChecksumValueEncodeError`] in case of encoding error.
      */
     pub fn to_encoder(
         &self,
@@ -246,7 +254,7 @@ impl ChecksumValue {
  */
 #[derive(Debug)]
 pub enum ChecksumValueDecodeError {
-    /** Endian decode error.
+    /** [`EndianDecoder`] error.
      *
      * - `err` - [`EndianDecodeError`]
      */
@@ -263,7 +271,7 @@ impl fmt::Display for ChecksumValueDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumValueDecodeError::EndianDecodeError { err } => {
-                write!(f, "ChecksumValue Endian decode: {err}")
+                write!(f, "ChecksumValue decode error, endian: [{err}]")
             }
         }
     }
@@ -282,7 +290,7 @@ impl error::Error for ChecksumValueDecodeError {
  */
 #[derive(Debug)]
 pub enum ChecksumValueEncodeError {
-    /** Endian encode error.
+    /** [`EndianDecoder`] error.
      *
      * - `err` - [`EndianEncodeError`]
      */
@@ -299,7 +307,7 @@ impl fmt::Display for ChecksumValueEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumValueEncodeError::EndianEncodeError { err } => {
-                write!(f, "ChecksumValue Endian encode: {err}")
+                write!(f, "ChecksumValue encode error, endian: [{err}]")
             }
         }
     }
@@ -318,6 +326,8 @@ impl error::Error for ChecksumValueEncodeError {
 
 /** Checksum tail.
  *
+ * ### Byte layout.
+ *
  * - Bytes: 40
  *
  * ```text
@@ -329,6 +339,15 @@ impl error::Error for ChecksumValueEncodeError {
  * | checksum |   32 |
  * +----------+------+
  * ```
+ *
+ * ### order
+ *
+ * The `magic` field must match [`ChecksumTail::MAGIC`], and its byte order
+ * determines the value of `order`.
+ *
+ * ### value
+ *
+ * 256 bit checksum. The byte order is determined by `order`.
  */
 #[derive(Debug)]
 pub struct ChecksumTail {
@@ -350,7 +369,7 @@ impl ChecksumTail {
      *
      * # Errors
      *
-     * Returns [`ChecksumTailDecodeError`] if there are not enough bytes, or magic is invalid.
+     * Returns [`ChecksumTailDecodeError`] in case of decoding error.
      */
     pub fn from_bytes(
         bytes: &[u8; ChecksumTail::LENGTH],
@@ -367,7 +386,7 @@ impl ChecksumTail {
      *
      * # Errors
      *
-     * Returns [`ChecksumTailEncodeError`] if there are not enough bytes.
+     * Returns [`ChecksumTailEncodeError`] in case of encoding error.
      */
     pub fn to_bytes(
         &self,
@@ -386,13 +405,13 @@ impl ChecksumTail {
  */
 #[derive(Debug)]
 pub enum ChecksumTailDecodeError {
-    /** Endian decode error.
+    /** [`EndianDecoder`] error.
      *
      * - `err` - [`EndianDecodeError`]
      */
     EndianDecodeError { err: EndianDecodeError },
 
-    /** ChecksumValue decode error.
+    /** [`ChecksumValue`] decode error.
      *
      * - `err` - [`ChecksumValueDecodeError`]
      */
@@ -415,10 +434,10 @@ impl fmt::Display for ChecksumTailDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumTailDecodeError::EndianDecodeError { err } => {
-                write!(f, "ChecksumTail Endian decode: {err}")
+                write!(f, "ChecksumTail decode error, endian: [{err}]")
             }
             ChecksumTailDecodeError::ChecksumValueDecodeError { err } => {
-                write!(f, "ChecksumTail ChecksumValue decode: {err}")
+                write!(f, "ChecksumTail decode error, value: [{err}]")
             }
         }
     }
@@ -438,13 +457,13 @@ impl error::Error for ChecksumTailDecodeError {
  */
 #[derive(Debug)]
 pub enum ChecksumTailEncodeError {
-    /** Endian encode error.
+    /** [`EndianEncoder`] error.
      *
      * - `err` - [`EndianEncodeError`]
      */
     EndianEncodeError { err: EndianEncodeError },
 
-    /** ChecksumValue encode error.
+    /** [`ChecksumValue`] encode error.
      *
      * - `err` - [`ChecksumValueEncodeError`]
      */
@@ -467,10 +486,10 @@ impl fmt::Display for ChecksumTailEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumTailEncodeError::EndianEncodeError { err } => {
-                write!(f, "ChecksumTail Endian encode: {err}")
+                write!(f, "ChecksumTail encode error, endian: [{err}]")
             }
             ChecksumTailEncodeError::ChecksumValueEncodeError { err } => {
-                write!(f, "ChecksumTail ChecksumValue encode: {err}")
+                write!(f, "ChecksumTail encode error, value: [{err}]")
             }
         }
     }
