@@ -4,7 +4,7 @@
  *
  * Power of two of a ZFS sector.
  */
-pub const SHIFT: u32 = 9;
+pub const SECTOR_SHIFT: u32 = 9;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,7 +20,7 @@ pub trait IsMultipleOfSectorSize {
      * # Examples
      *
      * ```
-     * use zfs::phys::sector::IsMultipleOfSectorSize;
+     * use zfs::phys::IsMultipleOfSectorSize;
      *
      * let value: u16 = 512;
      * assert_eq!(value.is_multiple_of_sector_size(), true);
@@ -40,25 +40,25 @@ pub trait IsMultipleOfSectorSize {
 
 impl IsMultipleOfSectorSize for u16 {
     fn is_multiple_of_sector_size(&self) -> bool {
-        (self & ((1 << SHIFT) - 1)) == 0
+        (self & ((1 << SECTOR_SHIFT) - 1)) == 0
     }
 }
 
 impl IsMultipleOfSectorSize for u32 {
     fn is_multiple_of_sector_size(&self) -> bool {
-        (self & ((1 << SHIFT) - 1)) == 0
+        (self & ((1 << SECTOR_SHIFT) - 1)) == 0
     }
 }
 
 impl IsMultipleOfSectorSize for u64 {
     fn is_multiple_of_sector_size(&self) -> bool {
-        (self & ((1 << SHIFT) - 1)) == 0
+        (self & ((1 << SECTOR_SHIFT) - 1)) == 0
     }
 }
 
 impl IsMultipleOfSectorSize for usize {
     fn is_multiple_of_sector_size(&self) -> bool {
-        (self & ((1 << SHIFT) - 1)) == 0
+        (self & ((1 << SECTOR_SHIFT) - 1)) == 0
     }
 }
 
@@ -71,7 +71,7 @@ impl IsMultipleOfSectorSize for usize {
  * # Examples
  *
  * ```
- * use zfs::phys::sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize};
+ * use zfs::phys::{is_multiple_of_sector_size, IsMultipleOfSectorSize};
  *
  * let value: u16 = 512;
  * assert_eq!(is_multiple_of_sector_size(value), true);

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-/*! A binary endian decoder and encoder.
- *
- * - [`Decoder`] uses an internal [`Cell`] field for the `offset` field
- *   in order to implement a split borrow.
- */
 use core::cell::Cell;
 use core::fmt;
 use core::fmt::Display;
@@ -18,32 +13,32 @@ use std::error;
 
 /** Endian order. */
 #[derive(Copy, Clone, Debug)]
-pub enum Order {
+pub enum EndianOrder {
     Big,
     Little,
 }
 
 /** Native encoding. */
 #[cfg(target_endian = "big")]
-pub const NATIVE: Order = Order::Big;
+pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Big;
 
 /** Native encoding. */
 #[cfg(target_endian = "little")]
-pub const NATIVE: Order = Order::Little;
+pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Little;
 
-/** Swapped encoding (opposite of [`NATIVE`]). */
+/** Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]). */
 #[cfg(target_endian = "big")]
-pub const SWAP: Order = Order::Little;
+pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Little;
 
-/** Swapped encoding (opposite of [`NATIVE`]). */
+/** Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]). */
 #[cfg(target_endian = "little")]
-pub const SWAP: Order = Order::Big;
+pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Big;
 
-impl Display for Order {
+impl Display for EndianOrder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Order::Big => write!(f, "Big"),
-            Order::Little => write!(f, "Little"),
+            EndianOrder::Big => write!(f, "Big"),
+            EndianOrder::Little => write!(f, "Little"),
         }
     }
 }
@@ -54,42 +49,45 @@ type U16Decoder = fn(bytes: [u8; 2]) -> u16;
 type U32Decoder = fn(bytes: [u8; 4]) -> u32;
 type U64Decoder = fn(bytes: [u8; 8]) -> u64;
 
-/** Decoder for an [`Order`] type. */
-struct EndianDecoder {
-    order: Order,
+/** Decoder for an [`EndianOrder`] type. */
+struct EndianDecoderImpl {
+    order: EndianOrder,
     get_u16: U16Decoder,
     get_u32: U32Decoder,
     get_u64: U64Decoder,
 }
 
-/** [`Order::Big`] decoder. */
-const BIG_ENDIAN_DECODER: EndianDecoder = EndianDecoder {
-    order: Order::Big,
+/** [`EndianOrder::Big`] decoder. */
+const BIG_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
+    order: EndianOrder::Big,
     get_u16: u16::from_be_bytes,
     get_u32: u32::from_be_bytes,
     get_u64: u64::from_be_bytes,
 };
 
-/** [`Order::Little`] decoder. */
-const LITTLE_ENDIAN_DECODER: EndianDecoder = EndianDecoder {
-    order: Order::Little,
+/** [`EndianOrder::Little`] decoder. */
+const LITTLE_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
+    order: EndianOrder::Little,
     get_u16: u16::from_le_bytes,
     get_u32: u32::from_le_bytes,
     get_u64: u64::from_le_bytes,
 };
 
 /** A binary decoder.
+ *
+ * Uses an internal [`Cell`] field for the `offset` field in order to implement
+ * a split borrow.
  */
-pub struct Decoder<'a> {
+pub struct EndianDecoder<'a> {
     data: &'a [u8],
     offset: Cell<usize>,
-    decoder: EndianDecoder,
+    decoder: EndianDecoderImpl,
 }
 
-impl fmt::Debug for Decoder<'_> {
+impl fmt::Debug for EndianDecoder<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Change debug printing to print length instead of raw data.
-        f.debug_struct("Decoder")
+        f.debug_struct("EndianDecoder")
             .field("length", &self.data.len())
             .field("offset", &self.offset.get())
             .field("order", &self.decoder.order)
@@ -97,13 +95,13 @@ impl fmt::Debug for Decoder<'_> {
     }
 }
 
-impl Decoder<'_> {
-    /** Initializes a [`Decoder`] based on the supplied [`Order`] value.
+impl EndianDecoder<'_> {
+    /** Initializes a [`EndianDecoder`] based on the supplied [`EndianOrder`] value.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -112,7 +110,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * assert_eq!(decoder.get_u64().unwrap(), 0x123456789abcdef0);
@@ -122,29 +120,29 @@ impl Decoder<'_> {
      * assert!(decoder.get_u64().is_err());
      * ```
      */
-    pub fn from_bytes(data: &[u8], order: Order) -> Decoder<'_> {
-        Decoder {
+    pub fn from_bytes(data: &[u8], order: EndianOrder) -> EndianDecoder<'_> {
+        EndianDecoder {
             data,
             offset: Cell::new(0),
             decoder: match order {
-                Order::Big => BIG_ENDIAN_DECODER,
-                Order::Little => LITTLE_ENDIAN_DECODER,
+                EndianOrder::Big => BIG_ENDIAN_DECODER,
+                EndianOrder::Little => LITTLE_ENDIAN_DECODER,
             },
         }
     }
 
-    /** Initializes a [`Decoder`] based on the expected magic value.
+    /** Initializes a [`EndianDecoder`] based on the expected magic value.
      *
-     * Picks [`Order`] to match magic value.
+     * Picks [`EndianOrder`] to match magic value.
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if array is too short or magic does not match.
+     * Returns [`EndianDecodeError`] if array is too short or magic does not match.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::Decoder;
+     * use zfs::phys::EndianDecoder;
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -153,7 +151,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_u64_magic(data, 0x123456789abcdef0).unwrap();
+     * let decoder = EndianDecoder::from_u64_magic(data, 0x123456789abcdef0).unwrap();
      *
      * // Get u64.
      * assert_eq!(decoder.get_u64().unwrap(), 0x1122334455667788);
@@ -165,14 +163,14 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_u64_magic(data, 0x123456789abcdef0).unwrap();
+     * let decoder = EndianDecoder::from_u64_magic(data, 0x123456789abcdef0).unwrap();
      * assert_eq!(decoder.get_u64().unwrap(), 0x1122334455667788);
      * ```
      *
      * Magic mismatch
      *
      * ```
-     * use zfs::phys::endian::Decoder;
+     * use zfs::phys::EndianDecoder;
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -181,24 +179,24 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_u64_magic(data, 0x123456789abcdef0);
+     * let decoder = EndianDecoder::from_u64_magic(data, 0x123456789abcdef0);
      * assert!(decoder.is_err());
      * ```
      *
      * Slice too short:
      *
      * ```
-     * use zfs::phys::endian::Decoder;
+     * use zfs::phys::EndianDecoder;
      *
      * // Not enough bytes for magic.
      * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde];
-     * let decoder = Decoder::from_u64_magic(data, 0x123456789abcdef0);
+     * let decoder = EndianDecoder::from_u64_magic(data, 0x123456789abcdef0);
      * assert!(decoder.is_err());
      * ```
      */
-    pub fn from_u64_magic(data: &[u8], magic: u64) -> Result<Decoder<'_>, DecodeError> {
+    pub fn from_u64_magic(data: &[u8], magic: u64) -> Result<EndianDecoder<'_>, EndianDecodeError> {
         // Initialize decoder assuming little endian.
-        let mut decoder = Decoder::from_bytes(data, Order::Little);
+        let mut decoder = EndianDecoder::from_bytes(data, EndianOrder::Little);
 
         // Try to get the magic.
         let data_magic = decoder.get_u64()?;
@@ -208,7 +206,7 @@ impl Decoder<'_> {
             let data_magic = data_magic.swap_bytes();
             if data_magic != magic {
                 // It still doesn't match.
-                return Err(DecodeError::InvalidMagic {
+                return Err(EndianDecodeError::InvalidMagic {
                     expected: magic,
                     actual: data_magic.to_le_bytes(),
                 });
@@ -225,13 +223,13 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      */
-    fn check_need(&self, count: usize) -> Result<(), DecodeError> {
+    fn check_need(&self, count: usize) -> Result<(), EndianDecodeError> {
         if self.len() >= count {
             Ok(())
         } else {
-            Err(DecodeError::EndOfInput {
+            Err(EndianDecodeError::EndOfInput {
                 offset: self.offset.get(),
                 length: self.data.len(),
                 count,
@@ -248,7 +246,7 @@ impl Decoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -257,7 +255,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      * assert_eq!(decoder.capacity(), data.len());
      *
      * // Capacity remains unchanged while decoding.
@@ -279,13 +277,13 @@ impl Decoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * while !decoder.is_empty() {
@@ -304,7 +302,7 @@ impl Decoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -313,7 +311,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      * assert_eq!(decoder.len(), 16);
      *
      * // Length decreases while decoding.
@@ -336,13 +334,13 @@ impl Decoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      * assert_eq!(decoder.offset(), 0);
      *
      * decoder.get_u16().unwrap();
@@ -356,26 +354,26 @@ impl Decoder<'_> {
         self.offset.get()
     }
 
-    /** Returns the [`Order`] of the decoder.
+    /** Returns the [`EndianOrder`] of the decoder.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get endian.
-     * assert!(matches!(decoder.order(), Order::Big));
+     * assert!(matches!(decoder.order(), EndianOrder::Big));
      * ```
      */
-    pub fn order(&self) -> Order {
+    pub fn order(&self) -> EndianOrder {
         self.decoder.order
     }
 
@@ -386,7 +384,7 @@ impl Decoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -394,7 +392,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Decode a value.
      * assert_eq!(decoder.get_u64().unwrap(), 0x123456789abcdef0);
@@ -412,14 +410,14 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to rewind.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to rewind.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -427,7 +425,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Decode a value.
      * assert_eq!(decoder.get_u32().unwrap(), 0x12345678);
@@ -440,10 +438,10 @@ impl Decoder<'_> {
      * assert!(decoder.rewind(8).is_err());
      * ```
      */
-    pub fn rewind(&self, count: usize) -> Result<(), DecodeError> {
+    pub fn rewind(&self, count: usize) -> Result<(), EndianDecodeError> {
         let offset = self.offset.get();
         if count > offset {
-            return Err(DecodeError::RewindPastStart { offset, count });
+            return Err(EndianDecodeError::RewindPastStart { offset, count });
         }
         self.offset.set(offset - count);
         Ok(())
@@ -453,14 +451,14 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if seek is past end of data.
+     * Returns [`EndianDecodeError`] if seek is past end of data.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -468,7 +466,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Decode a value.
      * assert_eq!(decoder.get_u64().unwrap(), 0x123456789abcdef0);
@@ -483,9 +481,9 @@ impl Decoder<'_> {
      * assert!(decoder.seek(data.len() + 1).is_err());
      * ```
      */
-    pub fn seek(&self, offset: usize) -> Result<(), DecodeError> {
+    pub fn seek(&self, offset: usize) -> Result<(), EndianDecodeError> {
         if offset > self.data.len() {
-            return Err(DecodeError::SeekPastEnd {
+            return Err(EndianDecodeError::SeekPastEnd {
                 offset,
                 length: self.data.len(),
             });
@@ -499,14 +497,14 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to skip.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to skip.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -514,7 +512,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Decode a value.
      * assert_eq!(decoder.get_u16().unwrap(), 0x1234);
@@ -529,7 +527,7 @@ impl Decoder<'_> {
      * assert!(decoder.skip(4).is_err());
      * ```
      */
-    pub fn skip(&self, count: usize) -> Result<(), DecodeError> {
+    pub fn skip(&self, count: usize) -> Result<(), EndianDecodeError> {
         self.check_need(count)?;
         self.offset.set(self.offset.get() + count);
         Ok(())
@@ -540,10 +538,10 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to skip.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to skip.
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -551,7 +549,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Skip zeroes.
      * assert!(decoder.is_zero_skip(2).unwrap());
@@ -573,7 +571,7 @@ impl Decoder<'_> {
      * assert!(decoder.is_zero_skip(5).is_err());
      * ```
      */
-    pub fn is_zero_skip(&self, count: usize) -> Result<bool, DecodeError> {
+    pub fn is_zero_skip(&self, count: usize) -> Result<bool, EndianDecodeError> {
         self.check_need(count)?;
 
         let offset = self.offset.get();
@@ -595,11 +593,11 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to skip, or the
+     * Returns [`EndianDecodeError`] if there are not enough bytes to skip, or the
      * bytes are non-zero.
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -607,7 +605,7 @@ impl Decoder<'_> {
      * ];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Skip zeroes.
      * assert!(decoder.skip_zero_padding(2).is_ok());
@@ -629,10 +627,10 @@ impl Decoder<'_> {
      * assert!(decoder.skip_zero_padding(5).is_err());
      * ```
      */
-    pub fn skip_zero_padding(&self, count: usize) -> Result<(), DecodeError> {
+    pub fn skip_zero_padding(&self, count: usize) -> Result<(), EndianDecodeError> {
         match self.is_zero_skip(count)? {
             true => Ok(()),
-            false => Err(DecodeError::NonZeroPadding {}),
+            false => Err(EndianDecodeError::NonZeroPadding {}),
         }
     }
 
@@ -640,9 +638,9 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      */
-    fn get_2_bytes(&self) -> Result<[u8; 2], DecodeError> {
+    fn get_2_bytes(&self) -> Result<[u8; 2], EndianDecodeError> {
         self.check_need(2)?;
 
         let start = self.offset.get();
@@ -657,9 +655,9 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      */
-    fn get_4_bytes(&self) -> Result<[u8; 4], DecodeError> {
+    fn get_4_bytes(&self) -> Result<[u8; 4], EndianDecodeError> {
         self.check_need(4)?;
 
         let start = self.offset.get();
@@ -674,9 +672,9 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      */
-    fn get_8_bytes(&self) -> Result<[u8; 8], DecodeError> {
+    fn get_8_bytes(&self) -> Result<[u8; 8], EndianDecodeError> {
         self.check_need(8)?;
 
         let start = self.offset.get();
@@ -689,24 +687,24 @@ impl Decoder<'_> {
 
     /** Decodes bytes.
      *
-     * [`Order`] does not matter for order of decoded bytes.
+     * [`EndianOrder`] does not matter for order of decoded bytes.
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0xf2, 0x34, 0x56, 0x78];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get bytes.
      * let a = decoder.get_bytes(2).unwrap();
@@ -717,7 +715,7 @@ impl Decoder<'_> {
      * // Error end of input.
      * assert!(decoder.get_bytes(2).is_err());
      */
-    pub fn get_bytes(&self, length: usize) -> Result<&[u8], DecodeError> {
+    pub fn get_bytes(&self, length: usize) -> Result<&[u8], EndianDecodeError> {
         // Check bounds for length.
         self.check_need(length)?;
 
@@ -737,20 +735,20 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0xf2];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * assert_eq!(decoder.get_u8().unwrap(), 0xf2);
@@ -759,7 +757,7 @@ impl Decoder<'_> {
      * assert!(decoder.get_u8().is_err());
      * ```
      */
-    pub fn get_u8(&self) -> Result<u8, DecodeError> {
+    pub fn get_u8(&self) -> Result<u8, EndianDecodeError> {
         self.check_need(1)?;
 
         let offset = self.offset.get();
@@ -773,20 +771,20 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * assert_eq!(decoder.get_u16().unwrap(), 0x1234);
@@ -795,7 +793,7 @@ impl Decoder<'_> {
      * assert!(decoder.get_u16().is_err());
      * ```
      */
-    pub fn get_u16(&self) -> Result<u16, DecodeError> {
+    pub fn get_u16(&self) -> Result<u16, EndianDecodeError> {
         Ok((self.decoder.get_u16)(self.get_2_bytes()?))
     }
 
@@ -803,20 +801,20 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34, 0x56, 0x78];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * assert_eq!(decoder.get_u32().unwrap(), 0x12345678);
@@ -825,7 +823,7 @@ impl Decoder<'_> {
      * assert!(decoder.get_u32().is_err());
      * ```
      */
-    pub fn get_u32(&self) -> Result<u32, DecodeError> {
+    pub fn get_u32(&self) -> Result<u32, EndianDecodeError> {
         Ok((self.decoder.get_u32)(self.get_4_bytes()?))
     }
 
@@ -833,20 +831,20 @@ impl Decoder<'_> {
      *
      * # Errors
      *
-     * Returns [`DecodeError`] if there are not enough bytes to decode.
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Decoder, Order};
+     * use zfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
-     * let decoder = Decoder::from_bytes(data, Order::Big);
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
      *
      * // Get values.
      * assert_eq!(decoder.get_u64().unwrap(), 0x123456789abcdef0);
@@ -855,15 +853,17 @@ impl Decoder<'_> {
      * assert!(decoder.get_u64().is_err());
      * ```
      */
-    pub fn get_u64(&self) -> Result<u64, DecodeError> {
+    pub fn get_u64(&self) -> Result<u64, EndianDecodeError> {
         Ok((self.decoder.get_u64)(self.get_8_bytes()?))
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** [`EndianDecoder`] error.
+ */
 #[derive(Debug)]
-pub enum DecodeError {
+pub enum EndianDecodeError {
     /** End of input data.
      *
      * - `offset` - Byte offset of data.
@@ -902,10 +902,10 @@ pub enum DecodeError {
     SeekPastEnd { offset: usize, length: usize },
 }
 
-impl fmt::Display for DecodeError {
+impl fmt::Display for EndianDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DecodeError::EndOfInput {
+            EndianDecodeError::EndOfInput {
                 offset,
                 length,
                 count,
@@ -915,16 +915,16 @@ impl fmt::Display for DecodeError {
                     "Endian end of input at offset:{offset} length:{length} need:{count}"
                 )
             }
-            DecodeError::InvalidMagic { expected, actual } => write!(
+            EndianDecodeError::InvalidMagic { expected, actual } => write!(
                 f,
                 "Endian invalid magic expected 0x{expected:016x} actual {:?}",
                 actual
             ),
-            DecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
-            DecodeError::RewindPastStart { offset, count } => {
+            EndianDecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
+            EndianDecodeError::RewindPastStart { offset, count } => {
                 write!(f, "Endian rewind at offset:{offset} count:{count}")
             }
-            DecodeError::SeekPastEnd { offset, length } => {
+            EndianDecodeError::SeekPastEnd { offset, length } => {
                 write!(f, "Endian seek to offset:{offset} length:{length}")
             }
         }
@@ -932,7 +932,7 @@ impl fmt::Display for DecodeError {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for DecodeError {
+impl error::Error for EndianDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
@@ -944,25 +944,25 @@ type U16Encoder = fn(value: u16) -> [u8; 2];
 type U32Encoder = fn(value: u32) -> [u8; 4];
 type U64Encoder = fn(value: u64) -> [u8; 8];
 
-/** Encoder for an [`Order`] type. */
-struct EndianEncoder {
-    order: Order,
+/** Encoder for an [`EndianOrder`] type. */
+struct EndianEncoderImpl {
+    order: EndianOrder,
     put_u16: U16Encoder,
     put_u32: U32Encoder,
     put_u64: U64Encoder,
 }
 
-/** [`Order::Big`] encoder. */
-const BIG_ENDIAN_ENCODER: EndianEncoder = EndianEncoder {
-    order: Order::Big,
+/** [`EndianOrder::Big`] encoder. */
+const BIG_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
+    order: EndianOrder::Big,
     put_u16: u16::to_be_bytes,
     put_u32: u32::to_be_bytes,
     put_u64: u64::to_be_bytes,
 };
 
-/** [`Order::Little`] encoder. */
-const LITTLE_ENDIAN_ENCODER: EndianEncoder = EndianEncoder {
-    order: Order::Little,
+/** [`EndianOrder::Little`] encoder. */
+const LITTLE_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
+    order: EndianOrder::Little,
     put_u16: u16::to_le_bytes,
     put_u32: u32::to_le_bytes,
     put_u64: u64::to_le_bytes,
@@ -970,16 +970,16 @@ const LITTLE_ENDIAN_ENCODER: EndianEncoder = EndianEncoder {
 
 /** A binary encoder.
  */
-pub struct Encoder<'a> {
+pub struct EndianEncoder<'a> {
     data: &'a mut [u8],
     offset: usize,
-    encoder: EndianEncoder,
+    encoder: EndianEncoderImpl,
 }
 
-impl fmt::Debug for Encoder<'_> {
+impl fmt::Debug for EndianEncoder<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Change debug printing to print length instead of raw data.
-        f.debug_struct("Encoder")
+        f.debug_struct("EndianEncoder")
             .field("length", &self.data.len())
             .field("offset", &self.offset)
             .field("order", &self.encoder.order)
@@ -987,19 +987,19 @@ impl fmt::Debug for Encoder<'_> {
     }
 }
 
-impl Encoder<'_> {
-    /** Initializes an [`Encoder`] based on the supplied [`Order`] value.
+impl EndianEncoder<'_> {
+    /** Initializes an [`EndianEncoder`] based on the supplied [`EndianOrder`] value.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [0; 8];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put values.
      * assert!(encoder.put_u64(0x123456789abcdef0).is_ok());
@@ -1012,13 +1012,13 @@ impl Encoder<'_> {
      * assert_eq!(data, exp);
      * ```
      */
-    pub fn to_bytes(data: &mut [u8], order: Order) -> Encoder<'_> {
-        Encoder {
+    pub fn to_bytes(data: &mut [u8], order: EndianOrder) -> EndianEncoder<'_> {
+        EndianEncoder {
             data,
             offset: 0,
             encoder: match order {
-                Order::Big => BIG_ENDIAN_ENCODER,
-                Order::Little => LITTLE_ENDIAN_ENCODER,
+                EndianOrder::Big => BIG_ENDIAN_ENCODER,
+                EndianOrder::Little => LITTLE_ENDIAN_ENCODER,
             },
         }
     }
@@ -1027,13 +1027,13 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      */
-    fn check_need(&self, count: usize) -> Result<(), EncodeError> {
+    fn check_need(&self, count: usize) -> Result<(), EndianEncodeError> {
         if self.available() >= count {
             Ok(())
         } else {
-            Err(EncodeError::EndOfOutput {
+            Err(EndianEncodeError::EndOfOutput {
                 offset: self.offset,
                 length: self.data.len(),
                 count,
@@ -1048,13 +1048,13 @@ impl Encoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
      *
      * // Initial available is length of data.
      * assert_eq!(encoder.available(), 32);
@@ -1081,14 +1081,14 @@ impl Encoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
      * let data_length = data.len();
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
      *
      * assert_eq!(encoder.capacity(), data_length);
      *
@@ -1103,24 +1103,24 @@ impl Encoder<'_> {
         self.data.len()
     }
 
-    /** Returns the [`Order`] of the encoder.
+    /** Returns the [`EndianOrder`] of the encoder.
      *
      * # Examples
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Some bytes.
      * let data = &mut [0; 32];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
-     * assert!(matches!(encoder.order(), Order::Big));
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
+     * assert!(matches!(encoder.order(), EndianOrder::Big));
      * ```
      */
-    pub fn order(&self) -> Order {
+    pub fn order(&self) -> EndianOrder {
         self.encoder.order
     }
 
@@ -1131,13 +1131,13 @@ impl Encoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
      *
      * // Initially empty.
      * assert!(encoder.is_empty());
@@ -1158,13 +1158,13 @@ impl Encoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
      *
      * // Encode values.
      * let mut x = 0;
@@ -1184,13 +1184,13 @@ impl Encoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
      *
      * // Initial length is 0.
      * assert_eq!(encoder.len(), 0);
@@ -1211,9 +1211,9 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      */
-    fn put_2_bytes(&mut self, data: [u8; 2]) -> Result<(), EncodeError> {
+    fn put_2_bytes(&mut self, data: [u8; 2]) -> Result<(), EndianEncodeError> {
         self.check_need(2)?;
 
         let start = self.offset;
@@ -1230,9 +1230,9 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      */
-    fn put_4_bytes(&mut self, data: [u8; 4]) -> Result<(), EncodeError> {
+    fn put_4_bytes(&mut self, data: [u8; 4]) -> Result<(), EndianEncodeError> {
         self.check_need(4)?;
 
         let start = self.offset;
@@ -1249,9 +1249,9 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      */
-    fn put_8_bytes(&mut self, data: [u8; 8]) -> Result<(), EncodeError> {
+    fn put_8_bytes(&mut self, data: [u8; 8]) -> Result<(), EndianEncodeError> {
         self.check_need(8)?;
 
         let start = self.offset;
@@ -1268,19 +1268,19 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [1; 8];
      * let src: [u8; 5] = [0xff, 0xfe, 0xfd, 0xfc, 0xfb];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_bytes(&src).is_ok());
@@ -1292,7 +1292,7 @@ impl Encoder<'_> {
      * let exp: [u8; 8] = [0xff, 0xfe, 0xfd, 0xfc, 0xfb, 1, 1, 1];
      * assert_eq!(data, exp);
      */
-    pub fn put_bytes(&mut self, data: &[u8]) -> Result<(), EncodeError> {
+    pub fn put_bytes(&mut self, data: &[u8]) -> Result<(), EndianEncodeError> {
         let length = data.len();
         self.check_need(length)?;
 
@@ -1310,16 +1310,16 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 1] = [0; 1];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_u8(0x12).is_ok());
@@ -1331,7 +1331,7 @@ impl Encoder<'_> {
      * let exp: [u8; 1] = [0x12];
      * assert_eq!(data, exp);
      */
-    pub fn put_u8(&mut self, value: u8) -> Result<(), EncodeError> {
+    pub fn put_u8(&mut self, value: u8) -> Result<(), EndianEncodeError> {
         self.check_need(1)?;
         self.data[self.offset] = value;
         self.offset += 1;
@@ -1343,17 +1343,17 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 2] = [0; 2];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_u16(0x1234).is_ok());
@@ -1365,7 +1365,7 @@ impl Encoder<'_> {
      * let exp: [u8; 2] = [0x12, 0x34];
      * assert_eq!(data, exp);
      */
-    pub fn put_u16(&mut self, value: u16) -> Result<(), EncodeError> {
+    pub fn put_u16(&mut self, value: u16) -> Result<(), EndianEncodeError> {
         self.put_2_bytes((self.encoder.put_u16)(value))
     }
 
@@ -1373,18 +1373,18 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 4] = [0; 4];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_u32(0x12345678).is_ok());
@@ -1396,7 +1396,7 @@ impl Encoder<'_> {
      * let exp: [u8; 4] = [0x12, 0x34, 0x56, 0x78];
      * assert_eq!(data, exp);
      */
-    pub fn put_u32(&mut self, value: u32) -> Result<(), EncodeError> {
+    pub fn put_u32(&mut self, value: u32) -> Result<(), EndianEncodeError> {
         self.put_4_bytes((self.encoder.put_u32)(value))
     }
 
@@ -1404,18 +1404,18 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [0; 8];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_u64(0x123456789abcdef0).is_ok());
@@ -1427,7 +1427,7 @@ impl Encoder<'_> {
      * let exp: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      * assert_eq!(data, exp);
      */
-    pub fn put_u64(&mut self, value: u64) -> Result<(), EncodeError> {
+    pub fn put_u64(&mut self, value: u64) -> Result<(), EndianEncodeError> {
         self.put_8_bytes((self.encoder.put_u64)(value))
     }
 
@@ -1435,18 +1435,18 @@ impl Encoder<'_> {
      *
      * # Errors
      *
-     * Returns [`EncodeError`] if there are not enough bytes available.
+     * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * Basic usage:
      *
      * ```
-     * use zfs::phys::endian::{Encoder, Order};
+     * use zfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [1; 8];
      *
      * // Create encoder.
-     * let mut encoder = Encoder::to_bytes(&mut data, Order::Big);
+     * let mut encoder = EndianEncoder::to_bytes(&mut data, EndianOrder::Big);
      *
      * // Put value.
      * assert!(encoder.put_zero_padding(4).is_ok());
@@ -1458,7 +1458,7 @@ impl Encoder<'_> {
      * let exp: [u8; 8] = [0, 0, 0, 0, 1, 1, 1, 1];
      * assert_eq!(data, exp);
      */
-    pub fn put_zero_padding(&mut self, length: usize) -> Result<(), EncodeError> {
+    pub fn put_zero_padding(&mut self, length: usize) -> Result<(), EndianEncodeError> {
         self.check_need(length)?;
 
         let start = self.offset;
@@ -1474,8 +1474,10 @@ impl Encoder<'_> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** [`EndianEncoder`] error.
+ */
 #[derive(Debug)]
-pub enum EncodeError {
+pub enum EndianEncodeError {
     /** End of output data.
      *
      * - `offset` - Byte offset of data.
@@ -1489,10 +1491,10 @@ pub enum EncodeError {
     },
 }
 
-impl fmt::Display for EncodeError {
+impl fmt::Display for EndianEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EncodeError::EndOfOutput {
+            EndianEncodeError::EndOfOutput {
                 offset,
                 length,
                 count,
@@ -1507,7 +1509,7 @@ impl fmt::Display for EncodeError {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for EncodeError {
+impl error::Error for EndianEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }

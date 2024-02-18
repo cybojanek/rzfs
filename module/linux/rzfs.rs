@@ -19,7 +19,7 @@ struct RZFSModule {
 impl kernel::Module for RZFSModule {
     fn init(_module: &'static ThisModule) -> Result<Self> {
         pr_info!("RZFS(init)\n");
-        pr_info!("Sector: {}\n", zfs::phys::sector::SHIFT);
+        pr_info!("Sector: {}\n", zfs::phys::SECTOR_SHIFT);
         Ok(RZFSModule { number: 1 })
     }
 }

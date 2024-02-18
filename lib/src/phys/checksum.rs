@@ -10,7 +10,9 @@ use core::result::Result;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::endian::{DecodeError, Decoder, EncodeError, Encoder, Order};
+use crate::phys::{
+    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -64,7 +66,7 @@ use crate::phys::endian::{DecodeError, Decoder, EncodeError, Encoder, Order};
  * ```
  */
 #[derive(Debug)]
-pub enum Type {
+pub enum ChecksumType {
     Inherit = 0,
     On = 1,
     Off = 2,
@@ -84,69 +86,71 @@ pub enum Type {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Display for Type {
+impl Display for ChecksumType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Inherit => write!(f, "Inherit"),
-            Type::On => write!(f, "On"),
-            Type::Off => write!(f, "Off"),
-            Type::Label => write!(f, "Label"),
-            Type::GangHeader => write!(f, "GangHeader"),
-            Type::Zilog => write!(f, "Zilog"),
-            Type::Fletcher2 => write!(f, "Fletcher2"),
-            Type::Fletcher4 => write!(f, "Fletcher4"),
-            Type::Sha256 => write!(f, "Sha256"),
-            Type::Zilog2 => write!(f, "Zilog2"),
-            Type::NoParity => write!(f, "NoParity"),
-            Type::Sha512_256 => write!(f, "Sha512_256"),
-            Type::Skein => write!(f, "Skein"),
-            Type::Edonr => write!(f, "Edonr"),
-            Type::Blake3 => write!(f, "Blake3"),
+            ChecksumType::Inherit => write!(f, "Inherit"),
+            ChecksumType::On => write!(f, "On"),
+            ChecksumType::Off => write!(f, "Off"),
+            ChecksumType::Label => write!(f, "Label"),
+            ChecksumType::GangHeader => write!(f, "GangHeader"),
+            ChecksumType::Zilog => write!(f, "Zilog"),
+            ChecksumType::Fletcher2 => write!(f, "Fletcher2"),
+            ChecksumType::Fletcher4 => write!(f, "Fletcher4"),
+            ChecksumType::Sha256 => write!(f, "Sha256"),
+            ChecksumType::Zilog2 => write!(f, "Zilog2"),
+            ChecksumType::NoParity => write!(f, "NoParity"),
+            ChecksumType::Sha512_256 => write!(f, "Sha512_256"),
+            ChecksumType::Skein => write!(f, "Skein"),
+            ChecksumType::Edonr => write!(f, "Edonr"),
+            ChecksumType::Blake3 => write!(f, "Blake3"),
         }
     }
 }
 
-impl From<Type> for u8 {
-    fn from(val: Type) -> u8 {
+impl From<ChecksumType> for u8 {
+    fn from(val: ChecksumType) -> u8 {
         val as u8
     }
 }
 
-impl TryFrom<u8> for Type {
-    type Error = TypeError;
+impl TryFrom<u8> for ChecksumType {
+    type Error = ChecksumTypeError;
 
-    /** Try converting from a [`u8`] to a [`Type`].
+    /** Try converting from a [`u8`] to a [`ChecksumType`].
      *
      * # Errors
      *
-     * Returns [`TypeError`] in case of an invalid checksum.
+     * Returns [`ChecksumTypeError`] in case of an invalid checksum.
      */
     fn try_from(checksum: u8) -> Result<Self, Self::Error> {
         match checksum {
-            0 => Ok(Type::Inherit),
-            1 => Ok(Type::On),
-            2 => Ok(Type::Off),
-            3 => Ok(Type::Label),
-            4 => Ok(Type::GangHeader),
-            5 => Ok(Type::Zilog),
-            6 => Ok(Type::Fletcher2),
-            7 => Ok(Type::Fletcher4),
-            8 => Ok(Type::Sha256),
-            9 => Ok(Type::Zilog2),
-            10 => Ok(Type::NoParity),
-            11 => Ok(Type::Sha512_256),
-            12 => Ok(Type::Skein),
-            13 => Ok(Type::Edonr),
-            14 => Ok(Type::Blake3),
-            _ => Err(TypeError::InvalidChecksum { value: checksum }),
+            0 => Ok(ChecksumType::Inherit),
+            1 => Ok(ChecksumType::On),
+            2 => Ok(ChecksumType::Off),
+            3 => Ok(ChecksumType::Label),
+            4 => Ok(ChecksumType::GangHeader),
+            5 => Ok(ChecksumType::Zilog),
+            6 => Ok(ChecksumType::Fletcher2),
+            7 => Ok(ChecksumType::Fletcher4),
+            8 => Ok(ChecksumType::Sha256),
+            9 => Ok(ChecksumType::Zilog2),
+            10 => Ok(ChecksumType::NoParity),
+            11 => Ok(ChecksumType::Sha512_256),
+            12 => Ok(ChecksumType::Skein),
+            13 => Ok(ChecksumType::Edonr),
+            14 => Ok(ChecksumType::Blake3),
+            _ => Err(ChecksumTypeError::InvalidChecksum { value: checksum }),
         }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** [`ChecksumType`] conversion error.
+ */
 #[derive(Debug)]
-pub enum TypeError {
+pub enum ChecksumTypeError {
     /** Invalid checksum type value.
      *
      * - `value` - Invalid value.
@@ -154,18 +158,18 @@ pub enum TypeError {
     InvalidChecksum { value: u8 },
 }
 
-impl fmt::Display for TypeError {
+impl fmt::Display for ChecksumTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TypeError::InvalidChecksum { value } => {
-                write!(f, "Checksum Type invalid value: {value}")
+            ChecksumTypeError::InvalidChecksum { value } => {
+                write!(f, "ChecksumType invalid value: {value}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for TypeError {
+impl error::Error for ChecksumTypeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
@@ -192,22 +196,24 @@ impl error::Error for TypeError {
  * ```
  */
 #[derive(Debug)]
-pub struct Value {
+pub struct ChecksumValue {
     pub words: [u64; 4],
 }
 
-impl Value {
-    /// Byte length of an encoded [`Value`].
+impl ChecksumValue {
+    /// Byte length of an encoded [`ChecksumValue`].
     pub const LENGTH: usize = 32;
 
-    /** Decodes a [`Value`].
+    /** Decodes a [`ChecksumValue`].
      *
      * # Errors
      *
-     * Returns [`ValueDecodeError`] if there are not enough bytes.
+     * Returns [`ChecksumValueDecodeError`] if there are not enough bytes.
      */
-    pub fn from_decoder(decoder: &Decoder<'_>) -> Result<Value, ValueDecodeError> {
-        Ok(Value {
+    pub fn from_decoder(
+        decoder: &EndianDecoder<'_>,
+    ) -> Result<ChecksumValue, ChecksumValueDecodeError> {
+        Ok(ChecksumValue {
             words: [
                 decoder.get_u64()?,
                 decoder.get_u64()?,
@@ -217,13 +223,16 @@ impl Value {
         })
     }
 
-    /** Encodes a [`Value`].
+    /** Encodes a [`ChecksumValue`].
      *
      * # Errors
      *
-     * Returns [`ValueEncodeError`] if there is not enough space.
+     * Returns [`ChecksumValueEncodeError`] if there is not enough space.
      */
-    pub fn to_encoder(&self, encoder: &mut Encoder<'_>) -> Result<(), ValueEncodeError> {
+    pub fn to_encoder(
+        &self,
+        encoder: &mut EndianEncoder<'_>,
+    ) -> Result<(), ChecksumValueEncodeError> {
         encoder.put_u64(self.words[0])?;
         encoder.put_u64(self.words[1])?;
         encoder.put_u64(self.words[2])?;
@@ -233,70 +242,74 @@ impl Value {
     }
 }
 
+/** [`ChecksumValue`] decode error.
+ */
 #[derive(Debug)]
-pub enum ValueDecodeError {
+pub enum ChecksumValueDecodeError {
     /** Endian decode error.
      *
-     * - `err` - [`DecodeError`]
+     * - `err` - [`EndianDecodeError`]
      */
-    EndianDecodeError { err: DecodeError },
+    EndianDecodeError { err: EndianDecodeError },
 }
 
-impl From<DecodeError> for ValueDecodeError {
-    fn from(value: DecodeError) -> Self {
-        ValueDecodeError::EndianDecodeError { err: value }
+impl From<EndianDecodeError> for ChecksumValueDecodeError {
+    fn from(value: EndianDecodeError) -> Self {
+        ChecksumValueDecodeError::EndianDecodeError { err: value }
     }
 }
 
-impl fmt::Display for ValueDecodeError {
+impl fmt::Display for ChecksumValueDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValueDecodeError::EndianDecodeError { err } => {
-                write!(f, "Check Value Endian decode: {err}")
+            ChecksumValueDecodeError::EndianDecodeError { err } => {
+                write!(f, "ChecksumValue Endian decode: {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for ValueDecodeError {
+impl error::Error for ChecksumValueDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ValueDecodeError::EndianDecodeError { err } => Some(err),
+            ChecksumValueDecodeError::EndianDecodeError { err } => Some(err),
         }
     }
 }
 
+/** [`ChecksumValue`] encode error.
+ */
 #[derive(Debug)]
-pub enum ValueEncodeError {
+pub enum ChecksumValueEncodeError {
     /** Endian encode error.
      *
-     * - `err` - [`EncodeError`]
+     * - `err` - [`EndianEncodeError`]
      */
-    EndianEncodeError { err: EncodeError },
+    EndianEncodeError { err: EndianEncodeError },
 }
 
-impl From<EncodeError> for ValueEncodeError {
-    fn from(value: EncodeError) -> Self {
-        ValueEncodeError::EndianEncodeError { err: value }
+impl From<EndianEncodeError> for ChecksumValueEncodeError {
+    fn from(value: EndianEncodeError) -> Self {
+        ChecksumValueEncodeError::EndianEncodeError { err: value }
     }
 }
 
-impl fmt::Display for ValueEncodeError {
+impl fmt::Display for ChecksumValueEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValueEncodeError::EndianEncodeError { err } => {
-                write!(f, "Checksum Value Endian encode: {err}")
+            ChecksumValueEncodeError::EndianEncodeError { err } => {
+                write!(f, "ChecksumValue Endian encode: {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for ValueEncodeError {
+impl error::Error for ChecksumValueEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ValueEncodeError::EndianEncodeError { err } => Some(err),
+            ChecksumValueEncodeError::EndianEncodeError { err } => Some(err),
         }
     }
 }
@@ -318,148 +331,157 @@ impl error::Error for ValueEncodeError {
  * ```
  */
 #[derive(Debug)]
-pub struct Tail {
+pub struct ChecksumTail {
     /// Endian order.
-    pub order: Order,
+    pub order: EndianOrder,
 
     /// Checksum value.
-    pub value: Value,
+    pub value: ChecksumValue,
 }
 
-impl Tail {
-    /// Byte length of an encoded [`Tail`] (40).
-    pub const LENGTH: usize = 8 + Value::LENGTH;
+impl ChecksumTail {
+    /// Byte length of an encoded [`ChecksumTail`] (40).
+    pub const LENGTH: usize = 8 + ChecksumValue::LENGTH;
 
-    /// Magic value for an encoded [`Tail`].
+    /// Magic value for an encoded [`ChecksumTail`].
     pub const MAGIC: u64 = 0x210da7ab10c7a11;
 
-    /** Decodes a [`Tail`].
+    /** Decodes a [`ChecksumTail`].
      *
      * # Errors
      *
-     * Returns [`TailDecodeError`] if there are not enough bytes, or magic is invalid.
+     * Returns [`ChecksumTailDecodeError`] if there are not enough bytes, or magic is invalid.
      */
-    pub fn from_bytes(bytes: &[u8; Tail::LENGTH]) -> Result<Tail, TailDecodeError> {
-        let decoder = Decoder::from_u64_magic(bytes, Tail::MAGIC)?;
+    pub fn from_bytes(
+        bytes: &[u8; ChecksumTail::LENGTH],
+    ) -> Result<ChecksumTail, ChecksumTailDecodeError> {
+        let decoder = EndianDecoder::from_u64_magic(bytes, ChecksumTail::MAGIC)?;
 
-        Ok(Tail {
+        Ok(ChecksumTail {
             order: decoder.order(),
-            value: Value::from_decoder(&decoder)?,
+            value: ChecksumValue::from_decoder(&decoder)?,
         })
     }
 
-    /** Encodes a [`Tail`].
+    /** Encodes a [`ChecksumTail`].
      *
      * # Errors
      *
-     * Returns [`TailEncodeError`] if there are not enough bytes.
+     * Returns [`ChecksumTailEncodeError`] if there are not enough bytes.
      */
-    pub fn to_bytes(&self, bytes: &mut [u8; Tail::LENGTH]) -> Result<(), TailEncodeError> {
-        let mut encoder = Encoder::to_bytes(bytes, self.order);
+    pub fn to_bytes(
+        &self,
+        bytes: &mut [u8; ChecksumTail::LENGTH],
+    ) -> Result<(), ChecksumTailEncodeError> {
+        let mut encoder = EndianEncoder::to_bytes(bytes, self.order);
 
-        encoder.put_u64(Tail::MAGIC)?;
+        encoder.put_u64(ChecksumTail::MAGIC)?;
         self.value.to_encoder(&mut encoder)?;
 
         Ok(())
     }
 }
 
+/** [`ChecksumTail`] decode error.
+ */
 #[derive(Debug)]
-pub enum TailDecodeError {
+pub enum ChecksumTailDecodeError {
     /** Endian decode error.
      *
-     * - `err` - [`DecodeError`]
+     * - `err` - [`EndianDecodeError`]
      */
-    EndianDecodeError { err: DecodeError },
+    EndianDecodeError { err: EndianDecodeError },
 
-    /** Value decode error.
+    /** ChecksumValue decode error.
      *
-     * - `err` - [`ValueDecodeError`]
+     * - `err` - [`ChecksumValueDecodeError`]
      */
-    ValueDecodeError { err: ValueDecodeError },
+    ChecksumValueDecodeError { err: ChecksumValueDecodeError },
 }
 
-impl From<DecodeError> for TailDecodeError {
-    fn from(value: DecodeError) -> Self {
-        TailDecodeError::EndianDecodeError { err: value }
+impl From<EndianDecodeError> for ChecksumTailDecodeError {
+    fn from(value: EndianDecodeError) -> Self {
+        ChecksumTailDecodeError::EndianDecodeError { err: value }
     }
 }
 
-impl From<ValueDecodeError> for TailDecodeError {
-    fn from(value: ValueDecodeError) -> Self {
-        TailDecodeError::ValueDecodeError { err: value }
+impl From<ChecksumValueDecodeError> for ChecksumTailDecodeError {
+    fn from(value: ChecksumValueDecodeError) -> Self {
+        ChecksumTailDecodeError::ChecksumValueDecodeError { err: value }
     }
 }
 
-impl fmt::Display for TailDecodeError {
+impl fmt::Display for ChecksumTailDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TailDecodeError::EndianDecodeError { err } => {
-                write!(f, "Check Tail Endian decode: {err}")
+            ChecksumTailDecodeError::EndianDecodeError { err } => {
+                write!(f, "ChecksumTail Endian decode: {err}")
             }
-            TailDecodeError::ValueDecodeError { err } => {
-                write!(f, "Check Tail Value decode: {err}")
+            ChecksumTailDecodeError::ChecksumValueDecodeError { err } => {
+                write!(f, "ChecksumTail ChecksumValue decode: {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for TailDecodeError {
+impl error::Error for ChecksumTailDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            TailDecodeError::EndianDecodeError { err } => Some(err),
-            TailDecodeError::ValueDecodeError { err } => Some(err),
+            ChecksumTailDecodeError::EndianDecodeError { err } => Some(err),
+            ChecksumTailDecodeError::ChecksumValueDecodeError { err } => Some(err),
         }
     }
 }
 
+/** [`ChecksumTail`] encode error.
+ */
 #[derive(Debug)]
-pub enum TailEncodeError {
+pub enum ChecksumTailEncodeError {
     /** Endian encode error.
      *
-     * - `err` - [`EncodeError`]
+     * - `err` - [`EndianEncodeError`]
      */
-    EndianEncodeError { err: EncodeError },
+    EndianEncodeError { err: EndianEncodeError },
 
-    /** Value encode error.
+    /** ChecksumValue encode error.
      *
-     * - `err` - [`ValueEncodeError`]
+     * - `err` - [`ChecksumValueEncodeError`]
      */
-    ValueEncodeError { err: ValueEncodeError },
+    ChecksumValueEncodeError { err: ChecksumValueEncodeError },
 }
 
-impl From<EncodeError> for TailEncodeError {
-    fn from(value: EncodeError) -> Self {
-        TailEncodeError::EndianEncodeError { err: value }
+impl From<EndianEncodeError> for ChecksumTailEncodeError {
+    fn from(value: EndianEncodeError) -> Self {
+        ChecksumTailEncodeError::EndianEncodeError { err: value }
     }
 }
 
-impl From<ValueEncodeError> for TailEncodeError {
-    fn from(value: ValueEncodeError) -> Self {
-        TailEncodeError::ValueEncodeError { err: value }
+impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {
+    fn from(value: ChecksumValueEncodeError) -> Self {
+        ChecksumTailEncodeError::ChecksumValueEncodeError { err: value }
     }
 }
 
-impl fmt::Display for TailEncodeError {
+impl fmt::Display for ChecksumTailEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TailEncodeError::EndianEncodeError { err } => {
-                write!(f, "Checksum Tail Endian encode: {err}")
+            ChecksumTailEncodeError::EndianEncodeError { err } => {
+                write!(f, "ChecksumTail Endian encode: {err}")
             }
-            TailEncodeError::ValueEncodeError { err } => {
-                write!(f, "Checksum Tail Value encode: {err}")
+            ChecksumTailEncodeError::ChecksumValueEncodeError { err } => {
+                write!(f, "ChecksumTail ChecksumValue encode: {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for TailEncodeError {
+impl error::Error for ChecksumTailEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            TailEncodeError::EndianEncodeError { err } => Some(err),
-            TailEncodeError::ValueEncodeError { err } => Some(err),
+            ChecksumTailEncodeError::EndianEncodeError { err } => Some(err),
+            ChecksumTailEncodeError::ChecksumValueEncodeError { err } => Some(err),
         }
     }
 }
