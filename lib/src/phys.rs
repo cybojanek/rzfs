@@ -9,6 +9,9 @@ pub use checksum::{
 pub(crate) mod compression;
 pub use compression::{CompressionType, CompressionTypeError};
 
+pub(crate) mod dmu;
+pub use dmu::{DmuType, DmuTypeError};
+
 pub(crate) mod dva;
 pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
 
