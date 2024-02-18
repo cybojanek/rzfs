@@ -6,6 +6,9 @@ pub use checksum::{
     ChecksumTypeError, ChecksumValue, ChecksumValueDecodeError, ChecksumValueEncodeError,
 };
 
+pub(crate) mod compression;
+pub use compression::{CompressionType, CompressionTypeError};
+
 pub(crate) mod dva;
 pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
 
