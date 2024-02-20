@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
+pub(crate) mod block_pointer;
+pub use block_pointer::{
+    BlockPointer, BlockPointerDecodeError, BlockPointerEmbedded, BlockPointerEmbeddedType,
+    BlockPointerEmbeddedTypeError, BlockPointerEncodeError, BlockPointerEncrypted,
+    BlockPointerRegular,
+};
+
 pub(crate) mod checksum;
 pub use checksum::{
     ChecksumTail, ChecksumTailDecodeError, ChecksumTailEncodeError, ChecksumType,
