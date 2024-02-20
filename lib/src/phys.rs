@@ -33,3 +33,6 @@ pub use feature::Feature;
 
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
+
+pub(crate) mod version;
+pub use version::{Version, VersionError};
