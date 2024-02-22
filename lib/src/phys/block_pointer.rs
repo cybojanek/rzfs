@@ -361,7 +361,7 @@ impl TryFrom<u8> for BlockPointerEmbeddedType {
             0 => Ok(BlockPointerEmbeddedType::Data),
             1 => Ok(BlockPointerEmbeddedType::Reserved),
             2 => Ok(BlockPointerEmbeddedType::Redacted),
-            _ => Err(BlockPointerEmbeddedTypeError::InvalidBlockPointerEmbedded {
+            _ => Err(BlockPointerEmbeddedTypeError::Unknown {
                 value: embedded_type,
             }),
         }
@@ -372,18 +372,18 @@ impl TryFrom<u8> for BlockPointerEmbeddedType {
  */
 #[derive(Debug)]
 pub enum BlockPointerEmbeddedTypeError {
-    /** Invalid [`BlockPointerEmbeddedType`].
+    /** Unknown [`BlockPointerEmbeddedType`].
      *
-     * - `value` - Invalid value.
+     * - `value` - Unknown value.
      */
-    InvalidBlockPointerEmbedded { value: u8 },
+    Unknown { value: u8 },
 }
 
 impl fmt::Display for BlockPointerEmbeddedTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerEmbeddedTypeError::InvalidBlockPointerEmbedded { value } => {
-                write!(f, "BlockPointerEmbeddedType invalid value: {value}")
+            BlockPointerEmbeddedTypeError::Unknown { value } => {
+                write!(f, "BlockPointerEmbeddedType unknown: {value}")
             }
         }
     }
@@ -1265,47 +1265,47 @@ impl BlockPointerRegular {
 
 #[derive(Debug)]
 pub enum BlockPointerDecodeError {
-    /** Invalid [`BlockPointerEmbeddedType`].
+    /** [`BlockPointerEmbeddedType`] decode error.
      *
      * - `err` - [`BlockPointerEmbeddedTypeError`].
      */
-    BlockPointerEmbeddedTypeError { err: BlockPointerEmbeddedTypeError },
+    BlockPointerEmbeddedType { err: BlockPointerEmbeddedTypeError },
 
     /** Invalid [`ChecksumType`].
      *
-     * - `err` - ['ChecksumTypeError'].
+     * - `err` - ['ChecksumType'].
      */
-    ChecksumTypeError { err: ChecksumTypeError },
+    ChecksumType { err: ChecksumTypeError },
 
     /** [`ChecksumValue`] decode error.
      *
      * - `err` - ['ChecksumValueDecodeError'].
      */
-    ChecksumValueDecodeError { err: ChecksumValueDecodeError },
+    ChecksumValue { err: ChecksumValueDecodeError },
 
     /** Invalid [`CompressionType`].
      *
      * - `err` - ['CompressionTypeError'].
      */
-    CompressionTypeError { err: CompressionTypeError },
+    CompressionType { err: CompressionTypeError },
 
     /** Invalid [`DmuType`].
      *
      * - `err` - ['DmuTypeError'].
      */
-    DmuTypeError { err: DmuTypeError },
+    DmuType { err: DmuTypeError },
 
     /** [`Dva`] decode error.
      *
      * - `err` - [`DvaDecodeError`]
      */
-    DvaDecodeError { err: DvaDecodeError },
+    Dva { err: DvaDecodeError },
 
     /** [`EndianDecoder`] error.
      *
      * - `err` - [`EndianDecodeError`]
      */
-    EndianDecodeError { err: EndianDecodeError },
+    Endian { err: EndianDecodeError },
 
     /** Invalid [`BlockPointer`] type.
      *
@@ -1341,68 +1341,68 @@ pub enum BlockPointerDecodeError {
 
 impl From<BlockPointerEmbeddedTypeError> for BlockPointerDecodeError {
     fn from(value: BlockPointerEmbeddedTypeError) -> Self {
-        BlockPointerDecodeError::BlockPointerEmbeddedTypeError { err: value }
+        BlockPointerDecodeError::BlockPointerEmbeddedType { err: value }
     }
 }
 
 impl From<ChecksumTypeError> for BlockPointerDecodeError {
     fn from(value: ChecksumTypeError) -> Self {
-        BlockPointerDecodeError::ChecksumTypeError { err: value }
+        BlockPointerDecodeError::ChecksumType { err: value }
     }
 }
 
 impl From<ChecksumValueDecodeError> for BlockPointerDecodeError {
     fn from(value: ChecksumValueDecodeError) -> Self {
-        BlockPointerDecodeError::ChecksumValueDecodeError { err: value }
+        BlockPointerDecodeError::ChecksumValue { err: value }
     }
 }
 
 impl From<CompressionTypeError> for BlockPointerDecodeError {
     fn from(value: CompressionTypeError) -> Self {
-        BlockPointerDecodeError::CompressionTypeError { err: value }
+        BlockPointerDecodeError::CompressionType { err: value }
     }
 }
 
 impl From<DmuTypeError> for BlockPointerDecodeError {
     fn from(value: DmuTypeError) -> Self {
-        BlockPointerDecodeError::DmuTypeError { err: value }
+        BlockPointerDecodeError::DmuType { err: value }
     }
 }
 
 impl From<DvaDecodeError> for BlockPointerDecodeError {
     fn from(value: DvaDecodeError) -> Self {
-        BlockPointerDecodeError::DvaDecodeError { err: value }
+        BlockPointerDecodeError::Dva { err: value }
     }
 }
 
 impl From<EndianDecodeError> for BlockPointerDecodeError {
     fn from(value: EndianDecodeError) -> Self {
-        BlockPointerDecodeError::EndianDecodeError { err: value }
+        BlockPointerDecodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for BlockPointerDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerDecodeError::BlockPointerEmbeddedTypeError { err } => {
+            BlockPointerDecodeError::BlockPointerEmbeddedType { err } => {
                 write!(f, "BlockPointer decode error, embedded type: [{err}]")
             }
-            BlockPointerDecodeError::ChecksumTypeError { err } => {
+            BlockPointerDecodeError::ChecksumType { err } => {
                 write!(f, "BlockPointer decode error, checksum type: [{err}]")
             }
-            BlockPointerDecodeError::ChecksumValueDecodeError { err } => {
+            BlockPointerDecodeError::ChecksumValue { err } => {
                 write!(f, "BlockPointer decode error, checksum value: [{err}]")
             }
-            BlockPointerDecodeError::CompressionTypeError { err } => {
+            BlockPointerDecodeError::CompressionType { err } => {
                 write!(f, "BlockPointer decode error, compression type: [{err}]")
             }
-            BlockPointerDecodeError::DmuTypeError { err } => {
+            BlockPointerDecodeError::DmuType { err } => {
                 write!(f, "BlockPointer decode error, DMU type: [{err}]")
             }
-            BlockPointerDecodeError::DvaDecodeError { err } => {
+            BlockPointerDecodeError::Dva { err } => {
                 write!(f, "BlockPointer decode error, DVA: [{err}]")
             }
-            BlockPointerDecodeError::EndianDecodeError { err } => {
+            BlockPointerDecodeError::Endian { err } => {
                 write!(f, "BlockPointer decode error, endian: [{err}]")
             }
             BlockPointerDecodeError::InvalidBlockPointerType {
@@ -1443,10 +1443,13 @@ impl fmt::Display for BlockPointerDecodeError {
 impl error::Error for BlockPointerDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BlockPointerDecodeError::ChecksumTypeError { err } => Some(err),
-            BlockPointerDecodeError::CompressionTypeError { err } => Some(err),
-            BlockPointerDecodeError::DmuTypeError { err } => Some(err),
-            BlockPointerDecodeError::EndianDecodeError { err } => Some(err),
+            BlockPointerDecodeError::BlockPointerEmbeddedType { err } => Some(err),
+            BlockPointerDecodeError::ChecksumType { err } => Some(err),
+            BlockPointerDecodeError::ChecksumValue { err } => Some(err),
+            BlockPointerDecodeError::CompressionType { err } => Some(err),
+            BlockPointerDecodeError::DmuType { err } => Some(err),
+            BlockPointerDecodeError::Dva { err } => Some(err),
+            BlockPointerDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -1460,19 +1463,19 @@ pub enum BlockPointerEncodeError {
      *
      * - `err` - [`ChecksumValueEncodeError`]
      */
-    ChecksumValueEncodeError { err: ChecksumValueEncodeError },
+    ChecksumValue { err: ChecksumValueEncodeError },
 
     /** [`Dva`] encode error.
      *
      * - `err` - [`DvaEncodeError`]
      */
-    DvaEncodeError { err: DvaEncodeError },
+    Dva { err: DvaEncodeError },
 
     /** [`EndianEncoder`] error.
      *
      * - `err` - [`EndianEncodeError`]
      */
-    EndianEncodeError { err: EndianEncodeError },
+    Endian { err: EndianEncodeError },
 
     /** Invalid embedded length.
      *
@@ -1507,32 +1510,32 @@ pub enum BlockPointerEncodeError {
 
 impl From<ChecksumValueEncodeError> for BlockPointerEncodeError {
     fn from(value: ChecksumValueEncodeError) -> Self {
-        BlockPointerEncodeError::ChecksumValueEncodeError { err: value }
+        BlockPointerEncodeError::ChecksumValue { err: value }
     }
 }
 
 impl From<DvaEncodeError> for BlockPointerEncodeError {
     fn from(value: DvaEncodeError) -> Self {
-        BlockPointerEncodeError::DvaEncodeError { err: value }
+        BlockPointerEncodeError::Dva { err: value }
     }
 }
 
 impl From<EndianEncodeError> for BlockPointerEncodeError {
     fn from(value: EndianEncodeError) -> Self {
-        BlockPointerEncodeError::EndianEncodeError { err: value }
+        BlockPointerEncodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for BlockPointerEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerEncodeError::ChecksumValueEncodeError { err } => {
+            BlockPointerEncodeError::ChecksumValue { err } => {
                 write!(f, "BlockPointer encode error, checksum value: [{err}]")
             }
-            BlockPointerEncodeError::DvaEncodeError { err } => {
+            BlockPointerEncodeError::Dva { err } => {
                 write!(f, "BlockPointer encode error, DVA: [{err}]")
             }
-            BlockPointerEncodeError::EndianEncodeError { err } => {
+            BlockPointerEncodeError::Endian { err } => {
                 write!(f, "BlockPointer encode error, endian: [{err}]")
             }
             BlockPointerEncodeError::InvalidEmbeddedLength { length } => {
@@ -1570,7 +1573,9 @@ impl fmt::Display for BlockPointerEncodeError {
 impl error::Error for BlockPointerEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BlockPointerEncodeError::EndianEncodeError { err } => Some(err),
+            BlockPointerEncodeError::ChecksumValue { err } => Some(err),
+            BlockPointerEncodeError::Dva { err } => Some(err),
+            BlockPointerEncodeError::Endian { err } => Some(err),
             _ => None,
         }
     }

@@ -134,7 +134,7 @@ impl TryFrom<u64> for Version {
             27 => Ok(Version::V27),
             28 => Ok(Version::V28),
             5000 => Ok(Version::V5000),
-            _ => Err(VersionError::InvalidCompression { value: version }),
+            _ => Err(VersionError::Unknown { value: version }),
         }
     }
 }
@@ -145,18 +145,18 @@ impl TryFrom<u64> for Version {
  */
 #[derive(Debug)]
 pub enum VersionError {
-    /** Invalid [`Version`].
+    /** Unknown [`Version`].
      *
-     * - `value` - Invalid value.
+     * - `value` - Unknown value.
      */
-    InvalidCompression { value: u64 },
+    Unknown { value: u64 },
 }
 
 impl fmt::Display for VersionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VersionError::InvalidCompression { value } => {
-                write!(f, "Version invalid value: {value}")
+            VersionError::Unknown { value } => {
+                write!(f, "Version unknown: {value}")
             }
         }
     }

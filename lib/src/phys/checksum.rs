@@ -142,7 +142,7 @@ impl TryFrom<u8> for ChecksumType {
             12 => Ok(ChecksumType::Skein),
             13 => Ok(ChecksumType::Edonr),
             14 => Ok(ChecksumType::Blake3),
-            _ => Err(ChecksumTypeError::InvalidChecksum { value: checksum }),
+            _ => Err(ChecksumTypeError::Unknown { value: checksum }),
         }
     }
 }
@@ -153,18 +153,18 @@ impl TryFrom<u8> for ChecksumType {
  */
 #[derive(Debug)]
 pub enum ChecksumTypeError {
-    /** Invalid [`ChecksumType`].
+    /** Unknown [`ChecksumType`].
      *
-     * - `value` - Invalid value.
+     * - `value` - Unknown value.
      */
-    InvalidChecksum { value: u8 },
+    Unknown { value: u8 },
 }
 
 impl fmt::Display for ChecksumTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTypeError::InvalidChecksum { value } => {
-                write!(f, "ChecksumType invalid value: {value}")
+            ChecksumTypeError::Unknown { value } => {
+                write!(f, "ChecksumType unknown: {value}")
             }
         }
     }
@@ -258,19 +258,19 @@ pub enum ChecksumValueDecodeError {
      *
      * - `err` - [`EndianDecodeError`]
      */
-    EndianDecodeError { err: EndianDecodeError },
+    Endian { err: EndianDecodeError },
 }
 
 impl From<EndianDecodeError> for ChecksumValueDecodeError {
     fn from(value: EndianDecodeError) -> Self {
-        ChecksumValueDecodeError::EndianDecodeError { err: value }
+        ChecksumValueDecodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for ChecksumValueDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumValueDecodeError::EndianDecodeError { err } => {
+            ChecksumValueDecodeError::Endian { err } => {
                 write!(f, "ChecksumValue decode error, endian: [{err}]")
             }
         }
@@ -281,7 +281,7 @@ impl fmt::Display for ChecksumValueDecodeError {
 impl error::Error for ChecksumValueDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumValueDecodeError::EndianDecodeError { err } => Some(err),
+            ChecksumValueDecodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -294,19 +294,19 @@ pub enum ChecksumValueEncodeError {
      *
      * - `err` - [`EndianEncodeError`]
      */
-    EndianEncodeError { err: EndianEncodeError },
+    Endian { err: EndianEncodeError },
 }
 
 impl From<EndianEncodeError> for ChecksumValueEncodeError {
     fn from(value: EndianEncodeError) -> Self {
-        ChecksumValueEncodeError::EndianEncodeError { err: value }
+        ChecksumValueEncodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for ChecksumValueEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumValueEncodeError::EndianEncodeError { err } => {
+            ChecksumValueEncodeError::Endian { err } => {
                 write!(f, "ChecksumValue encode error, endian: [{err}]")
             }
         }
@@ -317,7 +317,7 @@ impl fmt::Display for ChecksumValueEncodeError {
 impl error::Error for ChecksumValueEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumValueEncodeError::EndianEncodeError { err } => Some(err),
+            ChecksumValueEncodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -405,38 +405,38 @@ impl ChecksumTail {
  */
 #[derive(Debug)]
 pub enum ChecksumTailDecodeError {
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    EndianDecodeError { err: EndianDecodeError },
-
     /** [`ChecksumValue`] decode error.
      *
      * - `err` - [`ChecksumValueDecodeError`]
      */
-    ChecksumValueDecodeError { err: ChecksumValueDecodeError },
+    ChecksumValue { err: ChecksumValueDecodeError },
+
+    /** [`EndianDecoder`] error.
+     *
+     * - `err` - [`EndianDecodeError`]
+     */
+    Endian { err: EndianDecodeError },
 }
 
 impl From<EndianDecodeError> for ChecksumTailDecodeError {
     fn from(value: EndianDecodeError) -> Self {
-        ChecksumTailDecodeError::EndianDecodeError { err: value }
+        ChecksumTailDecodeError::Endian { err: value }
     }
 }
 
 impl From<ChecksumValueDecodeError> for ChecksumTailDecodeError {
     fn from(value: ChecksumValueDecodeError) -> Self {
-        ChecksumTailDecodeError::ChecksumValueDecodeError { err: value }
+        ChecksumTailDecodeError::ChecksumValue { err: value }
     }
 }
 
 impl fmt::Display for ChecksumTailDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTailDecodeError::EndianDecodeError { err } => {
+            ChecksumTailDecodeError::Endian { err } => {
                 write!(f, "ChecksumTail decode error, endian: [{err}]")
             }
-            ChecksumTailDecodeError::ChecksumValueDecodeError { err } => {
+            ChecksumTailDecodeError::ChecksumValue { err } => {
                 write!(f, "ChecksumTail decode error, value: [{err}]")
             }
         }
@@ -447,8 +447,8 @@ impl fmt::Display for ChecksumTailDecodeError {
 impl error::Error for ChecksumTailDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumTailDecodeError::EndianDecodeError { err } => Some(err),
-            ChecksumTailDecodeError::ChecksumValueDecodeError { err } => Some(err),
+            ChecksumTailDecodeError::ChecksumValue { err } => Some(err),
+            ChecksumTailDecodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -457,39 +457,39 @@ impl error::Error for ChecksumTailDecodeError {
  */
 #[derive(Debug)]
 pub enum ChecksumTailEncodeError {
-    /** [`EndianEncoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    EndianEncodeError { err: EndianEncodeError },
-
     /** [`ChecksumValue`] encode error.
      *
      * - `err` - [`ChecksumValueEncodeError`]
      */
-    ChecksumValueEncodeError { err: ChecksumValueEncodeError },
-}
+    ChecksumValue { err: ChecksumValueEncodeError },
 
-impl From<EndianEncodeError> for ChecksumTailEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        ChecksumTailEncodeError::EndianEncodeError { err: value }
-    }
+    /** [`EndianEncoder`] error.
+     *
+     * - `err` - [`EndianEncodeError`]
+     */
+    Endian { err: EndianEncodeError },
 }
 
 impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {
     fn from(value: ChecksumValueEncodeError) -> Self {
-        ChecksumTailEncodeError::ChecksumValueEncodeError { err: value }
+        ChecksumTailEncodeError::ChecksumValue { err: value }
+    }
+}
+
+impl From<EndianEncodeError> for ChecksumTailEncodeError {
+    fn from(value: EndianEncodeError) -> Self {
+        ChecksumTailEncodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for ChecksumTailEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTailEncodeError::EndianEncodeError { err } => {
-                write!(f, "ChecksumTail encode error, endian: [{err}]")
-            }
-            ChecksumTailEncodeError::ChecksumValueEncodeError { err } => {
+            ChecksumTailEncodeError::ChecksumValue { err } => {
                 write!(f, "ChecksumTail encode error, value: [{err}]")
+            }
+            ChecksumTailEncodeError::Endian { err } => {
+                write!(f, "ChecksumTail encode error, endian: [{err}]")
             }
         }
     }
@@ -499,8 +499,8 @@ impl fmt::Display for ChecksumTailEncodeError {
 impl error::Error for ChecksumTailEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumTailEncodeError::EndianEncodeError { err } => Some(err),
-            ChecksumTailEncodeError::ChecksumValueEncodeError { err } => Some(err),
+            ChecksumTailEncodeError::ChecksumValue { err } => Some(err),
+            ChecksumTailEncodeError::Endian { err } => Some(err),
         }
     }
 }

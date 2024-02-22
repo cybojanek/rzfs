@@ -297,7 +297,7 @@ pub enum DvaDecodeError {
      *
      * - `err` - [`EndianDecodeError`]
      */
-    EndianDecodeError { err: EndianDecodeError },
+    Endian { err: EndianDecodeError },
 
     /** Invalid offset error.
      *
@@ -320,14 +320,14 @@ pub enum DvaDecodeError {
 
 impl From<EndianDecodeError> for DvaDecodeError {
     fn from(value: EndianDecodeError) -> Self {
-        DvaDecodeError::EndianDecodeError { err: value }
+        DvaDecodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for DvaDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DvaDecodeError::EndianDecodeError { err } => {
+            DvaDecodeError::Endian { err } => {
                 write!(f, "DVA decode error, endian: [{err}]")
             }
             DvaDecodeError::InvalidOffset { offset } => {
@@ -347,7 +347,7 @@ impl fmt::Display for DvaDecodeError {
 impl error::Error for DvaDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DvaDecodeError::EndianDecodeError { err } => Some(err),
+            DvaDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -363,7 +363,7 @@ pub enum DvaEncodeError {
      *
      * - `err` - [`EndianEncodeError`]
      */
-    EndianEncodeError { err: EndianEncodeError },
+    Endian { err: EndianEncodeError },
 
     /** Invalid allocated error.
      *
@@ -386,14 +386,14 @@ pub enum DvaEncodeError {
 
 impl From<EndianEncodeError> for DvaEncodeError {
     fn from(value: EndianEncodeError) -> Self {
-        DvaEncodeError::EndianEncodeError { err: value }
+        DvaEncodeError::Endian { err: value }
     }
 }
 
 impl fmt::Display for DvaEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DvaEncodeError::EndianEncodeError { err } => {
+            DvaEncodeError::Endian { err } => {
                 write!(f, "DVA encode error, endian: [{err}]")
             }
             DvaEncodeError::InvalidAllocated { allocated } => {
@@ -413,7 +413,7 @@ impl fmt::Display for DvaEncodeError {
 impl error::Error for DvaEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DvaEncodeError::EndianEncodeError { err } => Some(err),
+            DvaEncodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
