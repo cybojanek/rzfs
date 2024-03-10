@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
 
 #[cfg(feature = "std")]
 use std::error;
@@ -16,14 +14,6 @@ use crate::phys::{
 
 /** Checksum type.
  *
- * - [`ChecksumType::Inherit`] uses the value from the parent.
- * - [`ChecksumType::On`] uses [`ChecksumType::Fletcher4`], and
- *   [`ChecksumType::Sha256`] for dedup.
- * - [`ChecksumType::Label`] is for data in the ZFS Label (Blank, BootHeader,
- *   NvPairs, UberBlock).
- * - [`ChecksumType::GangHeader`] is for verifying Gang blocks.
- * - [`ChecksumType::Zilog`] and [`ChecksumType::Zilog2`] are for data in the
- *   ZFS Intent Log.
  * - [`ChecksumType::NoParity`] was added at the same time as
  *   [`ChecksumType::Sha512_256`], [`ChecksumType::Skein`], and
  *   [`ChecksumType::Edonr`], but it does not have a feature flag.
@@ -69,20 +59,49 @@ use crate::phys::{
  */
 #[derive(Clone, Copy, Debug)]
 pub enum ChecksumType {
+    /// Use checksum value from parent.
     Inherit = 0,
+
+    /// [`ChecksumType::Fletcher4`], and [`ChecksumType::Sha256`] for dedup.
     On = 1,
+
+    /// No checksum.
     Off = 2,
+
+    /// Sha256 checksum over ZFS Label (Blank, BootHeader, NvPairs, UberBlock).
     Label = 3,
+
+    /// TODO: Document.
     GangHeader = 4,
+
+    /// TODO: Document.
     Zilog = 5,
+
+    /// Fletcher error-detection checksum.
     Fletcher2 = 6,
+
+    /// Fletcher error-detection checksum.
     Fletcher4 = 7,
+
+    /// SHA-2 256 cryptographic hash.
     Sha256 = 8,
+
+    /// TODO: Document.
     Zilog2 = 9,
+
+    /// TODO: Document.
     NoParity = 10,
+
+    /// SHA-2 512-256 cryptographic hash.
     Sha512_256 = 11,
+
+    /// Skein cryptographic hash.
     Skein = 12,
+
+    /// Edon-R cryptographic hash.
     Edonr = 13,
+
+    /// Blake3 cryptographic hash.
     Blake3 = 14,
 }
 
@@ -149,15 +168,14 @@ impl TryFrom<u8> for ChecksumType {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`ChecksumType`] conversion error.
- */
+/// [`ChecksumType`] conversion error.
 #[derive(Debug)]
 pub enum ChecksumTypeError {
-    /** Unknown [`ChecksumType`].
-     *
-     * - `value` - Unknown value.
-     */
-    Unknown { value: u8 },
+    /// Unknown [`ChecksumType`].
+    Unknown {
+        /// Unknown value.
+        value: u8,
+    },
 }
 
 impl fmt::Display for ChecksumTypeError {
@@ -205,6 +223,7 @@ impl error::Error for ChecksumTypeError {
  */
 #[derive(Debug)]
 pub struct ChecksumValue {
+    /// Checksum value split across four [`u64`].
     pub words: [u64; 4],
 }
 
@@ -250,15 +269,14 @@ impl ChecksumValue {
     }
 }
 
-/** [`ChecksumValue`] decode error.
- */
+/// [`ChecksumValue`] decode error.
 #[derive(Debug)]
 pub enum ChecksumValueDecodeError {
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 }
 
 impl From<EndianDecodeError> for ChecksumValueDecodeError {
@@ -286,15 +304,14 @@ impl error::Error for ChecksumValueDecodeError {
     }
 }
 
-/** [`ChecksumValue`] encode error.
- */
+/// [`ChecksumValue`] encode error.
 #[derive(Debug)]
 pub enum ChecksumValueEncodeError {
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 }
 
 impl From<EndianEncodeError> for ChecksumValueEncodeError {
@@ -401,21 +418,20 @@ impl ChecksumTail {
     }
 }
 
-/** [`ChecksumTail`] decode error.
- */
+/// [`ChecksumTail`] decode error.
 #[derive(Debug)]
 pub enum ChecksumTailDecodeError {
-    /** [`ChecksumValue`] decode error.
-     *
-     * - `err` - [`ChecksumValueDecodeError`]
-     */
-    ChecksumValue { err: ChecksumValueDecodeError },
+    /// [`ChecksumValue`] decode error.
+    ChecksumValue {
+        /// Error.
+        err: ChecksumValueDecodeError,
+    },
 
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 }
 
 impl From<EndianDecodeError> for ChecksumTailDecodeError {
@@ -453,21 +469,20 @@ impl error::Error for ChecksumTailDecodeError {
     }
 }
 
-/** [`ChecksumTail`] encode error.
- */
+/// [`ChecksumTail`] encode error.
 #[derive(Debug)]
 pub enum ChecksumTailEncodeError {
-    /** [`ChecksumValue`] encode error.
-     *
-     * - `err` - [`ChecksumValueEncodeError`]
-     */
-    ChecksumValue { err: ChecksumValueEncodeError },
+    /// [`ChecksumValue`] encode error.
+    ChecksumValue {
+        /// Error.
+        err: ChecksumValueEncodeError,
+    },
 
-    /** [`EndianEncoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// [`EndianEncoder`] error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 }
 
 impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {

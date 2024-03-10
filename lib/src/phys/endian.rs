@@ -3,34 +3,34 @@
 use core::cell::Cell;
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
-use core::result::Result::{Err, Ok};
 
 #[cfg(feature = "std")]
 use std::error;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Endian order. */
+/// Endian order.
 #[derive(Copy, Clone, Debug)]
 pub enum EndianOrder {
+    /// Big endian byte order. Most significant byte first.
     Big,
+    /// Little endian byte order. Least significant byte first.
     Little,
 }
 
-/** Native encoding. */
+/// Native encoding.
 #[cfg(target_endian = "big")]
 pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Big;
 
-/** Native encoding. */
+/// Native encoding.
 #[cfg(target_endian = "little")]
 pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Little;
 
-/** Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]). */
+/// Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]).
 #[cfg(target_endian = "big")]
 pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Little;
 
-/** Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]). */
+/// Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]).
 #[cfg(target_endian = "little")]
 pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Big;
 
@@ -49,7 +49,7 @@ type U16Decoder = fn(bytes: [u8; 2]) -> u16;
 type U32Decoder = fn(bytes: [u8; 4]) -> u32;
 type U64Decoder = fn(bytes: [u8; 8]) -> u64;
 
-/** Decoder for an [`EndianOrder`] type. */
+/// Decoder for an [`EndianOrder`] type.
 struct EndianDecoderImpl {
     order: EndianOrder,
     get_u16: U16Decoder,
@@ -57,7 +57,7 @@ struct EndianDecoderImpl {
     get_u64: U64Decoder,
 }
 
-/** [`EndianOrder::Big`] decoder. */
+/// [`EndianOrder::Big`] decoder.
 const BIG_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
     order: EndianOrder::Big,
     get_u16: u16::from_be_bytes,
@@ -65,7 +65,7 @@ const BIG_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
     get_u64: u64::from_be_bytes,
 };
 
-/** [`EndianOrder::Little`] decoder. */
+/// [`EndianOrder::Little`] decoder.
 const LITTLE_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
     order: EndianOrder::Little,
     get_u16: u16::from_le_bytes,
@@ -864,42 +864,42 @@ impl EndianDecoder<'_> {
  */
 #[derive(Debug)]
 pub enum EndianDecodeError {
-    /** End of input data.
-     *
-     * - `offset` - Byte offset of data.
-     * - `length` - Total length of data.
-     * - `count`  - Number of bytes needed.
-     */
+    /// End of input data.
     EndOfInput {
+        /// Byte offset of data.
         offset: usize,
+        /// Total length of data.
         length: usize,
+        /// Number of bytes needed.
         count: usize,
     },
 
-    /** Magic mismatch.
-     *
-     * - `expected` - Expected magic value.
-     * - `actual`   - Actual bytes.
-     */
-    InvalidMagic { expected: u64, actual: [u8; 8] },
+    /// Magic mismatch.
+    InvalidMagic {
+        /// Expected magic value.
+        expected: u64,
+        /// Actual bytes.
+        actual: [u8; 8],
+    },
 
-    /** Non-zero padding.
-     */
+    /// Non-zero padding.
     NonZeroPadding {},
 
-    /** Rewind past start.
-     *
-     * - `offset` - Byte offset of data.
-     * - `count`  - Number of bytes needed to rewind.
-     */
-    RewindPastStart { offset: usize, count: usize },
+    /// Rewind past start.
+    RewindPastStart {
+        /// Byte offset of data.
+        offset: usize,
+        /// Number of bytes needed to rewind.
+        count: usize,
+    },
 
-    /** Seek past end.
-     *
-     * - `offset` - Requested offset.
-     * - `length` - Total length of data.
-     */
-    SeekPastEnd { offset: usize, length: usize },
+    /// Seek past end.
+    SeekPastEnd {
+        /// Requested offset.
+        offset: usize,
+        /// Total length of data.
+        length: usize,
+    },
 }
 
 impl fmt::Display for EndianDecodeError {
@@ -944,7 +944,7 @@ type U16Encoder = fn(value: u16) -> [u8; 2];
 type U32Encoder = fn(value: u32) -> [u8; 4];
 type U64Encoder = fn(value: u64) -> [u8; 8];
 
-/** Encoder for an [`EndianOrder`] type. */
+/// Encoder for an [`EndianOrder`] type.
 struct EndianEncoderImpl {
     order: EndianOrder,
     put_u16: U16Encoder,
@@ -952,7 +952,7 @@ struct EndianEncoderImpl {
     put_u64: U64Encoder,
 }
 
-/** [`EndianOrder::Big`] encoder. */
+/// [`EndianOrder::Big`] encoder.
 const BIG_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
     order: EndianOrder::Big,
     put_u16: u16::to_be_bytes,
@@ -960,7 +960,7 @@ const BIG_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
     put_u64: u64::to_be_bytes,
 };
 
-/** [`EndianOrder::Little`] encoder. */
+/// [`EndianOrder::Little`] encoder.
 const LITTLE_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
     order: EndianOrder::Little,
     put_u16: u16::to_le_bytes,
@@ -968,8 +968,7 @@ const LITTLE_ENDIAN_ENCODER: EndianEncoderImpl = EndianEncoderImpl {
     put_u64: u64::to_le_bytes,
 };
 
-/** A binary encoder.
- */
+/// A binary encoder.
 pub struct EndianEncoder<'a> {
     data: &'a mut [u8],
     offset: usize,
@@ -1474,19 +1473,16 @@ impl EndianEncoder<'_> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`EndianEncoder`] error.
- */
+/// [`EndianEncoder`] error.
 #[derive(Debug)]
 pub enum EndianEncodeError {
-    /** End of output data.
-     *
-     * - `offset` - Byte offset of data.
-     * - `length` - Total length of data.
-     * - `count`  - Number of bytes needed.
-     */
+    /// End of output data.
     EndOfOutput {
+        /// Byte offset of data.
         offset: usize,
+        /// Total length of data.
         length: usize,
+        /// Number of bytes needed.
         count: usize,
     },
 }

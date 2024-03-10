@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
 
 #[cfg(feature = "std")]
 use std::error;
@@ -125,6 +123,7 @@ use std::error;
  * | BpObjectSubObject           |      26 | u64                 |
  * +-----------------------------+---------+---------------------+
  */
+#[allow(missing_docs)]
 #[derive(Clone, Copy, Debug)]
 pub enum DmuType {
     None = 0,
@@ -324,15 +323,14 @@ impl TryFrom<u8> for DmuType {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`DmuType`] conversion error.
- */
+/// [`DmuType`] conversion error.
 #[derive(Debug)]
 pub enum DmuTypeError {
-    /** Unknown [`DmuType`].
-     *
-     * - `value` - Unknown value.
-     */
-    Unknown { value: u8 },
+    /// Unknown [`DmuType`].
+    Unknown {
+        /// Unknown value.
+        value: u8,
+    },
 }
 
 impl fmt::Display for DmuTypeError {

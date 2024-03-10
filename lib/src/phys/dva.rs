@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
 use core::fmt;
-use core::result::Result;
-use core::result::Result::{Err, Ok};
 
 #[cfg(feature = "std")]
 use std::error;
@@ -289,33 +287,32 @@ impl Dva {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`Dva`] decode error.
- */
+/// [`Dva`] decode error.
 #[derive(Debug)]
 pub enum DvaDecodeError {
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 
-    /** Invalid offset error.
-     *
-     * - `offset`
-     */
-    InvalidOffset { offset: u64 },
+    /// Invalid offset error.
+    InvalidOffset {
+        /// Invalid offset value.
+        offset: u64,
+    },
 
-    /** Non-zero grid.
-     *
-     * - `grid` - Non-zero grid value.
-     */
-    NonZeroGrid { grid: u8 },
+    /// Non-zero grid.
+    NonZeroGrid {
+        /// Invalid grid value.
+        grid: u8,
+    },
 
-    /** Non-zero padding.
-     *
-     * - `padding` - Non-zero padding value.
-     */
-    NonZeroPadding { padding: u8 },
+    /// Non-zero padding.
+    NonZeroPadding {
+        /// Invalid padding.
+        padding: u8,
+    },
 }
 
 impl From<EndianDecodeError> for DvaDecodeError {
@@ -355,33 +352,32 @@ impl error::Error for DvaDecodeError {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`Dva`] encode error.
- */
+/// [`Dva`] encode error.
 #[derive(Debug)]
 pub enum DvaEncodeError {
-    /** [`EndianEncoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// [`EndianEncoder`] error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 
-    /** Invalid allocated error.
-     *
-     * - `allocated`
-     */
-    InvalidAllocated { allocated: u32 },
+    /// Invalid allocated error.
+    InvalidAllocated {
+        /// Invalid allocated value.
+        allocated: u32,
+    },
 
-    /** Invalid offset error.
-     *
-     * - `offset`
-     */
-    InvalidOffset { offset: u64 },
+    /// Invalid offset error.
+    InvalidOffset {
+        /// Invalid offset value.
+        offset: u64,
+    },
 
-    /** Invalid vdev error.
-     *
-     * - `vdev`
-     */
-    InvalidVdev { vdev: u32 },
+    /// Invalid vdev error.
+    InvalidVdev {
+        /// Invalid vdev value.
+        vdev: u32,
+    },
 }
 
 impl From<EndianEncodeError> for DvaEncodeError {

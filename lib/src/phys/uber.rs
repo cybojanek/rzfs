@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
 use core::fmt;
-use core::result::Result;
-use core::result::Result::{Err, Ok};
 
 #[cfg(feature = "std")]
 use std::error;
@@ -287,34 +285,35 @@ impl UberBlock {
     }
 }
 
+/// [`UberBlock`] decode error.
 #[derive(Debug)]
 pub enum UberBlockDecodeError {
-    /** [`BlockPointer`] decode error.
-     *
-     * - `err` - [`BlockPointerDecodeError`]
-     */
-    BlockPointer { err: BlockPointerDecodeError },
+    /// [`BlockPointer`] decode error.
+    BlockPointer {
+        /// Error.
+        err: BlockPointerDecodeError,
+    },
 
-    /** [`BlockPointer`] is empty. */
+    /// [`BlockPointer`] is empty. */
     EmptyBlockPointer {},
 
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 
-    /** [`Version`] decode error.
-     *
-     * - `err` - [`VersionError`].
-     */
-    Version { err: VersionError },
+    /// [`Version`] decode error.
+    Version {
+        /// Error.
+        err: VersionError,
+    },
 
-    /** [`UberBlockMmp`] decode error.
-     *
-     * - `err` - [`UberBlockMmpDecodeError`].
-     */
-    UberBlockMmp { err: UberBlockMmpDecodeError },
+    /// [`UberBlockMmp`] decode error.
+    UberBlockMmp {
+        /// Error.
+        err: UberBlockMmpDecodeError,
+    },
 }
 
 impl From<BlockPointerDecodeError> for UberBlockDecodeError {
@@ -376,25 +375,26 @@ impl error::Error for UberBlockDecodeError {
     }
 }
 
+/// [`UberBlock`] encode error.
 #[derive(Debug)]
 pub enum UberBlockEncodeError {
-    /** [`BlockPointer`] encode error.
-     *
-     * - `err` - [`BlockPointerEncodeError`]
-     */
-    BlockPointer { err: BlockPointerEncodeError },
+    /// [`BlockPointer`] encode error.
+    BlockPointer {
+        /// Error.
+        err: BlockPointerEncodeError,
+    },
 
-    /** Endian encode error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// Endian encode error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 
-    /** [`UberBlockMmp`] encode error.
-     *
-     * - `err` - [`UberBlockMmpEncodeError`]
-     */
-    UberBlockMmp { err: UberBlockMmpEncodeError },
+    /// [`UberBlockMmp`] encode error.
+    UberBlockMmp {
+        /// Error.
+        err: UberBlockMmpEncodeError,
+    },
 }
 
 impl From<BlockPointerEncodeError> for UberBlockEncodeError {
@@ -558,7 +558,7 @@ impl UberBlockMmp {
     /// Magic value for an encoded [`UberBlockMmp`].
     pub const MAGIC: u64 = 0x00000000a11cea11;
 
-    // Maximum write interval.
+    /// Maximum write interval.
     pub const WRITE_INTERVAL_MAX: u32 = 0xffffff;
 
     /** Decodes an [`UberBlockMmp`].
@@ -701,33 +701,36 @@ impl UberBlockMmp {
     }
 }
 
+/// [`UberBlockMmp`] encode error.
 #[derive(Debug)]
 pub enum UberBlockMmpDecodeError {
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 
-    /** Invalid magic.
-     *
-     * - `magic` - Magic.
-     */
-    InvalidMagic { magic: u64 },
+    /// Invalid magic.
+    InvalidMagic {
+        /// Invalid magic value.
+        magic: u64,
+    },
 
-    /** Non-zero reserved config bits.
-     *
-     * - `config` - MMP config.
-     */
-    NonZeroReservedConfigBits { config: u64 },
+    /// Non-zero reserved config bits.
+    NonZeroReservedConfigBits {
+        /// Invalid config value.
+        config: u64,
+    },
 
-    /** Non-zero MMP values for MMP magic value of 0.
-     *
-     * - `magic`  - MMP magic.
-     * - `delay`  - MMP delay.
-     * - `config` - MMP config.
-     */
-    NonZeroValues { magic: u64, delay: u64, config: u64 },
+    /// Non-zero MMP values.
+    NonZeroValues {
+        /// Magic value.
+        magic: u64,
+        /// Delay value.
+        delay: u64,
+        /// Config value.
+        config: u64,
+    },
 }
 
 impl From<EndianDecodeError> for UberBlockMmpDecodeError {
@@ -775,19 +778,20 @@ impl error::Error for UberBlockMmpDecodeError {
     }
 }
 
+/// [`UberBlockMmp`] decode error.
 #[derive(Debug)]
 pub enum UberBlockMmpEncodeError {
-    /** [`EndianEncoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// [`EndianEncoder`] error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 
-    /** Write interval is too large.
-     *
-     * - `write_interval` - Write interval.
-     */
-    WriteIntervalTooLarge { write_interval: u32 },
+    /// Write interval is too large.
+    WriteIntervalTooLarge {
+        /// Invalid write interval.
+        write_interval: u32,
+    },
 }
 
 impl From<EndianEncodeError> for UberBlockMmpEncodeError {

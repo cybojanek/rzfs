@@ -2,8 +2,6 @@
 
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
-use core::result::Result::{Err, Ok};
 
 #[cfg(feature = "std")]
 use std::error;
@@ -322,12 +320,16 @@ pub struct BlockPointerEmbedded {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`BlockPointerEmbedded`] type.
- */
+/// [`BlockPointerEmbedded`] type.
 #[derive(Clone, Copy, Debug)]
 pub enum BlockPointerEmbeddedType {
+    /// TODO: Document.
     Data = 0,
+
+    /// TODO: Document.
     Reserved = 1,
+
+    /// TODO: Document.
     Redacted = 2,
 }
 
@@ -368,15 +370,14 @@ impl TryFrom<u8> for BlockPointerEmbeddedType {
     }
 }
 
-/** [`BlockPointerEmbeddedType`] conversion error.
- */
+/// [`BlockPointerEmbeddedType`] conversion error.
 #[derive(Debug)]
 pub enum BlockPointerEmbeddedTypeError {
-    /** Unknown [`BlockPointerEmbeddedType`].
-     *
-     * - `value` - Unknown value.
-     */
-    Unknown { value: u8 },
+    /// Unknown [`BlockPointerEmbeddedType`].
+    Unknown {
+        /// Unknown value.
+        value: u8,
+    },
 }
 
 impl fmt::Display for BlockPointerEmbeddedTypeError {
@@ -1263,80 +1264,82 @@ impl BlockPointerRegular {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// [`BlockPointer`] decode error.
 #[derive(Debug)]
 pub enum BlockPointerDecodeError {
-    /** [`BlockPointerEmbeddedType`] decode error.
-     *
-     * - `err` - [`BlockPointerEmbeddedTypeError`].
-     */
-    BlockPointerEmbeddedType { err: BlockPointerEmbeddedTypeError },
+    /// [`BlockPointerEmbeddedType`] decode error.
+    BlockPointerEmbeddedType {
+        /// Error.
+        err: BlockPointerEmbeddedTypeError,
+    },
 
-    /** Invalid [`ChecksumType`].
-     *
-     * - `err` - ['ChecksumType'].
-     */
-    ChecksumType { err: ChecksumTypeError },
+    /// Invalid [`ChecksumType`].
+    ChecksumType {
+        /// Error.
+        err: ChecksumTypeError,
+    },
 
-    /** [`ChecksumValue`] decode error.
-     *
-     * - `err` - ['ChecksumValueDecodeError'].
-     */
-    ChecksumValue { err: ChecksumValueDecodeError },
+    /// [`ChecksumValue`] decode error.
+    ChecksumValue {
+        /// Error.
+        err: ChecksumValueDecodeError,
+    },
 
-    /** Invalid [`CompressionType`].
-     *
-     * - `err` - ['CompressionTypeError'].
-     */
-    CompressionType { err: CompressionTypeError },
+    /// Invalid [`CompressionType`].
+    CompressionType {
+        /// Error.
+        err: CompressionTypeError,
+    },
 
-    /** Invalid [`DmuType`].
-     *
-     * - `err` - ['DmuTypeError'].
-     */
-    DmuType { err: DmuTypeError },
+    /// Invalid [`DmuType`].
+    DmuType {
+        /// Error.
+        err: DmuTypeError,
+    },
 
-    /** [`Dva`] decode error.
-     *
-     * - `err` - [`DvaDecodeError`]
-     */
-    Dva { err: DvaDecodeError },
+    /// [`Dva`] decode error.
+    Dva {
+        /// Error.
+        err: DvaDecodeError,
+    },
 
-    /** [`EndianDecoder`] error.
-     *
-     * - `err` - [`EndianDecodeError`]
-     */
-    Endian { err: EndianDecodeError },
+    /// [`EndianDecoder`] error.
+    Endian {
+        /// Error.
+        err: EndianDecodeError,
+    },
 
-    /** Invalid [`BlockPointer`] type.
-     *
-     * - `embedded`  - Is embedded.
-     * - `encrypted` - Is encrypted.
-     */
-    InvalidBlockPointerType { embedded: bool, encrypted: bool },
+    /// Invalid [`BlockPointer`] type.
+    InvalidBlockPointerType {
+        /// Is embedded.
+        embedded: bool,
+        /// Is encrypted.
+        encrypted: bool,
+    },
 
-    /** Invalid Dedup value.
-     *
-     * - `dedup` - Value.
-     */
-    InvalidDedupValue { dedup: bool },
+    /// Invalid Dedup value.
+    InvalidDedupValue {
+        /// Invalid dedup value.
+        dedup: bool,
+    },
 
-    /** Invalid embedded length.
-     *
-     * - `length` - Value.
-     */
-    InvalidEmbeddedLength { length: usize },
+    /// Invalid embedded length.
+    InvalidEmbeddedLength {
+        /// Invalid embedded length value.
+        length: usize,
+    },
 
-    /** Invalid embedded type.
-     *
-     * - `embedded_type` - Value.
-     */
-    InvalidEmbeddedType { embedded_type: u8 },
+    /// Invalid embedded type.
+    InvalidEmbeddedType {
+        /// Invalid embedded type value.
+        embedded_type: u8,
+    },
 
-    /** Logical size is too large to fit in a [`usize`].
-     *
-     * - `logical_size` - Value.
-     */
-    LogicalSizeTooLarge { logical_size: u32 },
+    /// Logical size is too large to fit in a [`usize`].
+    LogicalSizeTooLarge {
+        /// Invalid logical size value.
+        logical_size: u32,
+    },
 }
 
 impl From<BlockPointerEmbeddedTypeError> for BlockPointerDecodeError {
@@ -1457,55 +1460,56 @@ impl error::Error for BlockPointerDecodeError {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/// [`BlockPointer`] encode error.
 #[derive(Debug)]
 pub enum BlockPointerEncodeError {
-    /** [`ChecksumValue`] encode error.
-     *
-     * - `err` - [`ChecksumValueEncodeError`]
-     */
-    ChecksumValue { err: ChecksumValueEncodeError },
+    /// [`ChecksumValue`] encode error.
+    ChecksumValue {
+        /// Error.
+        err: ChecksumValueEncodeError,
+    },
 
-    /** [`Dva`] encode error.
-     *
-     * - `err` - [`DvaEncodeError`]
-     */
-    Dva { err: DvaEncodeError },
+    /// [`Dva`] encode error.
+    Dva {
+        /// Error.
+        err: DvaEncodeError,
+    },
 
-    /** [`EndianEncoder`] error.
-     *
-     * - `err` - [`EndianEncodeError`]
-     */
-    Endian { err: EndianEncodeError },
+    /// [`EndianEncoder`] error.
+    Endian {
+        /// Error.
+        err: EndianEncodeError,
+    },
 
-    /** Invalid embedded length.
-     *
-     * - `length` - Length.
-     */
-    InvalidEmbeddedLength { length: usize },
+    /// Invalid embedded length.
+    InvalidEmbeddedLength {
+        /// Invalid embedded length value.
+        length: usize,
+    },
 
-    /** Invalid level.
-     *
-     * - `level` - Level.
-     */
-    InvalidLevel { level: u8 },
+    /// Invalid level.
+    InvalidLevel {
+        /// Invalid level value.
+        level: u8,
+    },
 
-    /** Invalid logical sectors.
-     *
-     * - `sectors` - Logical sectors.
-     */
-    InvalidLogicalSectors { sectors: u32 },
+    /// Invalid logical sectors.
+    InvalidLogicalSectors {
+        /// Invalid logical sectors value.
+        sectors: u32,
+    },
 
-    /** Invalid logical size.
-     *
-     * - `logical_size` - Logical size.
-     */
-    InvalidLogicalSize { logical_size: usize },
+    /// Invalid logical size.
+    InvalidLogicalSize {
+        /// Invalid logical size value.
+        logical_size: usize,
+    },
 
-    /** Invalid physical sectors.
-     *
-     * - `sectors` - Physical sectors.
-     */
-    InvalidPhysicalSectors { sectors: u32 },
+    /// Invalid physical sectors.
+    InvalidPhysicalSectors {
+        /// Invalid physical sectors value.
+        sectors: u32,
+    },
 }
 
 impl From<ChecksumValueEncodeError> for BlockPointerEncodeError {

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
 
 #[cfg(feature = "std")]
 use std::error;
@@ -11,15 +9,6 @@ use std::error;
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Compression type.
- *
- * - [`CompressionType::Inherit`] uses the value from the parent.
- * - [`CompressionType::On`] uses [`CompressionType::Lz4`] (if active), else it
- *   falls back to [`CompressionType::Lzjb`].
- * - [`CompressionType::Lzjb`] is a Lempel-Ziv family compression created by
- *   Jeff Bonwick.
- * - [`CompressionType::Empty`]
- * - [`CompressionType::Zle`] (Zero Length Encoding) only compresses continous
- *   runs of zeros.
  *
  * ```text
  * +-------------+---------+---------------------------+
@@ -47,22 +36,58 @@ use std::error;
  */
 #[derive(Clone, Copy, Debug)]
 pub enum CompressionType {
+    /// Use compression value from parent.
     Inherit = 0,
+
+    /// Use [`CompressionType::Lz4`] (if active), else [`CompressionType::Lzjb`].
     On = 1,
+
+    /// No compression.
     Off = 2,
+
+    /// Lempel-Ziv family compression created by Jeff Bonwick.
     Lzjb = 3,
+
+    /// Empty data. May be zeroes, but depends on context.
     Empty = 4,
+
+    /// gzip level 1.
     Gzip1 = 5,
+
+    /// gzip level 2.
     Gzip2 = 6,
+
+    /// gzip level 3.
     Gzip3 = 7,
+
+    /// gzip level 4.
     Gzip4 = 8,
+
+    /// gzip level 5.
     Gzip5 = 9,
+
+    /// gzip level 6.
     Gzip6 = 10,
+
+    /// gzip level 7.
     Gzip7 = 11,
+
+    /// gzip level 8.
     Gzip8 = 12,
+
+    /// gzip level 9.
     Gzip9 = 13,
+
+    /** Zero Length Encoding.
+     *
+     * Only compresses continous runs of zeros
+     */
     Zle = 14,
+
+    /// LZ4.
     Lz4 = 15,
+
+    /// Zstandard.
     Zstd = 16,
 }
 
@@ -133,15 +158,14 @@ impl TryFrom<u8> for CompressionType {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`CompressionType`] conversion error.
- */
+/// [`CompressionType`] conversion error.
 #[derive(Debug)]
 pub enum CompressionTypeError {
-    /** Unknown [`CompressionType`].
-     *
-     * - `value` - Unknown value.
-     */
-    Unknown { value: u8 },
+    /// Unknown [`CompressionType`].
+    Unknown {
+        /// Unknown value.
+        value: u8,
+    },
 }
 
 impl fmt::Display for CompressionTypeError {

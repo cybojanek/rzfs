@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
-use core::convert::TryFrom;
 use core::fmt;
 use core::fmt::Display;
-use core::result::Result;
 
 #[cfg(feature = "std")]
 use std::error;
@@ -12,41 +10,104 @@ use std::error;
 
 /** Version.
  *
- * - Historically, it was incremented when the format of data on disk changed.
- * - V28 is the last open source version, and V29+ are proprietary and only
- *   available through Oracle Solaris.
- * - Since V5000, changes are indicated using [`crate::phys::Feature`].
+ * Historically, it was incremented when the format of data on disk changed.
+ * [`Version::V28`] is the last open source version. V29+ are proprietary and
+ * only available through Oracle Solaris. Since [`Version::V5000`], changes are
+ * indicated using [`crate::phys::Feature`].
  */
 #[derive(Clone, Copy, Debug)]
 pub enum Version {
+    /// ZFS version 1.
     V1 = 1,
+
+    /// ZFS version 2.
     V2 = 2,
+
+    /// ZFS version 3.
     V3 = 3,
+
+    /// ZFS version 4.
     V4 = 4,
+
+    /// ZFS version 5.
     V5 = 5,
+
+    /// ZFS version 6.
     V6 = 6,
+
+    /// ZFS version 7.
     V7 = 7,
+
+    /// ZFS version 8.
     V8 = 8,
+
+    /// ZFS version 9.
     V9 = 9,
+
+    /// ZFS version 10.
     V10 = 10,
+
+    /// ZFS version 11.
     V11 = 11,
+
+    /// ZFS version 12.
     V12 = 12,
+
+    /// ZFS version 13.
     V13 = 13,
+
+    /// ZFS version 14.
     V14 = 14,
+
+    /// ZFS version 15.
     V15 = 15,
+
+    /// ZFS version 16.
     V16 = 16,
+
+    /// ZFS version 17.
     V17 = 17,
+
+    /// ZFS version 18.
     V18 = 18,
+
+    /// ZFS version 19.
     V19 = 19,
+
+    /// ZFS version 20.
     V20 = 20,
+
+    /// ZFS version 21.
     V21 = 21,
+
+    /// ZFS version 22.
     V22 = 22,
+
+    /// ZFS version 23.
     V23 = 23,
+
+    /// ZFS version 24.
     V24 = 24,
+
+    /// ZFS version 25.
     V25 = 25,
+
+    /// ZFS version 26.
     V26 = 26,
+
+    /// ZFS version 27.
     V27 = 27,
+
+    /** ZFS version 28.
+     *
+     * Last open source version.
+     */
     V28 = 28,
+
+    /** ZFS version 5000.
+     *
+     * New features are indicated using [`crate::phys::Feature`].
+     */
     V5000 = 5000,
 }
 
@@ -141,15 +202,14 @@ impl TryFrom<u64> for Version {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`Version`] conversion error.
- */
+/// [`Version`] conversion error.
 #[derive(Debug)]
 pub enum VersionError {
-    /** Unknown [`Version`].
-     *
-     * - `value` - Unknown value.
-     */
-    Unknown { value: u64 },
+    /// Unknown [`Version`].
+    Unknown {
+        /// Unknown value.
+        value: u64,
+    },
 }
 
 impl fmt::Display for VersionError {

@@ -6,6 +6,7 @@
  */
 pub struct Feature {}
 
+#[allow(missing_docs)]
 impl Feature {
     pub const ALLOCATION_CLASSES: &'static str = "org.zfsonlinux:allocation_classes";
     pub const ASYNC_DESTROY: &'static str = "com.delphix:async_destroy";
