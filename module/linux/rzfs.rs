@@ -2,7 +2,12 @@
 /*! ZFS Rust filesystem module.
  */
 use kernel::prelude::*;
-use zfs;
+
+/// Checksum calculation.
+pub mod checksum;
+
+/// On disk physical structure encoding and decoding.
+pub mod phys;
 
 module! {
     type: RZFSModule,
@@ -19,7 +24,7 @@ struct RZFSModule {
 impl kernel::Module for RZFSModule {
     fn init(_module: &'static ThisModule) -> Result<Self> {
         pr_info!("RZFS(init)\n");
-        pr_info!("Sector: {}\n", zfs::phys::SECTOR_SHIFT);
+        pr_info!("Sector: {}\n", phys::SECTOR_SHIFT);
         Ok(RZFSModule { number: 1 })
     }
 }
