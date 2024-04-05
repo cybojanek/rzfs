@@ -6,5 +6,8 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+/// Checksum calculation.
+pub mod checksum;
+
 /// On disk physical structure encoding and decoding.
 pub mod phys;
