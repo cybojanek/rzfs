@@ -1,0 +1,43 @@
+name: Cargo Build & Test
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: Rust project - latest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - beta
+          - nightly
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install depdendencies.
+        run: sudo apt-get install -y libfuse3-dev
+
+      - name: Setup toolchain.
+        run: |
+          # Remove executables in order to have rust manage the the tools.
+          rm /home/runner/.cargo/bin/{rust-analyzer,rustfmt,cargo-fmt}
+          # Bring up toolchain
+          rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+
+      - name: Build and test
+        run: |
+          cargo build --verbose
+          cargo test --verbose
+        env:
+          RUSTFLAGS: "-D warnings"
+
+      -name: Check docs
+        run: cargo doc
+        env:
+          RUSTDOCFLAGS: "-D warnings"
