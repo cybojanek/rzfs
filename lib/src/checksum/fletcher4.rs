@@ -79,7 +79,7 @@ pub struct Fletcher4 {
 
 /** Sum v and then multiply by m.
  *
- * ```
+ * ```text
  * (v[0] + v[1] + ...) * m
  * ```
  */
@@ -95,7 +95,7 @@ fn sum_and_mul(v: &[u64], m: u64) -> u64 {
 
 /** Sum of each element in v multiplied by its corresponding m.
  *
- * ```
+ * ```text
  * (v[0] * m[0]) + (v[1] + m[1]) + ...
  * ```
  */
