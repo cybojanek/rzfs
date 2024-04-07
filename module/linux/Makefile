@@ -10,7 +10,7 @@ KDIR ?= /lib/modules/`uname -r`/build
 LLVM ?= 1
 CONFIG_RZFS_FS ?= m
 
-RZFS_SYMLINKS = checksum checksum.rs phys phys.rs
+RZFS_SYMLINKS = $(shell ls ../../lib/src)
 
 default:
 	@$(foreach LINK,$(RZFS_SYMLINKS),\
