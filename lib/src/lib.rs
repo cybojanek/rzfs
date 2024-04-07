@@ -6,6 +6,9 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+/// CPU architecture support.
+pub(crate) mod arch;
+
 /// Checksum calculation.
 pub mod checksum;
 

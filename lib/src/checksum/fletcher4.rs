@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
 use crate::checksum::{Checksum, ChecksumError};
-use crate::phys::EndianOrder;
+use crate::phys::{ChecksumType, EndianOrder};
 
 use core::cmp;
 use core::fmt;
 use core::fmt::Display;
+
+#[cfg(target_arch = "x86")]
+use core::arch::x86 as arch;
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64 as arch;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::arch::x86_any::is_sse2_supported;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -29,12 +38,16 @@ pub enum Fletcher4Implementation {
 
     /// Superscalar using four streams.
     SuperScalar4,
+
+    /// SSE2 128 bit SIMD.
+    SSE2,
 }
 
-const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 3] = [
+const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 4] = [
     Fletcher4Implementation::Generic,
     Fletcher4Implementation::SuperScalar2,
     Fletcher4Implementation::SuperScalar4,
+    Fletcher4Implementation::SSE2,
 ];
 
 impl Fletcher4Implementation {
@@ -46,6 +59,18 @@ impl Fletcher4Implementation {
     pub fn all() -> &'static [Fletcher4Implementation] {
         &ALL_FLETCHER_4_IMPLEMENTATIONS
     }
+
+    /** Is the implementation supported.
+     */
+    pub fn is_supported(&self) -> bool {
+        match self {
+            Fletcher4Implementation::Generic => true,
+            Fletcher4Implementation::SuperScalar2 => true,
+            Fletcher4Implementation::SuperScalar4 => true,
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Fletcher4Implementation::SSE2 => is_sse2_supported(),
+        }
+    }
 }
 
 impl Display for Fletcher4Implementation {
@@ -54,6 +79,7 @@ impl Display for Fletcher4Implementation {
             Fletcher4Implementation::Generic => write!(f, "generic"),
             Fletcher4Implementation::SuperScalar2 => write!(f, "superscalar2"),
             Fletcher4Implementation::SuperScalar4 => write!(f, "superscalar4"),
+            Fletcher4Implementation::SSE2 => write!(f, "sse2"),
         }
     }
 }
@@ -131,6 +157,13 @@ impl Fletcher4ImplementationCtx {
         order: EndianOrder,
         implementation: Fletcher4Implementation,
     ) -> Result<Fletcher4ImplementationCtx, ChecksumError> {
+        if !implementation.is_supported() {
+            return Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher4,
+                order,
+            });
+        }
+
         match implementation {
             Fletcher4Implementation::Generic => Ok(Fletcher4ImplementationCtx {
                 block_size: FLETCHER_4_BLOCK_SIZE,
@@ -157,6 +190,22 @@ impl Fletcher4ImplementationCtx {
                     EndianOrder::Little => Fletcher4::update_blocks_superscalar4_little,
                 },
                 finish_blocks: Fletcher4::finish_blocks_quad_stream,
+            }),
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Fletcher4Implementation::SSE2 => Ok(Fletcher4ImplementationCtx {
+                block_size: 4 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Big => Fletcher4::update_blocks_sse2_native,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Big => Fletcher4::update_blocks_sse2_byteswap,
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Little => Fletcher4::update_blocks_sse2_byteswap,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Little => Fletcher4::update_blocks_sse2_native,
+                },
+                finish_blocks: Fletcher4::finish_blocks_dual_stream,
             }),
         }
     }
@@ -614,6 +663,149 @@ impl Fletcher4 {
         state[14] = d2;
         state[15] = d3;
     }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn update_blocks_sse2_byteswap(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +--------------------+------+
+        // | _mm_add_epi64      | SSE2 |
+        // | _mm_loadu_si128    | SSE2 |
+        // | _mm_storeu_si128   | SSE2 |
+        // +--------------------+------+
+
+        #[target_feature(enable = "sse2")]
+        unsafe fn update_blocks_sse2_byteswap_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Load each dual stream into an xmm register.
+                let mut a = arch::_mm_loadu_si128(state[0..2].as_ptr() as *const _);
+                let mut b = arch::_mm_loadu_si128(state[2..4].as_ptr() as *const _);
+                let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
+                let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
+
+                // Iterate 64 bits at a time.
+                let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // Decode value.
+                    let v = u32::from_ne_bytes(block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap())
+                        .swap_bytes();
+
+                    let w = u32::from_ne_bytes(
+                        block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
+                            .try_into()
+                            .unwrap(),
+                    )
+                    .swap_bytes();
+
+                    // Load v and w into an xmm register.
+                    //
+                    // vw[0..32]   = v[0..32] == f[n]
+                    // vw[32..64]  = 0
+                    // vw[64..96]  = w[0..32] == f[n+1]
+                    // vw[96..128] = 0
+                    let block: &[u64; 2] = &[u64::from(v), u64::from(w)];
+                    let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+
+                    // Add the values to the lanes.
+                    // a[0], a[1] += f[n], f[n+1]
+                    // ...
+                    a = arch::_mm_add_epi64(a, vw);
+                    b = arch::_mm_add_epi64(b, a);
+                    c = arch::_mm_add_epi64(c, b);
+                    d = arch::_mm_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm_storeu_si128(state[0..2].as_mut_ptr() as *mut _, a);
+                arch::_mm_storeu_si128(state[2..4].as_mut_ptr() as *mut _, b);
+                arch::_mm_storeu_si128(state[4..6].as_mut_ptr() as *mut _, c);
+                arch::_mm_storeu_si128(state[6..8].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_sse2_byteswap_impl(state, data) }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn update_blocks_sse2_native(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +--------------------+------+
+        // | _mm_add_epi64      | SSE2 |
+        // | _mm_loadu_si128    | SSE2 |
+        // | _mm_setzero_si128  | SSE2 |
+        // | _mm_storeu_si128   | SSE2 |
+        // | _mm_unpackhi_epi32 | SSE2 |
+        // | _mm_unpacklo_epi32 | SSE2 |
+        // +--------------------+------+
+
+        #[target_feature(enable = "sse2")]
+        unsafe fn update_blocks_sse2_native_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Load each dual stream into an xmm register.
+                let mut a = arch::_mm_loadu_si128(state[0..2].as_ptr() as *const _);
+                let mut b = arch::_mm_loadu_si128(state[2..4].as_ptr() as *const _);
+                let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
+                let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
+
+                // Load zero into an xmm register.
+                let zero = arch::_mm_setzero_si128();
+
+                // Iterate 128 bits at a time.
+                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // Load 128 bits into an xmm register.
+                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+
+                    // Split the lower 64 bits of vwxy into two 32 bit values.
+                    // Zero extend them into two 64 bit values into vw.
+                    //
+                    // vw[0..32]   = vwxy[0..32]  == f[n]
+                    // vw[32..64]  = zero[0..32]  == 0
+                    // vw[64..96]  = vwxy[32..64] == f[n+1]
+                    // vw[96..128] = zero[32..64] == 0
+                    //
+                    // vw[0..64]   = f[n]
+                    // vw[64..128] = f[n+1]
+                    let vw = arch::_mm_unpacklo_epi32(vwxy, zero);
+
+                    // Do the same, but with the high bits.
+                    // xy[0..32]   = vwxy[64..96]  == f[n+2]
+                    // xy[32..64]  = zero[64..96]  == 0
+                    // xy[64..96]  = vwxy[96..128] == f[n+3]
+                    // xy[96..128] = zero[96..128] == 0
+                    //
+                    // xy[0..64]   = f[n+2]
+                    // xy[64..128] = f[n+3]
+                    let xy = arch::_mm_unpackhi_epi32(vwxy, zero);
+
+                    // Add the values to the lanes.
+                    // a[0], a[1] += f[n], f[n+1]
+                    // ...
+                    a = arch::_mm_add_epi64(a, vw);
+                    b = arch::_mm_add_epi64(b, a);
+                    c = arch::_mm_add_epi64(c, b);
+                    d = arch::_mm_add_epi64(d, c);
+
+                    // Add the values to the lanes.
+                    // a[0], a[1] += f[n+2], f[n+3]
+                    // ...
+                    a = arch::_mm_add_epi64(a, xy);
+                    b = arch::_mm_add_epi64(b, a);
+                    c = arch::_mm_add_epi64(c, b);
+                    d = arch::_mm_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm_storeu_si128(state[0..2].as_mut_ptr() as *mut _, a);
+                arch::_mm_storeu_si128(state[2..4].as_mut_ptr() as *mut _, b);
+                arch::_mm_storeu_si128(state[4..6].as_mut_ptr() as *mut _, c);
+                arch::_mm_storeu_si128(state[6..8].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_sse2_native_impl(state, data) }
+    }
 }
 
 impl Checksum for Fletcher4 {
@@ -990,6 +1182,34 @@ mod tests {
         Ok(())
     }
 
+    fn test_optional_implementation(
+        implementation: Fletcher4Implementation,
+    ) -> Result<(), ChecksumError> {
+        // Assume the implementation is supported.
+        let mut supported: [bool; 2] = [true, true];
+        let orders: [EndianOrder; 2] = [EndianOrder::Big, EndianOrder::Little];
+
+        for (idx, order) in orders.iter().enumerate() {
+            if let Err(
+                _e @ ChecksumError::Unsupported {
+                    checksum: _,
+                    order: _,
+                },
+            ) = Fletcher4::new(*order, implementation)
+            {
+                supported[idx] = false;
+            }
+        }
+
+        // Check Big and Little are either both support, or both not supported.
+        assert_eq!(supported[0], supported[1]);
+
+        match supported[0] {
+            true => test_required_implementation(implementation),
+            false => Ok(()),
+        }
+    }
+
     #[test]
     fn fletcher4_generic() -> Result<(), ChecksumError> {
         test_required_implementation(Fletcher4Implementation::Generic)
@@ -1003,5 +1223,10 @@ mod tests {
     #[test]
     fn fletcher4_superscalar4() -> Result<(), ChecksumError> {
         test_required_implementation(Fletcher4Implementation::SuperScalar4)
+    }
+
+    #[test]
+    fn fletcher4_sse2() -> Result<(), ChecksumError> {
+        test_optional_implementation(Fletcher4Implementation::SSE2)
     }
 }

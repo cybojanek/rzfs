@@ -3,6 +3,9 @@
  */
 use kernel::prelude::*;
 
+/// Architecture.
+pub mod arch;
+
 /// Checksum calculation.
 pub mod checksum;
 
