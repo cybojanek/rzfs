@@ -678,3 +678,318 @@ impl Checksum for Fletcher4 {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use core::cmp;
+
+    use crate::checksum::{Checksum, ChecksumError, Fletcher4, Fletcher4Implementation};
+    use crate::phys::EndianOrder;
+
+    /** 128 byte random data.
+     *
+     * Refer to `docs/FLETCHER.md` for script to generate test cases.
+     */
+    const TEST_VECTOR_A: [u8; 128] = [
+        0xbc, 0x4b, 0x4d, 0x58, 0x43, 0xca, 0x34, 0x35, 0xe4, 0xd0, 0x59, 0xe4, 0xd0, 0x2b, 0x08,
+        0xe3, 0x2f, 0xe3, 0x78, 0xe1, 0xe6, 0xf6, 0xf1, 0x34, 0x84, 0xdc, 0x1e, 0x0e, 0x12, 0x28,
+        0x2e, 0xbe, 0x53, 0xbd, 0x1a, 0xf9, 0x8a, 0x97, 0x6e, 0xab, 0x7c, 0x06, 0xed, 0x50, 0xa8,
+        0xc9, 0xe4, 0x1e, 0xb8, 0xaf, 0xb8, 0x8c, 0x94, 0xb5, 0x15, 0xed, 0xa8, 0x3f, 0x9d, 0x99,
+        0x9c, 0x26, 0xe8, 0x1d, 0x87, 0x29, 0x1f, 0x60, 0x64, 0xca, 0xd1, 0xe8, 0x48, 0x7e, 0xe4,
+        0xf2, 0x56, 0xf3, 0x59, 0x73, 0x04, 0x39, 0xb2, 0x62, 0x56, 0xea, 0xf1, 0x44, 0xf0, 0x06,
+        0x28, 0x2e, 0x56, 0x16, 0xd3, 0x80, 0x0d, 0x47, 0x9e, 0x87, 0x3f, 0x52, 0x64, 0x30, 0x63,
+        0x6d, 0x64, 0x58, 0xcb, 0x84, 0x4d, 0xf7, 0x1c, 0x6e, 0xc7, 0x07, 0x86, 0x3d, 0x17, 0xec,
+        0x51, 0x8f, 0x51, 0x6e, 0x5a, 0x52, 0x64, 0xee,
+    ];
+
+    const TEST_VECTOR_A_BIG_CHECKSUMS: [(usize, [u64; 4]); 12] = [
+        // Empty test case.
+        (0, [0, 0, 0, 0]),
+        // Small test cases.
+        (
+            4,
+            [
+                0x000000bc4b4d58,
+                0x000000bc4b4d58,
+                0x000000bc4b4d58,
+                0x000000bc4b4d58,
+            ],
+        ),
+        (
+            8,
+            [
+                0x0000010015818d,
+                0x000001bc60cee5,
+                0x00000278ac1c3d,
+                0x00000334f76995,
+            ],
+        ),
+        (
+            16,
+            [
+                0x000002b510e454,
+                0x00000656578eaa,
+                0x00000c704a553d,
+                0x000015bf348565,
+            ],
+        ),
+        (
+            32,
+            [
+                0x00000462ef9b35,
+                0x000015baee41f4,
+                0x000049c5ba6417,
+                0x0000cbee1ec81f,
+            ],
+        ),
+        (
+            64,
+            [
+                0x000008f7e04a76,
+                0x00004bfc1745cd,
+                0x0001d1ce6d7c23,
+                0x0008d52f29a320,
+            ],
+        ),
+        (
+            128,
+            [
+                0x00000eeea163cc,
+                0x00010e013af8bd,
+                0x000c85c68f433f,
+                0x00709c54f4292c,
+            ],
+        ),
+        // Larger test cases.
+        (
+            8192,
+            [
+                0x0003bba858f300,
+                0x0ef6672cfaff40,
+                0x27f846f1cb5a43c0,
+                0x1e53675f84390500,
+            ],
+        ),
+        (
+            16384,
+            [
+                0x00077750b1e600,
+                0x3bca11218dfe80,
+                0x3f27c10b327a8780,
+                0xc8f946251150a00,
+            ],
+        ),
+        (
+            32768,
+            [
+                0x000eeea163cc00,
+                0xef092d617bfd00,
+                0xf6d4a7a7d40d0f00,
+                0xf11114404b61400,
+            ],
+        ),
+        (
+            65536,
+            [
+                0x001ddd42c79800,
+                0x3bbe6873c77fa00,
+                0xad00ad2d647a1e00,
+                0x4f4aa417939c2800,
+            ],
+        ),
+        (
+            131072,
+            [
+                0x003bba858f3000,
+                0xeef1dc05eeff400,
+                0x41750e91ba743c00,
+                0x9ce34afd4ff85000,
+            ],
+        ),
+    ];
+
+    const TEST_VECTOR_A_LITTLE_CHECKSUMS: [(usize, [u64; 4]); 12] = [
+        // Empty test case.
+        (0, [0, 0, 0, 0]),
+        // Small test cases.
+        (
+            4,
+            [
+                0x000000584d4bbc,
+                0x000000584d4bbc,
+                0x000000584d4bbc,
+                0x000000584d4bbc,
+            ],
+        ),
+        (
+            8,
+            [
+                0x0000008d8215ff,
+                0x000000e5cf61bb,
+                0x0000013e1cad77,
+                0x0000019669f933,
+            ],
+        ),
+        (
+            16,
+            [
+                0x00000254e412b3,
+                0x000004ac8f5b51,
+                0x00000842575166,
+                0x00000d6e8940ae,
+            ],
+        ),
+        (
+            32,
+            [
+                0x000004379bf15e,
+                0x000012ff44f8a5,
+                0x00003d3a6ce080,
+                0x0000a07ce08c36,
+            ],
+        ),
+        (
+            64,
+            [
+                0x0000087d4ae1ef,
+                0x00004a004d2fab,
+                0x0001b839b026e4,
+                0x000809feab1826,
+            ],
+        ),
+        (
+            128,
+            [
+                0x000010db62a0df,
+                0x000117affe54e5,
+                0x000c8e34f31295,
+                0x006e4f6d9de101,
+            ],
+        ),
+        // Larger test cases.
+        (
+            8192,
+            [
+                0x000436d8a837c0,
+                0x10dde115f0bd40,
+                0x2d0623e6a0511340,
+                0x2f2678bec58fce40,
+            ],
+        ),
+        (
+            16384,
+            [
+                0x00086db1506f80,
+                0x4372876d9f7a80,
+                0x67e740e65f6b2680,
+                0xb37a22cd8c989c80,
+            ],
+        ),
+        (
+            32768,
+            [
+                0x0010db62a0df00,
+                0x10dc023e236f500,
+                0x3e130e68f9fa4d00,
+                0x4a29d1501f153900,
+            ],
+        ),
+        (
+            65536,
+            [
+                0x0021b6c541be00,
+                0x436ec9be04dea00,
+                0xebfd9100e0849a00,
+                0x5ec8691c55ba7200,
+            ],
+        ),
+        (
+            131072,
+            [
+                0x00436d8a837c00,
+                0x10db8a88301bd400,
+                0x4d8300ad73493400,
+                0x6ddee96909b4e400,
+            ],
+        ),
+    ];
+
+    fn run_test_vector(
+        h: &mut Fletcher4,
+        vector: &[u8],
+        checksums: &[(usize, [u64; 4])],
+    ) -> Result<(), ChecksumError> {
+        // Empty checksum is all zeros.
+        assert_eq!(h.finalize()?, [0, 0, 0, 0]);
+
+        // Test sizes.
+        for (size, checksum) in checksums {
+            let size = *size;
+            let checksum = *checksum;
+
+            if size <= vector.len() {
+                // Single update call.
+                h.reset()?;
+                h.update(&vector[0..size])?;
+                assert_eq!(h.finalize()?, checksum, "size {}", size);
+
+                // Partial update.
+                h.reset()?;
+                let mut offset = 0;
+
+                h.update(&vector[0..size / 3])?;
+                offset += size / 3;
+
+                h.update(&vector[offset..offset + size / 3])?;
+                offset += size / 3;
+
+                h.update(&vector[offset..size])?;
+
+                assert_eq!(h.finalize()?, checksum);
+            } else {
+                // Multiple calls.
+                let mut todo = size;
+                h.reset()?;
+
+                while todo > 0 {
+                    let can_do = cmp::min(todo, vector.len());
+                    h.update(&vector[0..can_do])?;
+                    todo -= can_do;
+                }
+
+                assert_eq!(h.finalize()?, checksum, "size {}", size);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn test_required_implementation(
+        implementation: Fletcher4Implementation,
+    ) -> Result<(), ChecksumError> {
+        let mut h = Fletcher4::new(EndianOrder::Big, implementation)?;
+
+        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_BIG_CHECKSUMS)?;
+
+        let mut h = Fletcher4::new(EndianOrder::Little, implementation)?;
+        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_LITTLE_CHECKSUMS)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn fletcher4_generic() -> Result<(), ChecksumError> {
+        test_required_implementation(Fletcher4Implementation::Generic)
+    }
+
+    #[test]
+    fn fletcher4_superscalar2() -> Result<(), ChecksumError> {
+        test_required_implementation(Fletcher4Implementation::SuperScalar2)
+    }
+
+    #[test]
+    fn fletcher4_superscalar4() -> Result<(), ChecksumError> {
+        test_required_implementation(Fletcher4Implementation::SuperScalar4)
+    }
+}
