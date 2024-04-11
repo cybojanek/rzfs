@@ -14,7 +14,9 @@ use core::arch::x86 as arch;
 use core::arch::x86_64 as arch;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use crate::arch::x86_any::{is_sse2_supported, is_ssse3_supported};
+use crate::arch::x86_any::{
+    is_avx2_supported, is_avx_supported, is_sse2_supported, is_ssse3_supported,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,14 +46,18 @@ pub enum Fletcher4Implementation {
 
     /// SSSE3 128 bit SIMD.
     SSSE3,
+
+    /// AVX2 256 bit SIMD.
+    AVX2,
 }
 
-const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 5] = [
+const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 6] = [
     Fletcher4Implementation::Generic,
     Fletcher4Implementation::SuperScalar2,
     Fletcher4Implementation::SuperScalar4,
     Fletcher4Implementation::SSE2,
     Fletcher4Implementation::SSSE3,
+    Fletcher4Implementation::AVX2,
 ];
 
 impl Fletcher4Implementation {
@@ -75,6 +81,8 @@ impl Fletcher4Implementation {
             Fletcher4Implementation::SSE2 => is_sse2_supported(),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             Fletcher4Implementation::SSSE3 => is_sse2_supported() && is_ssse3_supported(),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Fletcher4Implementation::AVX2 => is_avx_supported() && is_avx2_supported(),
         }
     }
 }
@@ -87,6 +95,7 @@ impl Display for Fletcher4Implementation {
             Fletcher4Implementation::SuperScalar4 => write!(f, "superscalar4"),
             Fletcher4Implementation::SSE2 => write!(f, "sse2"),
             Fletcher4Implementation::SSSE3 => write!(f, "ssse3"),
+            Fletcher4Implementation::AVX2 => write!(f, "avx2"),
         }
     }
 }
@@ -229,6 +238,22 @@ impl Fletcher4ImplementationCtx {
                     EndianOrder::Little => Fletcher4::update_blocks_sse2_native,
                 },
                 finish_blocks: Fletcher4::finish_blocks_dual_stream,
+            }),
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            Fletcher4Implementation::AVX2 => Ok(Fletcher4ImplementationCtx {
+                block_size: 4 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx2_native,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx2_byteswap,
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx2_byteswap,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx2_native,
+                },
+                finish_blocks: Fletcher4::finish_blocks_quad_stream,
             }),
         }
     }
@@ -931,6 +956,146 @@ impl Fletcher4 {
 
         unsafe { update_blocks_ssse3_byteswap_impl(state, data) }
     }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn update_blocks_avx2_byteswap(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+-------+
+        // | *_mm_loadu_si128      | SSE2  |
+        // | _mm256_add_epi64      | AVX2  |
+        // | _mm256_cvtepu32_epi64 | AVX2  |
+        // | _mm256_lddqu_si256    | AVX   |
+        // | _mm256_shuffle_epi8   | AVX2  |
+        // | _mm256_storeu_si256   | AVX   |
+        // +-----------------------+-------+
+
+        #[target_feature(enable = "avx,avx2")]
+        unsafe fn update_blocks_avx2_byteswap_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Set the shuffle value.
+                let shuffle = arch::_mm256_set_epi8(
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f3
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f2
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f1
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f0
+                );
+
+                // Load each quad stream into a ymm register.
+                let mut a = arch::_mm256_lddqu_si256(state[0..4].as_ptr() as *const _);
+                let mut b = arch::_mm256_lddqu_si256(state[4..8].as_ptr() as *const _);
+                let mut c = arch::_mm256_lddqu_si256(state[8..12].as_ptr() as *const _);
+                let mut d = arch::_mm256_lddqu_si256(state[12..16].as_ptr() as *const _);
+
+                // Iterate 128 bits at a time.
+                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // If you look at the intel intrinsics guide:
+                    // +-----------------------+---------------------+
+                    // | _mm_loadu_si128       | movdqu    xmm, m128 |
+                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
+                    // +-----------------------+---------------------+
+                    // If you check the assembly guide, VPMOVZXDQ also supports m128.
+                    // The compiler will optimize the calls, and instead just do:
+                    // +-----------------------+---------------------+
+                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
+                    // +-----------------------+---------------------+
+
+                    // Load 128 bits into an xmm register.
+                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+
+                    // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
+                    let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
+
+                    // Swap the order of the lower 4-byte parts of vwxy.
+                    // Each byte of shuffle indicates the byte index of vwxy.
+                    //
+                    // vwxy[0..8]   = vwxy[24..32]
+                    // vwxy[8..16]  = vwxy[16..24]
+                    // vwxy[16..24] = vwxy[8..16]
+                    // vwxy[24..32] = vwxy[0..8]
+                    // vwxy[32..64] = 0
+                    // ...
+                    let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
+
+                    // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
+                    // ...
+                    a = arch::_mm256_add_epi64(a, vwxy);
+                    b = arch::_mm256_add_epi64(b, a);
+                    c = arch::_mm256_add_epi64(c, b);
+                    d = arch::_mm256_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm256_storeu_si256(state[0..4].as_mut_ptr() as *mut _, a);
+                arch::_mm256_storeu_si256(state[4..8].as_mut_ptr() as *mut _, b);
+                arch::_mm256_storeu_si256(state[8..12].as_mut_ptr() as *mut _, c);
+                arch::_mm256_storeu_si256(state[12..16].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_avx2_byteswap_impl(state, data) }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn update_blocks_avx2_native(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+------+
+        // | *_mm_loadu_si128      | SSE2 |
+        // | _mm256_add_epi64      | AVX2 |
+        // | _mm256_cvtepu32_epi64 | AVX2 |
+        // | _mm256_lddqu_si256    | AVX  |
+        // | _mm256_storeu_si256   | AVX  |
+        // +-----------------------+------+
+
+        #[target_feature(enable = "avx,avx2")]
+        unsafe fn update_blocks_avx2_native_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Load each quad stream into a ymm register.
+                let mut a = arch::_mm256_lddqu_si256(state[0..4].as_ptr() as *const _);
+                let mut b = arch::_mm256_lddqu_si256(state[4..8].as_ptr() as *const _);
+                let mut c = arch::_mm256_lddqu_si256(state[8..12].as_ptr() as *const _);
+                let mut d = arch::_mm256_lddqu_si256(state[12..16].as_ptr() as *const _);
+
+                // Iterate 128 bits at a time.
+                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // If you look at the intel intrinsics guide:
+                    // +-----------------------+---------------------+
+                    // | _mm_loadu_si128       | movdqu    xmm, m128 |
+                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
+                    // +-----------------------+---------------------+
+                    // If you check the assembly guide, VPMOVZXDQ also supports m128.
+                    // The compiler will optimize the calls, and instead just do:
+                    // +-----------------------+---------------------+
+                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
+                    // +-----------------------+---------------------+
+
+                    // Load 128 bits into an xmm register.
+                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+
+                    // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
+                    let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
+
+                    // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
+                    // ...
+                    a = arch::_mm256_add_epi64(a, vwxy);
+                    b = arch::_mm256_add_epi64(b, a);
+                    c = arch::_mm256_add_epi64(c, b);
+                    d = arch::_mm256_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm256_storeu_si256(state[0..4].as_mut_ptr() as *mut _, a);
+                arch::_mm256_storeu_si256(state[4..8].as_mut_ptr() as *mut _, b);
+                arch::_mm256_storeu_si256(state[8..12].as_mut_ptr() as *mut _, c);
+                arch::_mm256_storeu_si256(state[12..16].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_avx2_native_impl(state, data) }
+    }
 }
 
 impl Checksum for Fletcher4 {
@@ -1358,5 +1523,10 @@ mod tests {
     #[test]
     fn fletcher4_ssse3() -> Result<(), ChecksumError> {
         test_optional_implementation(Fletcher4Implementation::SSSE3)
+    }
+
+    #[test]
+    fn fletcher4_avx2() -> Result<(), ChecksumError> {
+        test_optional_implementation(Fletcher4Implementation::AVX2)
     }
 }
