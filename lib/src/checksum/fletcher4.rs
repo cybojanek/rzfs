@@ -31,12 +31,29 @@ pub enum Fletcher4Implementation {
     SuperScalar4,
 }
 
+const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 3] = [
+    Fletcher4Implementation::Generic,
+    Fletcher4Implementation::SuperScalar2,
+    Fletcher4Implementation::SuperScalar4,
+];
+
+impl Fletcher4Implementation {
+    /** Get a slice with all of the [`Fletcher4Implementation`].
+     *
+     * Runtime support depends on CPU. Calling [`Fletcher4::new`] might still
+     * fail with [`ChecksumError::Unsupported`].
+     */
+    pub fn all() -> &'static [Fletcher4Implementation] {
+        &ALL_FLETCHER_4_IMPLEMENTATIONS
+    }
+}
+
 impl Display for Fletcher4Implementation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Fletcher4Implementation::Generic => write!(f, "Generic"),
-            Fletcher4Implementation::SuperScalar2 => write!(f, "SuperScalar2"),
-            Fletcher4Implementation::SuperScalar4 => write!(f, "SuperScalar4"),
+            Fletcher4Implementation::Generic => write!(f, "generic"),
+            Fletcher4Implementation::SuperScalar2 => write!(f, "superscalar2"),
+            Fletcher4Implementation::SuperScalar4 => write!(f, "superscalar4"),
         }
     }
 }
@@ -114,41 +131,33 @@ impl Fletcher4ImplementationCtx {
         order: EndianOrder,
         implementation: Fletcher4Implementation,
     ) -> Result<Fletcher4ImplementationCtx, ChecksumError> {
-        match order {
-            EndianOrder::Little => match implementation {
-                Fletcher4Implementation::Generic => Ok(Fletcher4ImplementationCtx {
-                    block_size: FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_generic_little,
-                    finish_blocks: Fletcher4::finish_blocks_single_stream,
-                }),
-                Fletcher4Implementation::SuperScalar2 => Ok(Fletcher4ImplementationCtx {
-                    block_size: 2 * FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_superscalar2_little,
-                    finish_blocks: Fletcher4::finish_blocks_dual_stream,
-                }),
-                Fletcher4Implementation::SuperScalar4 => Ok(Fletcher4ImplementationCtx {
-                    block_size: 4 * FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_superscalar4_little,
-                    finish_blocks: Fletcher4::finish_blocks_quad_stream,
-                }),
-            },
-            EndianOrder::Big => match implementation {
-                Fletcher4Implementation::Generic => Ok(Fletcher4ImplementationCtx {
-                    block_size: FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_generic_big,
-                    finish_blocks: Fletcher4::finish_blocks_single_stream,
-                }),
-                Fletcher4Implementation::SuperScalar2 => Ok(Fletcher4ImplementationCtx {
-                    block_size: 2 * FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_superscalar2_big,
-                    finish_blocks: Fletcher4::finish_blocks_dual_stream,
-                }),
-                Fletcher4Implementation::SuperScalar4 => Ok(Fletcher4ImplementationCtx {
-                    block_size: 4 * FLETCHER_4_BLOCK_SIZE,
-                    update_blocks: Fletcher4::update_blocks_superscalar4_big,
-                    finish_blocks: Fletcher4::finish_blocks_quad_stream,
-                }),
-            },
+        match implementation {
+            Fletcher4Implementation::Generic => Ok(Fletcher4ImplementationCtx {
+                block_size: FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    EndianOrder::Big => Fletcher4::update_blocks_generic_big,
+                    EndianOrder::Little => Fletcher4::update_blocks_generic_little,
+                },
+                finish_blocks: Fletcher4::finish_blocks_single_stream,
+            }),
+
+            Fletcher4Implementation::SuperScalar2 => Ok(Fletcher4ImplementationCtx {
+                block_size: 2 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    EndianOrder::Big => Fletcher4::update_blocks_superscalar2_big,
+                    EndianOrder::Little => Fletcher4::update_blocks_superscalar2_little,
+                },
+                finish_blocks: Fletcher4::finish_blocks_dual_stream,
+            }),
+
+            Fletcher4Implementation::SuperScalar4 => Ok(Fletcher4ImplementationCtx {
+                block_size: 4 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    EndianOrder::Big => Fletcher4::update_blocks_superscalar4_big,
+                    EndianOrder::Little => Fletcher4::update_blocks_superscalar4_little,
+                },
+                finish_blocks: Fletcher4::finish_blocks_quad_stream,
+            }),
         }
     }
 }
