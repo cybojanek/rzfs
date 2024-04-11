@@ -270,7 +270,7 @@ impl Fletcher4 {
         state[0] = a;
         state[1] = b;
         state[2] = c;
-        state[3] = c;
+        state[3] = d;
     }
 
     /// Update blocks, reading one little endian [`u32`] at a time.
@@ -627,13 +627,15 @@ impl Checksum for Fletcher4 {
 
             // Copy to block.
             self.buffer[self.buffer_fill..self.buffer_fill + todo].copy_from_slice(&data[0..todo]);
+            self.buffer_fill += todo;
 
             // Update data to skip copied block.
             data = &data[todo..];
 
             // If block is full, consume it.
             if self.buffer_fill == self.impl_ctx.block_size {
-                (self.impl_ctx.update_blocks)(&mut self.state, &self.buffer);
+                let full_blocks_data = &self.buffer[0..self.buffer_fill];
+                (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
                 self.buffer_fill = 0;
             }
         }
@@ -642,7 +644,8 @@ impl Checksum for Fletcher4 {
         let remainder = data.len() % self.impl_ctx.block_size;
 
         // Update full blocks.
-        (self.impl_ctx.update_blocks)(&mut self.state, &data[0..data.len() - remainder]);
+        let full_blocks_data = &data[0..data.len() - remainder];
+        (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
 
         // Check if remainder exists, to prevent clobbering fill with 0.
         if remainder > 0 {
