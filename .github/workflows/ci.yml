@@ -35,6 +35,13 @@ jobs:
         env:
           RUSTFLAGS: "-D warnings"
 
+      - name: Build and test release
+        run: |
+          cargo build --verbose --profile release
+          cargo test --verbose --profile release
+        env:
+          RUSTFLAGS: "-D warnings"
+
       - name: Check docs
         run: cargo doc
         env:
