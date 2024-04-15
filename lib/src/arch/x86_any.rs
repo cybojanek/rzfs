@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
-
 #[cfg(target_arch = "x86")]
 use core::arch::x86 as arch;
 
