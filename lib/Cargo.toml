@@ -19,5 +19,7 @@ fletcher4-accel = ["fletcher4-sse2", "fletcher4-ssse3", "fletcher4-avx2"]
 fletcher4-sse2 = []
 fletcher4-ssse3 = []
 fletcher4-avx2 = []
+fletcher4-avx512f = []
+fletcher4-avx512bw = []
 
 [dependencies]

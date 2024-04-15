@@ -13,6 +13,8 @@ use core::fmt::Display;
         feature = "fletcher4-sse2",
         feature = "fletcher4-ssse3",
         feature = "fletcher4-avx2",
+        feature = "fletcher4-avx512f",
+        feature = "fletcher4-avx512bw",
     ),
 ))]
 use core::arch::x86 as arch;
@@ -23,6 +25,8 @@ use core::arch::x86 as arch;
         feature = "fletcher4-sse2",
         feature = "fletcher4-ssse3",
         feature = "fletcher4-avx2",
+        feature = "fletcher4-avx512f",
+        feature = "fletcher4-avx512bw",
     ),
 ))]
 use core::arch::x86_64 as arch;
@@ -45,6 +49,18 @@ use crate::arch::x86_any::is_ssse3_supported;
 ))]
 use crate::arch::x86_any::{is_avx2_supported, is_avx_supported};
 
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64",),
+    any(feature = "fletcher4-avx512f", feature = "fletcher4-avx512bw"),
+))]
+use crate::arch::x86_any::is_avx512f_supported;
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64",),
+    feature = "fletcher4-avx512bw",
+))]
+use crate::arch::x86_any::is_avx512bw_supported;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Fletcher4 block size in bytes.
@@ -54,7 +70,7 @@ const FLETCHER_4_BLOCK_SIZE: usize = 4;
 const FLETCHER_4_U64_COUNT: usize = 4;
 
 /// Fletcher4 maximum SIMD width.
-const FLETCHER_4_MAX_SIMD_WIDTH: usize = 4;
+const FLETCHER_4_MAX_SIMD_WIDTH: usize = 8;
 
 /// Fletcher4 implementation.
 #[derive(Copy, Clone, Debug)]
@@ -76,15 +92,23 @@ pub enum Fletcher4Implementation {
 
     /// AVX2 256 bit SIMD.
     AVX2,
+
+    /// AVX512F 512 bit SIMD.
+    AVX512F,
+
+    /// AVX512BW 512 bit SIMD.
+    AVX512BW,
 }
 
-const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 6] = [
+const ALL_FLETCHER_4_IMPLEMENTATIONS: [Fletcher4Implementation; 8] = [
     Fletcher4Implementation::Generic,
     Fletcher4Implementation::SuperScalar2,
     Fletcher4Implementation::SuperScalar4,
     Fletcher4Implementation::SSE2,
     Fletcher4Implementation::SSSE3,
     Fletcher4Implementation::AVX2,
+    Fletcher4Implementation::AVX512F,
+    Fletcher4Implementation::AVX512BW,
 ];
 
 impl Fletcher4Implementation {
@@ -114,10 +138,18 @@ impl Fletcher4Implementation {
             #[cfg(feature = "fletcher4-avx2")]
             Fletcher4Implementation::AVX2 => is_avx_supported() && is_avx2_supported(),
 
+            #[cfg(feature = "fletcher4-avx512f")]
+            Fletcher4Implementation::AVX512F => is_avx512f_supported(),
+
+            #[cfg(feature = "fletcher4-avx512bw")]
+            Fletcher4Implementation::AVX512BW => is_avx512f_supported() && is_avx512bw_supported(),
+
             #[cfg(any(
                 not(feature = "fletcher4-sse2"),
                 not(feature = "fletcher4-ssse3"),
                 not(feature = "fletcher4-avx2"),
+                not(feature = "fletcher4-avx512f"),
+                not(feature = "fletcher4-avx512bw"),
             ))]
             _ => false,
         }
@@ -132,6 +164,8 @@ impl Fletcher4Implementation {
             Fletcher4Implementation::SSE2 => "sse2",
             Fletcher4Implementation::SSSE3 => "ssse3",
             Fletcher4Implementation::AVX2 => "avx2",
+            Fletcher4Implementation::AVX512F => "avx512f",
+            Fletcher4Implementation::AVX512BW => "avx512bw",
         }
     }
 }
@@ -301,10 +335,44 @@ impl Fletcher4ImplementationCtx {
                 finish_blocks: Fletcher4::finish_blocks_quad_stream,
             }),
 
+            #[cfg(feature = "fletcher4-avx512f")]
+            Fletcher4Implementation::AVX512F => Ok(Fletcher4ImplementationCtx {
+                block_size: 8 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx512f_native,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx512f_byteswap,
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx512f_byteswap,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx512f_native,
+                },
+                finish_blocks: Fletcher4::finish_blocks_octo_stream,
+            }),
+
+            #[cfg(feature = "fletcher4-avx512bw")]
+            Fletcher4Implementation::AVX512BW => Ok(Fletcher4ImplementationCtx {
+                block_size: 8 * FLETCHER_4_BLOCK_SIZE,
+                update_blocks: match order {
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx512f_native,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Big => Fletcher4::update_blocks_avx512bw_byteswap,
+                    #[cfg(target_endian = "big")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx512bw_byteswap,
+                    #[cfg(target_endian = "little")]
+                    EndianOrder::Little => Fletcher4::update_blocks_avx512f_native,
+                },
+                finish_blocks: Fletcher4::finish_blocks_octo_stream,
+            }),
+
             #[cfg(any(
                 not(feature = "fletcher4-sse2"),
                 not(feature = "fletcher4-ssse3"),
                 not(feature = "fletcher4-avx2"),
+                not(feature = "fletcher4-avx512f"),
+                not(feature = "fletcher4-avx512bw"),
             ))]
             _ => Err(ChecksumError::Unsupported {
                 checksum: ChecksumType::Fletcher4,
@@ -403,6 +471,43 @@ impl Fletcher4 {
             .wrapping_add(mul_and_sum(b, &rd_mb))
             .wrapping_sub(a[3]);
 
+        [ra, rb, rc, rd]
+    }
+
+    /** Finish a checksum that is eight streams wide.
+     *
+     * Refer to docs/FLETCHER.md for exaplanation of constants.
+     */
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64",),
+        any(feature = "fletcher4-avx512f", feature = "fletcher4-avx512bw"),
+    ))]
+    fn finish_blocks_octo_stream(state: &[u64]) -> [u64; FLETCHER_4_U64_COUNT] {
+        let a = &state[0..8];
+        let b = &state[8..16];
+        let c = &state[16..24];
+        let d = &state[24..32];
+
+        let ra = sum_and_mul(a, 1);
+
+        let rb_ma: [u16; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+        let rb = sum_and_mul(b, 8).wrapping_sub(mul_and_sum(a, &rb_ma));
+
+        let rc_mb: [u16; 8] = [28, 36, 44, 52, 60, 68, 76, 84];
+        let rc_ma: [u16; 8] = [0, 0, 1, 3, 6, 10, 15, 21];
+        let rc = sum_and_mul(c, 64)
+            .wrapping_sub(mul_and_sum(b, &rc_mb))
+            .wrapping_add(mul_and_sum(a, &rc_ma));
+
+        let rd_mc: [u16; 8] = [448, 512, 576, 640, 704, 768, 832, 896];
+        let rd_mb: [u16; 8] = [56, 84, 120, 164, 216, 276, 344, 420];
+        let rd_ma: [u16; 8] = [0, 0, 0, 1, 4, 10, 20, 35];
+        let rd = sum_and_mul(d, 512)
+            .wrapping_sub(mul_and_sum(c, &rd_mc))
+            .wrapping_add(mul_and_sum(b, &rd_mb))
+            .wrapping_sub(mul_and_sum(a, &rd_ma));
+
+        // Result.
         [ra, rb, rc, rd]
     }
 
@@ -1167,6 +1272,251 @@ impl Fletcher4 {
 
         unsafe { update_blocks_avx2_native_impl(state, data) }
     }
+
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64",),
+        feature = "fletcher4-avx512f",
+    ))]
+    fn update_blocks_avx512f_byteswap(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+---------+
+        // | *_mm256_lddqu_si256   | AVX     |
+        // | _mm512_add_epi64      | AVX512F |
+        // | _mm512_cvtepu32_epi64 | AVX512F |
+        // | _mm512_loadu_si512    | AVX512F |
+        // | _mm512_storeu_si512   | AVX512F |
+        // +-----------------------+---------+
+
+        #[target_feature(enable = "avx512f")]
+        unsafe fn update_blocks_avx512f_byteswap_impl(state: &mut [u64], data: &[u8]) {
+            // TODO(cybojanek): Check this ONLY uses avx512f.
+            //                  At the time of this writing, the compiler
+            //                  optimizes this code, and uses vpshufb, which is
+            //                  an AVX512BW instruction.
+            unsafe {
+                // Load each octo stream into a zmm register.
+                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
+                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
+                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
+                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+
+                // Iterate 256 bits at a time.
+                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+
+                // Use broadcast for the first, and then shift for remaining,
+                // because shift is only one latency and one CPI.
+                // 8xu64 [0x000000ff, ... ]
+                // 8xu64 [0x0000ff00, ... ]
+                // 8xu64 [0x00ff0000, ... ]
+                // 8xu64 [0xff000000, ... ]
+                let mask0 = arch::_mm512_maskz_set1_epi64(0xff, 0xff);
+                let mask1 = arch::_mm512_slli_epi64(mask0, 8);
+                let mask2 = arch::_mm512_slli_epi64(mask0, 16);
+                let mask3 = arch::_mm512_slli_epi64(mask0, 24);
+
+                for block in iter.by_ref() {
+                    // If you look at the intel intrinsics guide:
+                    // +-----------------------+---------------------+
+                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                    // +-----------------------+---------------------+
+                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                    // The compiler will optimize the calls, and instead just do:
+                    // +-----------------------+---------------------+
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                    // +-----------------------+---------------------+
+
+                    // Load 256 bits into an ymm register.
+                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+
+                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                    let values = arch::_mm512_cvtepu32_epi64(values);
+
+                    // Select one byte of each u64 value.
+                    let s0 = arch::_mm512_and_epi64(values, mask0);
+                    let s1 = arch::_mm512_and_epi64(values, mask1);
+                    let s2 = arch::_mm512_and_epi64(values, mask2);
+                    let s3 = arch::_mm512_and_epi64(values, mask3);
+
+                    // Shift the selected byte of each u64, to its swapped place.
+                    let s0 = arch::_mm512_slli_epi64(s0, 24);
+                    let s1 = arch::_mm512_slli_epi64(s1, 8);
+                    let s2 = arch::_mm512_srli_epi64(s2, 8);
+                    let s3 = arch::_mm512_srli_epi64(s3, 24);
+
+                    // Or the values to get the swapped u64 values.
+                    let s01 = arch::_mm512_or_epi64(s0, s1);
+                    let s23 = arch::_mm512_or_epi64(s2, s3);
+                    let values = arch::_mm512_or_epi64(s01, s23);
+
+                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                    // ...
+                    a = arch::_mm512_add_epi64(a, values);
+                    b = arch::_mm512_add_epi64(b, a);
+                    c = arch::_mm512_add_epi64(c, b);
+                    d = arch::_mm512_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
+                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
+                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
+                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_avx512f_byteswap_impl(state, data) }
+    }
+
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64",),
+        feature = "fletcher4-avx512f",
+    ))]
+    fn update_blocks_avx512f_native(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+---------+
+        // | *_mm256_lddqu_si256   | AVX     |
+        // | _mm512_add_epi64      | AVX512F |
+        // | _mm512_cvtepu32_epi64 | AVX512F |
+        // | _mm512_loadu_si512    | AVX512F |
+        // | _mm512_storeu_si512   | AVX512F |
+        // +-----------------------+---------+
+
+        #[target_feature(enable = "avx512f")]
+        unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Load each octo stream into a zmm register.
+                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
+                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
+                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
+                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+
+                // Iterate 256 bits at a time.
+                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // If you look at the intel intrinsics guide:
+                    // +-----------------------+---------------------+
+                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                    // +-----------------------+---------------------+
+                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                    // The compiler will optimize the calls, and instead just do:
+                    // +-----------------------+---------------------+
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                    // +-----------------------+---------------------+
+
+                    // Load 256 bits into an ymm register.
+                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+
+                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                    let values = arch::_mm512_cvtepu32_epi64(values);
+
+                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                    // ...
+                    a = arch::_mm512_add_epi64(a, values);
+                    b = arch::_mm512_add_epi64(b, a);
+                    c = arch::_mm512_add_epi64(c, b);
+                    d = arch::_mm512_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
+                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
+                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
+                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_avx512f_native_impl(state, data) }
+    }
+
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64",),
+        feature = "fletcher4-avx512bw",
+    ))]
+    fn update_blocks_avx512bw_byteswap(state: &mut [u64], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+----------+
+        // | *_mm256_lddqu_si256   | AVX      |
+        // | _mm512_add_epi64      | AVX512F  |
+        // | _mm512_cvtepu32_epi64 | AVX512F  |
+        // | _mm512_loadu_si512    | AVX512F  |
+        // | _mm512_shuffle_epi8   | AVX512BW |
+        // | _mm512_storeu_si512   | AVX512F  |
+        // +-----------------------+----------+
+
+        #[target_feature(enable = "avx512f,avx512bw")]
+        unsafe fn update_blocks_avx512bw_byteswap_impl(state: &mut [u64], data: &[u8]) {
+            unsafe {
+                // Set the shuffle value.
+                let shuffle = arch::_mm512_set_epi8(
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x18, 0x19, 0x1a, 0x1b, // f7
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x10, 0x11, 0x12, 0x13, // f6
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f5
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f4
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x18, 0x19, 0x1a, 0x1b, // f3
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x10, 0x11, 0x12, 0x13, // f3
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f1
+                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f0
+                );
+
+                // Load each octo stream into a zmm register.
+                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
+                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
+                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
+                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+
+                // Iterate 256 bits at a time.
+                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // If you look at the intel intrinsics guide:
+                    // +-----------------------+---------------------+
+                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                    // +-----------------------+---------------------+
+                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                    // The compiler will optimize the calls, and instead just do:
+                    // +-----------------------+---------------------+
+                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                    // +-----------------------+---------------------+
+
+                    // Load 256 bits into an ymm register.
+                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+
+                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                    let values = arch::_mm512_cvtepu32_epi64(values);
+
+                    // Swap the order of the lower 4-byte parts of values.
+                    // Each byte of shuffle indicates the byte index of values.
+                    //
+                    // values[0..8]   = values[24..32]
+                    // values[8..16]  = values[16..24]
+                    // values[16..24] = values[8..16]
+                    // values[24..32] = values[0..8]
+                    // values[32..64] = 0
+                    // ...
+                    let values = arch::_mm512_shuffle_epi8(values, shuffle);
+
+                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                    // ...
+                    a = arch::_mm512_add_epi64(a, values);
+                    b = arch::_mm512_add_epi64(b, a);
+                    c = arch::_mm512_add_epi64(c, b);
+                    d = arch::_mm512_add_epi64(d, c);
+                }
+
+                // Save state.
+                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
+                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
+                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
+                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+            }
+        }
+
+        unsafe { update_blocks_avx512bw_byteswap_impl(state, data) }
+    }
 }
 
 impl Checksum for Fletcher4 {
@@ -1600,5 +1950,15 @@ mod tests {
     #[test]
     fn fletcher4_avx2() -> Result<(), ChecksumError> {
         test_optional_implementation(Fletcher4Implementation::AVX2)
+    }
+
+    #[test]
+    fn fletcher4_avx512f() -> Result<(), ChecksumError> {
+        test_optional_implementation(Fletcher4Implementation::AVX512F)
+    }
+
+    #[test]
+    fn fletcher4_avx512bw() -> Result<(), ChecksumError> {
+        test_optional_implementation(Fletcher4Implementation::AVX512BW)
     }
 }
