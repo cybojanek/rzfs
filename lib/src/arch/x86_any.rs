@@ -20,6 +20,8 @@ const MASK_LEAF_PIAFB_ECX_AVX: u32 = 1 << 28;
 const LEAF_EXTENDED_FEATURES: u32 = 7;
 
 const MASK_LEAF_EXFT_EBX_AVX_2: u32 = 1 << 5;
+const MASK_LEAF_EXFT_EBX_AVX_512_F: u32 = 1 << 16;
+const MASK_LEAF_EXFT_EBX_AVX_512_BW: u32 = 1 << 30;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,6 +52,36 @@ pub(crate) fn is_avx2_supported() -> bool {
         let cpuid = arch::__cpuid(LEAF_EXTENDED_FEATURES);
 
         (cpuid.ebx & MASK_LEAF_EXFT_EBX_AVX_2) != 0
+    }
+}
+
+/// Is AVX512F supported by the CPU.
+pub(crate) fn is_avx512f_supported() -> bool {
+    unsafe {
+        // Get number of leaves.
+        let (leaf_max, _) = arch::__get_cpuid_max(0);
+        if leaf_max < LEAF_EXTENDED_FEATURES {
+            return false;
+        }
+
+        let cpuid = arch::__cpuid(LEAF_EXTENDED_FEATURES);
+
+        (cpuid.ebx & MASK_LEAF_EXFT_EBX_AVX_512_F) != 0
+    }
+}
+
+/// Is AVX512BW supported by the CPU.
+pub(crate) fn is_avx512bw_supported() -> bool {
+    unsafe {
+        // Get number of leaves.
+        let (leaf_max, _) = arch::__get_cpuid_max(0);
+        if leaf_max < LEAF_EXTENDED_FEATURES {
+            return false;
+        }
+
+        let cpuid = arch::__cpuid(LEAF_EXTENDED_FEATURES);
+
+        (cpuid.ebx & MASK_LEAF_EXFT_EBX_AVX_512_BW) != 0
     }
 }
 
