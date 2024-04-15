@@ -13,7 +13,11 @@ homepage = "https://github.com/cybojanek/rzfs"
 name = "zfs"
 
 [features]
-default = ["std"]
+default = ["std", "fletcher4-accel"]
 std = []
+fletcher4-accel = ["fletcher4-sse2", "fletcher4-ssse3", "fletcher4-avx2"]
+fletcher4-sse2 = []
+fletcher4-ssse3 = []
+fletcher4-avx2 = []
 
 [dependencies]

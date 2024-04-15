@@ -15,14 +15,23 @@ pub enum ChecksumError {
         checksum: ChecksumType,
         /// Unsupported value.
         order: EndianOrder,
+        /// Implementation.
+        implementation: &'static str,
     },
 }
 
 impl fmt::Display for ChecksumError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumError::Unsupported { checksum, order } => {
-                write!(f, "Checksum unsupported {checksum} {order}")
+            ChecksumError::Unsupported {
+                checksum,
+                order,
+                implementation,
+            } => {
+                write!(
+                    f,
+                    "Checksum unsupported {checksum} {order} {implementation}"
+                )
             }
         }
     }

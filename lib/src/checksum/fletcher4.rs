@@ -7,16 +7,43 @@ use core::cmp;
 use core::fmt;
 use core::fmt::Display;
 
-#[cfg(target_arch = "x86")]
+#[cfg(all(
+    target_arch = "x86",
+    any(
+        feature = "fletcher4-sse2",
+        feature = "fletcher4-ssse3",
+        feature = "fletcher4-avx2",
+    ),
+))]
 use core::arch::x86 as arch;
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(
+    target_arch = "x86_64",
+    any(
+        feature = "fletcher4-sse2",
+        feature = "fletcher4-ssse3",
+        feature = "fletcher4-avx2",
+    ),
+))]
 use core::arch::x86_64 as arch;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use crate::arch::x86_any::{
-    is_avx2_supported, is_avx_supported, is_sse2_supported, is_ssse3_supported,
-};
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64",),
+    any(feature = "fletcher4-sse2", feature = "fletcher4-ssse3",),
+))]
+use crate::arch::x86_any::is_sse2_supported;
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64",),
+    feature = "fletcher4-ssse3",
+))]
+use crate::arch::x86_any::is_ssse3_supported;
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64",),
+    feature = "fletcher4-avx2",
+))]
+use crate::arch::x86_any::{is_avx2_supported, is_avx_supported};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,12 +104,34 @@ impl Fletcher4Implementation {
             Fletcher4Implementation::Generic => true,
             Fletcher4Implementation::SuperScalar2 => true,
             Fletcher4Implementation::SuperScalar4 => true,
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+
+            #[cfg(feature = "fletcher4-sse2")]
             Fletcher4Implementation::SSE2 => is_sse2_supported(),
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+
+            #[cfg(feature = "fletcher4-ssse3")]
             Fletcher4Implementation::SSSE3 => is_sse2_supported() && is_ssse3_supported(),
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+
+            #[cfg(feature = "fletcher4-avx2")]
             Fletcher4Implementation::AVX2 => is_avx_supported() && is_avx2_supported(),
+
+            #[cfg(any(
+                not(feature = "fletcher4-sse2"),
+                not(feature = "fletcher4-ssse3"),
+                not(feature = "fletcher4-avx2"),
+            ))]
+            _ => false,
+        }
+    }
+
+    /// Get the string name of the implementation.
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Fletcher4Implementation::Generic => "generic",
+            Fletcher4Implementation::SuperScalar2 => "superscalar2",
+            Fletcher4Implementation::SuperScalar4 => "superscalar4",
+            Fletcher4Implementation::SSE2 => "sse2",
+            Fletcher4Implementation::SSSE3 => "ssse3",
+            Fletcher4Implementation::AVX2 => "avx2",
         }
     }
 }
@@ -90,12 +139,7 @@ impl Fletcher4Implementation {
 impl Display for Fletcher4Implementation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Fletcher4Implementation::Generic => write!(f, "generic"),
-            Fletcher4Implementation::SuperScalar2 => write!(f, "superscalar2"),
-            Fletcher4Implementation::SuperScalar4 => write!(f, "superscalar4"),
-            Fletcher4Implementation::SSE2 => write!(f, "sse2"),
-            Fletcher4Implementation::SSSE3 => write!(f, "ssse3"),
-            Fletcher4Implementation::AVX2 => write!(f, "avx2"),
+            _ => write!(f, "{}", self.to_str()),
         }
     }
 }
@@ -177,6 +221,7 @@ impl Fletcher4ImplementationCtx {
             return Err(ChecksumError::Unsupported {
                 checksum: ChecksumType::Fletcher4,
                 order,
+                implementation: implementation.to_str(),
             });
         }
 
@@ -208,7 +253,7 @@ impl Fletcher4ImplementationCtx {
                 finish_blocks: Fletcher4::finish_blocks_quad_stream,
             }),
 
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(feature = "fletcher4-sse2")]
             Fletcher4Implementation::SSE2 => Ok(Fletcher4ImplementationCtx {
                 block_size: 4 * FLETCHER_4_BLOCK_SIZE,
                 update_blocks: match order {
@@ -224,7 +269,7 @@ impl Fletcher4ImplementationCtx {
                 finish_blocks: Fletcher4::finish_blocks_dual_stream,
             }),
 
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(feature = "fletcher4-ssse3")]
             Fletcher4Implementation::SSSE3 => Ok(Fletcher4ImplementationCtx {
                 block_size: 4 * FLETCHER_4_BLOCK_SIZE,
                 update_blocks: match order {
@@ -240,7 +285,7 @@ impl Fletcher4ImplementationCtx {
                 finish_blocks: Fletcher4::finish_blocks_dual_stream,
             }),
 
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(feature = "fletcher4-avx2")]
             Fletcher4Implementation::AVX2 => Ok(Fletcher4ImplementationCtx {
                 block_size: 4 * FLETCHER_4_BLOCK_SIZE,
                 update_blocks: match order {
@@ -254,6 +299,17 @@ impl Fletcher4ImplementationCtx {
                     EndianOrder::Little => Fletcher4::update_blocks_avx2_native,
                 },
                 finish_blocks: Fletcher4::finish_blocks_quad_stream,
+            }),
+
+            #[cfg(any(
+                not(feature = "fletcher4-sse2"),
+                not(feature = "fletcher4-ssse3"),
+                not(feature = "fletcher4-avx2"),
+            ))]
+            _ => Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher4,
+                order,
+                implementation: implementation.to_str(),
             }),
         }
     }
@@ -712,7 +768,10 @@ impl Fletcher4 {
         state[15] = d3;
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(
+        feature = "fletcher4-sse2",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     fn update_blocks_sse2_byteswap(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
         // +--------------------+------+
@@ -774,7 +833,10 @@ impl Fletcher4 {
         unsafe { update_blocks_sse2_byteswap_impl(state, data) }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(
+        any(feature = "fletcher4-sse2", feature = "fletcher4-ssse3"),
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     fn update_blocks_sse2_native(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
         // +--------------------+------+
@@ -855,7 +917,10 @@ impl Fletcher4 {
         unsafe { update_blocks_sse2_native_impl(state, data) }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(
+        feature = "fletcher4-ssse3",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     fn update_blocks_ssse3_byteswap(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
         // +--------------------+-------+
@@ -957,7 +1022,10 @@ impl Fletcher4 {
         unsafe { update_blocks_ssse3_byteswap_impl(state, data) }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(
+        feature = "fletcher4-avx2",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     fn update_blocks_avx2_byteswap(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
         // +-----------------------+-------+
@@ -1037,7 +1105,10 @@ impl Fletcher4 {
         unsafe { update_blocks_avx2_byteswap_impl(state, data) }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(
+        feature = "fletcher4-avx2",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     fn update_blocks_avx2_native(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
         // +-----------------------+------+
@@ -1484,6 +1555,7 @@ mod tests {
                 _e @ ChecksumError::Unsupported {
                     checksum: _,
                     order: _,
+                    implementation: _,
                 },
             ) = Fletcher4::new(*order, implementation)
             {
