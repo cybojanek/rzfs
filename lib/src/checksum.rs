@@ -3,5 +3,8 @@
 pub(crate) mod common;
 pub use common::{Checksum, ChecksumError};
 
+pub(crate) mod fletcher2;
+pub use fletcher2::{Fletcher2, Fletcher2Implementation};
+
 pub(crate) mod fletcher4;
 pub use fletcher4::{Fletcher4, Fletcher4Implementation};
