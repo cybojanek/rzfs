@@ -588,16 +588,9 @@ impl Fletcher4 {
         let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
 
         for block in iter.by_ref() {
-            // Decode value.
-            let v = u64::from(u32::from_be_bytes(
-                block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap(),
-            ));
-
-            let w = u64::from(u32::from_be_bytes(
-                block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
+            // Decode values.
+            let v = u64::from(u32::from_be_bytes(block[0..4].try_into().unwrap()));
+            let w = u64::from(u32::from_be_bytes(block[4..8].try_into().unwrap()));
 
             // Update running checksum.
             a0 = a0.wrapping_add(v);
@@ -646,16 +639,9 @@ impl Fletcher4 {
         let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
 
         for block in iter.by_ref() {
-            // Decode value.
-            let v = u64::from(u32::from_le_bytes(
-                block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap(),
-            ));
-
-            let w = u64::from(u32::from_le_bytes(
-                block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
+            // Decode values.
+            let v = u64::from(u32::from_le_bytes(block[0..4].try_into().unwrap()));
+            let w = u64::from(u32::from_le_bytes(block[4..8].try_into().unwrap()));
 
             // Update running checksum.
             a0 = a0.wrapping_add(v);
@@ -712,28 +698,11 @@ impl Fletcher4 {
         let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
         for block in iter.by_ref() {
-            // Decode value.
-            let v = u64::from(u32::from_be_bytes(
-                block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap(),
-            ));
-
-            let w = u64::from(u32::from_be_bytes(
-                block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
-
-            let x = u64::from(u32::from_be_bytes(
-                block[2 * FLETCHER_4_BLOCK_SIZE..3 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
-
-            let y = u64::from(u32::from_be_bytes(
-                block[3 * FLETCHER_4_BLOCK_SIZE..4 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
+            // Decode values.
+            let v = u64::from(u32::from_be_bytes(block[0..4].try_into().unwrap()));
+            let w = u64::from(u32::from_be_bytes(block[4..8].try_into().unwrap()));
+            let x = u64::from(u32::from_be_bytes(block[8..12].try_into().unwrap()));
+            let y = u64::from(u32::from_be_bytes(block[12..16].try_into().unwrap()));
 
             // Update running checksum.
             a0 = a0.wrapping_add(v);
@@ -806,28 +775,11 @@ impl Fletcher4 {
         let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
         for block in iter.by_ref() {
-            // Decode value.
-            let v = u64::from(u32::from_le_bytes(
-                block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap(),
-            ));
-
-            let w = u64::from(u32::from_le_bytes(
-                block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
-
-            let x = u64::from(u32::from_le_bytes(
-                block[2 * FLETCHER_4_BLOCK_SIZE..3 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
-
-            let y = u64::from(u32::from_le_bytes(
-                block[3 * FLETCHER_4_BLOCK_SIZE..4 * FLETCHER_4_BLOCK_SIZE]
-                    .try_into()
-                    .unwrap(),
-            ));
+            // Decode values.
+            let v = u64::from(u32::from_le_bytes(block[0..4].try_into().unwrap()));
+            let w = u64::from(u32::from_le_bytes(block[4..8].try_into().unwrap()));
+            let x = u64::from(u32::from_le_bytes(block[8..12].try_into().unwrap()));
+            let y = u64::from(u32::from_le_bytes(block[12..16].try_into().unwrap()));
 
             // Update running checksum.
             a0 = a0.wrapping_add(v);
@@ -894,20 +846,13 @@ impl Fletcher4 {
                 let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
                 let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
 
-                // Iterate 64 bits at a time.
+                // Iterate two blocks at a time.
                 let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
 
                 for block in iter.by_ref() {
-                    // Decode value.
-                    let v = u32::from_ne_bytes(block[0..FLETCHER_4_BLOCK_SIZE].try_into().unwrap())
-                        .swap_bytes();
-
-                    let w = u32::from_ne_bytes(
-                        block[FLETCHER_4_BLOCK_SIZE..2 * FLETCHER_4_BLOCK_SIZE]
-                            .try_into()
-                            .unwrap(),
-                    )
-                    .swap_bytes();
+                    // Decode values.
+                    let v = u32::from_ne_bytes(block[0..4].try_into().unwrap()).swap_bytes();
+                    let w = u32::from_ne_bytes(block[4..8].try_into().unwrap()).swap_bytes();
 
                     // Load v and w into an xmm register.
                     //
@@ -965,7 +910,7 @@ impl Fletcher4 {
                 // Load zero into an xmm register.
                 let zero = arch::_mm_setzero_si128();
 
-                // Iterate 128 bits at a time.
+                // Iterate four blocks at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
                 for block in iter.by_ref() {
@@ -1059,7 +1004,7 @@ impl Fletcher4 {
                     0x00, 0x01, 0x02, 0x03, // f0
                 );
 
-                // Iterate 128 bits at a time.
+                // Iterate four blocks at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
                 for block in iter.by_ref() {
@@ -1071,9 +1016,11 @@ impl Fletcher4 {
                     //
                     // index = shuffle[0..8]
                     // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
+                    // vwxy[0..8] = vwxy[24..32]
                     //
                     // index = shuffle[8..16]
                     // vwxy[8..16] = vwxy[index * 8..(index + 1) * 8]
+                    // vwxy[8..16] = vwxy[16..24]
                     // ...
                     let vwxy = arch::_mm_shuffle_epi8(vwxy, shuffle);
 
@@ -1147,10 +1094,10 @@ impl Fletcher4 {
             unsafe {
                 // Set the shuffle value.
                 let shuffle = arch::_mm256_set_epi8(
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f3
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f2
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f1
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f0
+                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f3
+                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f2
+                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
+                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
                 );
 
                 // Load each quad stream into a ymm register.
@@ -1182,12 +1129,21 @@ impl Fletcher4 {
 
                     // Swap the order of the lower 4-byte parts of vwxy.
                     // Each byte of shuffle indicates the byte index of vwxy.
+                    // The shuffle is done on each 128 bit lane, so the indices
+                    // repeat for f0, f1 and f2, f3. Use -0x80 to keep the high
+                    // bytes zero.
                     //
-                    // vwxy[0..8]   = vwxy[24..32]
+                    // index = shuffle[0..8]
+                    // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
+                    // vwxy[0..8] = vwxy[24..32]
+                    // ...
                     // vwxy[8..16]  = vwxy[16..24]
                     // vwxy[16..24] = vwxy[8..16]
                     // vwxy[24..32] = vwxy[0..8]
-                    // vwxy[32..64] = 0
+                    // vwxy[32..40] = 0
+                    // vwxy[40..48] = 0
+                    // vwxy[48..56] = 0
+                    // vwxy[56..64] = 0
                     // ...
                     let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
 
@@ -1370,7 +1326,7 @@ impl Fletcher4 {
 
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64",),
-        feature = "fletcher4-avx512f",
+        any(feature = "fletcher4-avx512f", feature = "fletcher4-avx512bw"),
     ))]
     fn update_blocks_avx512f_native(state: &mut [u64], data: &[u8]) {
         // Intrinsics used:
@@ -1451,14 +1407,14 @@ impl Fletcher4 {
             unsafe {
                 // Set the shuffle value.
                 let shuffle = arch::_mm512_set_epi8(
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x18, 0x19, 0x1a, 0x1b, // f7
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x10, 0x11, 0x12, 0x13, // f6
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f5
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f4
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x18, 0x19, 0x1a, 0x1b, // f3
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x10, 0x11, 0x12, 0x13, // f3
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x08, 0x09, 0x0a, 0x0b, // f1
-                    -0x7f, -0x7f, -0x7f, -0x7f, 0x00, 0x01, 0x02, 0x03, // f0
+                    -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f7
+                    -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f6
+                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f5
+                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f4
+                    -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f3
+                    -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f3
+                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
+                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
                 );
 
                 // Load each octo stream into a zmm register.
@@ -1490,12 +1446,21 @@ impl Fletcher4 {
 
                     // Swap the order of the lower 4-byte parts of values.
                     // Each byte of shuffle indicates the byte index of values.
+                    // The shuffle is done on each 256 bit lane, so the indices
+                    // repeat for f0, f1, f2, f3 and f4, f5, f6, f7. Use
+                    // -0x80 to keep the high bytes zero.
                     //
-                    // values[0..8]   = values[24..32]
+                    // index = shuffle[0..8]
+                    // values[0..8] = values[index * 8..(index + 1) * 8]
+                    // values[0..8] = values[24..32]
+                    // ...
                     // values[8..16]  = values[16..24]
                     // values[16..24] = values[8..16]
                     // values[24..32] = values[0..8]
-                    // values[32..64] = 0
+                    // values[32..40] = 0
+                    // values[40..48] = 0
+                    // values[48..56] = 0
+                    // values[56..64] = 0
                     // ...
                     let values = arch::_mm512_shuffle_epi8(values, shuffle);
 
