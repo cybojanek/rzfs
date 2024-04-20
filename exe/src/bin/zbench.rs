@@ -4,7 +4,10 @@ use std::env;
 use std::process::ExitCode;
 use std::time::Instant;
 use zfs::checksum::{Checksum, ChecksumError};
-use zfs::checksum::{Fletcher2, Fletcher2Implementation, Fletcher4, Fletcher4Implementation};
+use zfs::checksum::{
+    Fletcher2, Fletcher2Implementation, Fletcher4, Fletcher4Implementation, Sha256,
+    Sha256Implementation,
+};
 use zfs::phys::{ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
 
 const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
@@ -121,6 +124,46 @@ fn benchmark_fletcher4(
     Ok(())
 }
 
+fn benchmark_sha256(
+    data: &[u8],
+    iterations: usize,
+    duration_us: u64,
+    display_units: u64,
+) -> Result<(), ChecksumError> {
+    println!(
+        "{:>16} {:>11} {:>11}",
+        "implementation", "native", "byteswap"
+    );
+
+    // Loop through each implementation.
+    for implementation in Sha256Implementation::all() {
+        let s = format!("{}", implementation);
+        print!("{:>16}", s);
+
+        // Loop through native and swap order.
+        for endian in [ENDIAN_ORDER_NATIVE] {
+            // Skip if not supported.
+            if !implementation.is_supported() {
+                print!(" {:>11}", "n/a");
+                continue;
+            }
+
+            let mut checksum = Sha256::new(endian, *implementation)?;
+            let bytes_per_second =
+                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
+
+            // Display units.
+            print!(" {:11}", bytes_per_second / display_units);
+        }
+
+        print!(" {:>11}", "n/a");
+
+        println!("");
+    }
+
+    Ok(())
+}
+
 fn print_usage(arg0: &str) {
     eprintln!("usage: {} fletcher2|fletcher4", arg0);
 }
@@ -165,6 +208,11 @@ fn main() -> ExitCode {
         }
     } else if args[1] == "fletcher4" {
         if let Err(e) = benchmark_fletcher4(data, iterations, duration_us, display_units) {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    } else if args[1] == "sha256" {
+        if let Err(e) = benchmark_sha256(data, iterations, duration_us, display_units) {
             eprintln!("{e}");
             return ExitCode::FAILURE;
         }
