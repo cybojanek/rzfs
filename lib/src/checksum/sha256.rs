@@ -7,6 +7,12 @@ use core::cmp;
 use core::fmt;
 use core::fmt::Display;
 
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    feature = "sha256-bmi",
+))]
+use crate::arch::x86_any::{is_bmi1_supported, is_bmi2_supported};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Sha256 block size in bytes.
@@ -15,11 +21,19 @@ const SHA_256_BLOCK_SIZE: usize = 64;
 /// Sha256 in u32.
 const SHA_256_U32_COUNT: usize = 8;
 
-/// Sha256 implementation.
+/** Sha256 implementation.
+ *
+ * - [`Sha256Implementation::BMI`] uses `BMI1` and `BMI2`. AMD has released
+ *   processors with just `BMI1` support, but this implementation requires both.
+ *   `BMI` uses integer registers, and does not use any floating point registers.
+ */
 #[derive(Copy, Clone, Debug)]
 pub enum Sha256Implementation {
     /// Generic.
     Generic,
+
+    /// BMI1 and BMI2.
+    BMI,
 }
 
 /**
@@ -50,7 +64,8 @@ const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
     ],
 };
 
-const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 1] = [Sha256Implementation::Generic];
+const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 2] =
+    [Sha256Implementation::Generic, Sha256Implementation::BMI];
 
 impl Sha256Implementation {
     /** Get a slice with all of the [`Sha256Implementation`].
@@ -66,6 +81,12 @@ impl Sha256Implementation {
     pub fn is_supported(&self) -> bool {
         match self {
             Sha256Implementation::Generic => true,
+
+            #[cfg(feature = "sha256-bmi")]
+            Sha256Implementation::BMI => is_bmi1_supported() && is_bmi2_supported(),
+
+            #[cfg(any(not(feature = "sha256-bmi")))]
+            _ => false,
         }
     }
 
@@ -73,6 +94,7 @@ impl Sha256Implementation {
     pub fn to_str(&self) -> &'static str {
         match self {
             Sha256Implementation::Generic => "generic",
+            Sha256Implementation::BMI => "bmi",
         }
     }
 }
@@ -128,6 +150,18 @@ impl Sha256ImplementationCtx {
         match implementation {
             Sha256Implementation::Generic => Ok(Sha256ImplementationCtx {
                 update_blocks: Sha256::update_blocks_generic,
+            }),
+
+            #[cfg(feature = "sha256-bmi")]
+            Sha256Implementation::BMI => Ok(Sha256ImplementationCtx {
+                update_blocks: Sha256::update_blocks_bmi,
+            }),
+
+            #[cfg(any(not(feature = "sha256-bmi")))]
+            _ => Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Sha256,
+                order,
+                implementation: implementation.to_str(),
             }),
         }
     }
@@ -411,6 +445,226 @@ impl Sha256 {
             state[6] = g;
             state[7] = h;
         }
+    }
+
+    #[cfg(all(
+        feature = "sha256-bmi",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn update_blocks_bmi(state: &mut [u32], data: &[u8]) {
+        /// Do a round of calculations. Caller must swap variables.
+        macro_rules! round {
+            ($w:expr, $k:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr
+            ) => {
+                // Expand and re-order operations to minimize register usage,
+                // dependencies, and spilling registers to stack.
+
+                // Combine ch expression, because BMI has ANDN.
+                let ch = $e & $f;
+                let ch_b = (!$e) & $g;
+                let ch = ch ^ ch_b;
+
+                // Don't use Intel optimization, because BMI has xorx.
+                let s1 = $e.rotate_right(6);
+                let s1_b = $e.rotate_right(11);
+                let s1 = s1 ^ s1_b;
+                let s1_c = $e.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                let temp1 = temp1.wrapping_add(*$w);
+                $w = $w.add(1);
+                let temp1 = temp1.wrapping_add(*$k);
+                $k = $k.add(1);
+
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
+
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
+
+                // Don't use Intel optimization, because BMI has xorx.
+                let s0 = $a.rotate_right(2);
+                let s0_b = $a.rotate_right(13);
+                let s0 = s0 ^ s0_b;
+                let s0_c = $a.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+            };
+        }
+
+        /** Schedule the next value, and do a round of calculations.
+         *
+         * Caller must swap variables.
+         */
+        macro_rules! schedule_and_round {
+            ($w:expr, $k:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr
+            ) => {
+                // Expand and re-order operations to minimize register usage,
+                // dependencies, and spilling registers to stack.
+
+                // Combine ch expression, because BMI has ANDN.
+                let ch = $e & $f;
+                let ch_b = (!$e) & $g;
+                let ch = ch ^ ch_b;
+
+                // Don't use Intel optimization, because BMI has xorx.
+                let s1 = $e.rotate_right(6);
+                let s1_b = $e.rotate_right(11);
+                let s1 = s1 ^ s1_b;
+                let s1_c = $e.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+
+                ////////////////////////
+                // Schedule before part 2, so that the schedule result is
+                // available in the local register.
+                let wi = *$w.sub(16);
+
+                let w15 = *$w.sub(15);
+                let s0 = w15.rotate_right(7);
+                let s0 = (w15 >> 3) ^ s0;
+                let s0 = w15.rotate_right(18) ^ s0;
+                let wi = wi.wrapping_add(s0);
+
+                let w2 = *$w.sub(2);
+                let s1 = w2.rotate_right(17);
+                let s1 = (w2 >> 10) ^ s1;
+                let s1 = w2.rotate_right(19) ^ s1;
+                let wi = wi.wrapping_add(s1);
+
+                let wi = wi.wrapping_add(*$w.sub(7));
+                *$w = wi;
+                $w = $w.add(1);
+
+                ////////////////////////
+                // Round part 2.
+                let temp1 = temp1.wrapping_add(wi);
+                let temp1 = temp1.wrapping_add(*$k);
+                $k = $k.add(1);
+
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
+
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
+
+                // Don't use Intel optimization, because BMI has xorx.
+                let s0 = $a.rotate_right(2);
+                let s0_b = $a.rotate_right(13);
+                let s0 = s0 ^ s0_b;
+                let s0_c = $a.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+            };
+        }
+
+        #[target_feature(enable = "bmi1,bmi2")]
+        unsafe fn update_blocks_bmi_impl(state: &mut [u32], data: &[u8]) {
+            let mut w: [u32; 64] = [0; 64];
+
+            let mut a = state[0];
+            let mut b = state[1];
+            let mut c = state[2];
+            let mut d = state[3];
+            let mut e = state[4];
+            let mut f = state[5];
+            let mut g = state[6];
+            let mut h = state[7];
+
+            // Iterate one block at a time.
+            for block in data.chunks_exact(SHA_256_BLOCK_SIZE).by_ref() {
+                // Initialize w[0..16].
+                for (i, x) in block.chunks_exact(4).by_ref().enumerate() {
+                    w[i] = u32::from_be_bytes(x.try_into().unwrap());
+                }
+
+                // This code is used in unsafe, so use w and k pointers.
+                let mut w = w.as_mut_ptr();
+                let mut k = SHA_256_CONSTANTS.k.as_ptr();
+
+                // Unroll the code, and instead of swapping registers,
+                // swap the variables when invoking the macro.
+                round!(w, k, a, b, c, d, e, f, g, h);
+                round!(w, k, h, a, b, c, d, e, f, g);
+                round!(w, k, g, h, a, b, c, d, e, f);
+                round!(w, k, f, g, h, a, b, c, d, e);
+                round!(w, k, e, f, g, h, a, b, c, d);
+                round!(w, k, d, e, f, g, h, a, b, c);
+                round!(w, k, c, d, e, f, g, h, a, b);
+                round!(w, k, b, c, d, e, f, g, h, a);
+
+                round!(w, k, a, b, c, d, e, f, g, h);
+                round!(w, k, h, a, b, c, d, e, f, g);
+                round!(w, k, g, h, a, b, c, d, e, f);
+                round!(w, k, f, g, h, a, b, c, d, e);
+                round!(w, k, e, f, g, h, a, b, c, d);
+                round!(w, k, d, e, f, g, h, a, b, c);
+                round!(w, k, c, d, e, f, g, h, a, b);
+                round!(w, k, b, c, d, e, f, g, h, a);
+
+                for _ in 0..3 {
+                    // Unroll the code, and instead of swapping registers,
+                    // swap the variables when invoking the macro.
+                    schedule_and_round!(w, k, a, b, c, d, e, f, g, h);
+                    schedule_and_round!(w, k, h, a, b, c, d, e, f, g);
+                    schedule_and_round!(w, k, g, h, a, b, c, d, e, f);
+                    schedule_and_round!(w, k, f, g, h, a, b, c, d, e);
+                    schedule_and_round!(w, k, e, f, g, h, a, b, c, d);
+                    schedule_and_round!(w, k, d, e, f, g, h, a, b, c);
+                    schedule_and_round!(w, k, c, d, e, f, g, h, a, b);
+                    schedule_and_round!(w, k, b, c, d, e, f, g, h, a);
+
+                    schedule_and_round!(w, k, a, b, c, d, e, f, g, h);
+                    schedule_and_round!(w, k, h, a, b, c, d, e, f, g);
+                    schedule_and_round!(w, k, g, h, a, b, c, d, e, f);
+                    schedule_and_round!(w, k, f, g, h, a, b, c, d, e);
+                    schedule_and_round!(w, k, e, f, g, h, a, b, c, d);
+                    schedule_and_round!(w, k, d, e, f, g, h, a, b, c);
+                    schedule_and_round!(w, k, c, d, e, f, g, h, a, b);
+                    schedule_and_round!(w, k, b, c, d, e, f, g, h, a);
+                }
+
+                a = a.wrapping_add(state[0]);
+                b = b.wrapping_add(state[1]);
+                c = c.wrapping_add(state[2]);
+                d = d.wrapping_add(state[3]);
+                e = e.wrapping_add(state[4]);
+                f = f.wrapping_add(state[5]);
+                g = g.wrapping_add(state[6]);
+                h = h.wrapping_add(state[7]);
+
+                state[0] = a;
+                state[1] = b;
+                state[2] = c;
+                state[3] = d;
+                state[4] = e;
+                state[5] = f;
+                state[6] = g;
+                state[7] = h;
+            }
+        }
+
+        unsafe { update_blocks_bmi_impl(state, data) }
     }
 }
 
@@ -760,8 +1014,42 @@ mod tests {
         Ok(())
     }
 
+    fn test_optional_implementation(
+        implementation: Sha256Implementation,
+    ) -> Result<(), ChecksumError> {
+        // Assume the implementation is supported.
+        let mut supported: [bool; 2] = [true, true];
+        let orders: [EndianOrder; 2] = [EndianOrder::Big, EndianOrder::Little];
+
+        for (idx, order) in orders.iter().enumerate() {
+            if let Err(
+                _e @ ChecksumError::Unsupported {
+                    checksum: _,
+                    order: _,
+                    implementation: _,
+                },
+            ) = Sha256::new(*order, implementation)
+            {
+                supported[idx] = false;
+            }
+        }
+
+        // Check Big and Little are either both support, or both not supported.
+        assert_eq!(supported[0], supported[1]);
+
+        match supported[0] {
+            true => test_required_implementation(implementation),
+            false => Ok(()),
+        }
+    }
+
     #[test]
     fn sha256_generic() -> Result<(), ChecksumError> {
         test_required_implementation(Sha256Implementation::Generic)
+    }
+
+    #[test]
+    fn sha256_bmi() -> Result<(), ChecksumError> {
+        test_optional_implementation(Sha256Implementation::BMI)
     }
 }

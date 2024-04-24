@@ -13,7 +13,7 @@ homepage = "https://github.com/cybojanek/rzfs"
 name = "zfs"
 
 [features]
-default = ["std", "fletcher2-accel", "fletcher4-accel"]
+default = ["std", "fletcher2-accel", "fletcher4-accel", "sha256-accel"]
 std = []
 
 fletcher2-accel = ["fletcher2-sse2", "fletcher2-ssse3", "fletcher2-avx2"]
@@ -29,5 +29,8 @@ fletcher4-ssse3 = []
 fletcher4-avx2 = []
 fletcher4-avx512f = []
 fletcher4-avx512bw = []
+
+sha256-accel = ["sha256-bmi"]
+sha256-bmi = []
 
 [dependencies]
