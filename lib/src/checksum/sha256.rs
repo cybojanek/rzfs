@@ -22,22 +22,33 @@ pub enum Sha256Implementation {
     Generic,
 }
 
-/// Initial state H constants.
-const SHA_256_H: [u32; SHA_256_U32_COUNT] = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-];
+/**
+ * Align to 32 bytes for usage with 256 bit AVX2.
+ */
+#[repr(C, align(32))]
+struct Sha256Constants {
+    k: [u32; 64],
+    h: [u32; 8],
+}
 
-/// K constants.
-const SHA_256_K: [u32; 64] = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-];
+const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
+    k: [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ],
+    h: [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ],
+};
 
 const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 1] = [Sha256Implementation::Generic];
 
@@ -139,74 +150,266 @@ impl Sha256 {
             bytes_processed: 0,
             buffer_fill: 0,
             buffer: [0; SHA_256_BLOCK_SIZE],
-            state: SHA_256_H,
+            state: SHA_256_CONSTANTS.h,
             impl_ctx: Sha256ImplementationCtx::new(order, implementation)?,
         })
     }
 
     fn update_blocks_generic(state: &mut [u32], data: &[u8]) {
-        // Iterate one block at a time.
-        let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
+        /// Do a round of calculations. Caller must swap variables.
+        macro_rules! round {
+            ($round:expr,
+             $w:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr
+            ) => {
+                // Expand and re-order operations to minimize register usage,
+                // dependencies, and spilling registers to stack.
+                let ch_b = !$e;
+                let ch = $e & $f;
+                let ch_b = ch_b & $g;
+                let ch = ch ^ ch_b;
 
-        for block in iter.by_ref() {
-            let mut w: [u32; 64] = [0; 64];
+                let mut s1;
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    // Use Intel optimization.
+                    s1 = $e.rotate_right(14);
+                    s1 = $e ^ s1;
+                    s1 = s1.rotate_right(5);
+                    s1 = $e ^ s1;
+                    s1 = s1.rotate_right(6);
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    s1 = $e.rotate_right(6);
+                    let s1_b = $e.rotate_right(11);
+                    s1 = s1 ^ s1_b;
+                    let s1_c = $e.rotate_right(25);
+                    s1 = s1 ^ s1_c;
+                }
 
-            // Initialize w[0..16].
-            for i in 0..16 {
-                w[i] = u32::from_be_bytes(block[i * 4..(i + 1) * 4].try_into().unwrap());
-            }
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                let temp1 = temp1.wrapping_add(SHA_256_CONSTANTS.k[$round]);
+                let temp1 = temp1.wrapping_add($w[$round]);
+                $round += 1;
 
-            // Compute w[16..64].
-            for i in 16..64 {
-                let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-                let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-                w[i] = w[i - 16]
-                    .wrapping_add(s0)
-                    .wrapping_add(w[i - 7])
-                    .wrapping_add(s1);
-            }
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
 
-            // Initialize local variables.
-            let mut a = state[0];
-            let mut b = state[1];
-            let mut c = state[2];
-            let mut d = state[3];
-            let mut e = state[4];
-            let mut f = state[5];
-            let mut g = state[6];
-            let mut h = state[7];
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
 
-            // Run compression loop.
-            for i in 0..64 {
-                let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-                let ch = (e & f) ^ ((!e) & g);
-                let temp1 = h
-                    .wrapping_add(s1)
-                    .wrapping_add(ch)
-                    .wrapping_add(SHA_256_K[i])
-                    .wrapping_add(w[i]);
-                let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-                let maj = (a & b) ^ (a & c) ^ (b & c);
+                let mut s0;
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    // Use Intel optimization.
+                    s0 = $a.rotate_right(9);
+                    s0 = $a ^ s0;
+                    s0 = s0.rotate_right(11);
+                    s0 = $a ^ s0;
+                    s0 = s0.rotate_right(2);
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    s0 = $a.rotate_right(2);
+                    let s0_b = $a.rotate_right(13);
+                    s0 = s0 ^ s0_b;
+                    let s0_c = $a.rotate_right(22);
+                    s0 = s0 ^ s0_c;
+                }
+
                 let temp2 = s0.wrapping_add(maj);
 
-                h = g;
-                g = f;
-                f = e;
-                e = d.wrapping_add(temp1);
-                d = c;
-                c = b;
-                b = a;
-                a = temp1.wrapping_add(temp2);
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+            };
+        }
+
+        /** Schedule the next value, and do a round of calculations.
+         *
+         * Caller must swap variables.
+         */
+        macro_rules! schedule_and_round {
+            ($round:expr,
+             $w:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr
+            ) => {
+                // Expand and re-order operations to minimize register usage,
+                // dependencies, and spilling registers to stack.
+
+                ////////////////////////
+                // Round part 1.
+                let ch_b = !$e;
+                let ch = $e & $f;
+                let ch_b = ch_b & $g;
+                let ch = ch ^ ch_b;
+
+                let mut s1;
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    // Use Intel optimization.
+                    s1 = $e.rotate_right(14);
+                    s1 = $e ^ s1;
+                    s1 = s1.rotate_right(5);
+                    s1 = $e ^ s1;
+                    s1 = s1.rotate_right(6);
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    s1 = $e.rotate_right(6);
+                    let s1_b = $e.rotate_right(11);
+                    s1 = s1 ^ s1_b;
+                    let s1_c = $e.rotate_right(25);
+                    s1 = s1 ^ s1_c;
+                }
+
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+
+                ////////////////////////
+                // Schedule before part 2, so that the schedule result is
+                // available in the local register.
+                let wi = $w[$round - 16];
+
+                let w15 = $w[$round - 15];
+                let s0 = w15.rotate_right(7);
+                let s0 = (w15 >> 3) ^ s0;
+                let s0 = w15.rotate_right(18) ^ s0;
+                let wi = wi.wrapping_add(s0);
+
+                let w2 = $w[$round - 2];
+                let s1 = w2.rotate_right(17);
+                let s1 = (w2 >> 10) ^ s1;
+                let s1 = w2.rotate_right(19) ^ s1;
+                let wi = wi.wrapping_add(s1);
+
+                let wi = wi.wrapping_add($w[$round - 7]);
+                $w[$round] = wi;
+
+                ////////////////////////
+                // Round part 2.
+                let temp1 = temp1.wrapping_add(wi);
+                let temp1 = temp1.wrapping_add(SHA_256_CONSTANTS.k[$round]);
+                $round += 1;
+
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
+
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
+
+                let mut s0;
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                {
+                    // Use Intel optimization.
+                    s0 = $a.rotate_right(9);
+                    s0 = $a ^ s0;
+                    s0 = s0.rotate_right(11);
+                    s0 = $a ^ s0;
+                    s0 = s0.rotate_right(2);
+                }
+                #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+                {
+                    s0 = $a.rotate_right(2);
+                    let s0_b = $a.rotate_right(13);
+                    s0 = s0 ^ s0_b;
+                    let s0_c = $a.rotate_right(22);
+                    s0 = s0 ^ s0_c;
+                }
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+            };
+        }
+
+        let mut w: [u32; 64] = [0; 64];
+
+        let mut a = state[0];
+        let mut b = state[1];
+        let mut c = state[2];
+        let mut d = state[3];
+        let mut e = state[4];
+        let mut f = state[5];
+        let mut g = state[6];
+        let mut h = state[7];
+
+        // Iterate one block at a time.
+        for block in data.chunks_exact(SHA_256_BLOCK_SIZE).by_ref() {
+            // Initialize w[0..16].
+            for (i, x) in block.chunks_exact(4).by_ref().enumerate() {
+                w[i] = u32::from_be_bytes(x.try_into().unwrap());
             }
 
-            state[0] = state[0].wrapping_add(a);
-            state[1] = state[1].wrapping_add(b);
-            state[2] = state[2].wrapping_add(c);
-            state[3] = state[3].wrapping_add(d);
-            state[4] = state[4].wrapping_add(e);
-            state[5] = state[5].wrapping_add(f);
-            state[6] = state[6].wrapping_add(g);
-            state[7] = state[7].wrapping_add(h);
+            let mut round = 0;
+
+            // Unroll the code, and instead of swapping registers,
+            // swap the variables when invoking the macro.
+            round!(round, w, a, b, c, d, e, f, g, h);
+            round!(round, w, h, a, b, c, d, e, f, g);
+            round!(round, w, g, h, a, b, c, d, e, f);
+            round!(round, w, f, g, h, a, b, c, d, e);
+            round!(round, w, e, f, g, h, a, b, c, d);
+            round!(round, w, d, e, f, g, h, a, b, c);
+            round!(round, w, c, d, e, f, g, h, a, b);
+            round!(round, w, b, c, d, e, f, g, h, a);
+
+            round!(round, w, a, b, c, d, e, f, g, h);
+            round!(round, w, h, a, b, c, d, e, f, g);
+            round!(round, w, g, h, a, b, c, d, e, f);
+            round!(round, w, f, g, h, a, b, c, d, e);
+            round!(round, w, e, f, g, h, a, b, c, d);
+            round!(round, w, d, e, f, g, h, a, b, c);
+            round!(round, w, c, d, e, f, g, h, a, b);
+            round!(round, w, b, c, d, e, f, g, h, a);
+
+            while round < 64 {
+                // Unroll the code, and instead of swapping registers,
+                // swap the variables when invoking the macro.
+                schedule_and_round!(round, w, a, b, c, d, e, f, g, h);
+                schedule_and_round!(round, w, h, a, b, c, d, e, f, g);
+                schedule_and_round!(round, w, g, h, a, b, c, d, e, f);
+                schedule_and_round!(round, w, f, g, h, a, b, c, d, e);
+                schedule_and_round!(round, w, e, f, g, h, a, b, c, d);
+                schedule_and_round!(round, w, d, e, f, g, h, a, b, c);
+                schedule_and_round!(round, w, c, d, e, f, g, h, a, b);
+                schedule_and_round!(round, w, b, c, d, e, f, g, h, a);
+
+                schedule_and_round!(round, w, a, b, c, d, e, f, g, h);
+                schedule_and_round!(round, w, h, a, b, c, d, e, f, g);
+                schedule_and_round!(round, w, g, h, a, b, c, d, e, f);
+                schedule_and_round!(round, w, f, g, h, a, b, c, d, e);
+                schedule_and_round!(round, w, e, f, g, h, a, b, c, d);
+                schedule_and_round!(round, w, d, e, f, g, h, a, b, c);
+                schedule_and_round!(round, w, c, d, e, f, g, h, a, b);
+                schedule_and_round!(round, w, b, c, d, e, f, g, h, a);
+            }
+
+            a = a.wrapping_add(state[0]);
+            b = b.wrapping_add(state[1]);
+            c = c.wrapping_add(state[2]);
+            d = d.wrapping_add(state[3]);
+            e = e.wrapping_add(state[4]);
+            f = f.wrapping_add(state[5]);
+            g = g.wrapping_add(state[6]);
+            h = h.wrapping_add(state[7]);
+
+            state[0] = a;
+            state[1] = b;
+            state[2] = c;
+            state[3] = d;
+            state[4] = e;
+            state[5] = f;
+            state[6] = g;
+            state[7] = h;
         }
     }
 }
@@ -216,7 +419,7 @@ impl Checksum for Sha256 {
         self.bytes_processed = 0;
         self.buffer = [0; SHA_256_BLOCK_SIZE];
         self.buffer_fill = 0;
-        self.state = SHA_256_H;
+        self.state = SHA_256_CONSTANTS.h;
 
         Ok(())
     }
