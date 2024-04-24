@@ -12,8 +12,9 @@ const MICROSECONDS_IN_MILLISECOND: u64 = 1_000;
 
 fn benchmark_checksum(
     checksum: &mut dyn Checksum,
-    iterations: usize,
     data: &[u8],
+    iterations: usize,
+    duration_us: u64,
 ) -> Result<u64, ChecksumError> {
     // Warm up.
     checksum.reset()?;
@@ -26,7 +27,7 @@ fn benchmark_checksum(
 
     let start = Instant::now();
 
-    while microseconds < MICROSECONDS_IN_MILLISECOND {
+    while microseconds < duration_us {
         for _ in 0..iterations {
             checksum.reset()?;
             checksum.update(&data)?;
@@ -47,8 +48,9 @@ fn benchmark_checksum(
 }
 
 fn benchmark_fletcher2(
-    iterations: usize,
     data: &[u8],
+    iterations: usize,
+    duration_us: u64,
     display_units: u64,
 ) -> Result<(), ChecksumError> {
     println!(
@@ -70,7 +72,8 @@ fn benchmark_fletcher2(
             }
 
             let mut checksum = Fletcher2::new(endian, *implementation)?;
-            let bytes_per_second = benchmark_checksum(&mut checksum, iterations, data)?;
+            let bytes_per_second =
+                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
 
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
@@ -82,8 +85,9 @@ fn benchmark_fletcher2(
 }
 
 fn benchmark_fletcher4(
-    iterations: usize,
     data: &[u8],
+    iterations: usize,
+    duration_us: u64,
     display_units: u64,
 ) -> Result<(), ChecksumError> {
     println!(
@@ -105,7 +109,8 @@ fn benchmark_fletcher4(
             }
 
             let mut checksum = Fletcher4::new(endian, *implementation)?;
-            let bytes_per_second = benchmark_checksum(&mut checksum, iterations, data)?;
+            let bytes_per_second =
+                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
 
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
@@ -122,6 +127,8 @@ fn print_usage(arg0: &str) {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
+
+    let duration_us = MICROSECONDS_IN_MILLISECOND;
 
     if args.len() != 2 {
         print_usage(&args[0]);
@@ -152,12 +159,12 @@ fn main() -> ExitCode {
     }
 
     if args[1] == "fletcher2" {
-        if let Err(e) = benchmark_fletcher2(iterations, data, display_units) {
+        if let Err(e) = benchmark_fletcher2(data, iterations, duration_us, display_units) {
             eprintln!("{e}");
             return ExitCode::FAILURE;
         }
     } else if args[1] == "fletcher4" {
-        if let Err(e) = benchmark_fletcher4(iterations, data, display_units) {
+        if let Err(e) = benchmark_fletcher4(data, iterations, duration_us, display_units) {
             eprintln!("{e}");
             return ExitCode::FAILURE;
         }
