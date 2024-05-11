@@ -23,6 +23,7 @@ const MASK_LEAF_EXFT_EBX_BMI1: u32 = 1 << 3;
 const MASK_LEAF_EXFT_EBX_AVX_2: u32 = 1 << 5;
 const MASK_LEAF_EXFT_EBX_BMI2: u32 = 1 << 8;
 const MASK_LEAF_EXFT_EBX_AVX_512_F: u32 = 1 << 16;
+const MASK_LEAF_EXFT_EBX_SHA: u32 = 1 << 29;
 const MASK_LEAF_EXFT_EBX_AVX_512_BW: u32 = 1 << 30;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +115,21 @@ pub(crate) fn is_bmi2_supported() -> bool {
         let cpuid = arch::__cpuid(LEAF_EXTENDED_FEATURES);
 
         (cpuid.ebx & MASK_LEAF_EXFT_EBX_BMI2) != 0
+    }
+}
+
+/// Is SHA supported by the CPU.
+pub(crate) fn is_sha_supported() -> bool {
+    unsafe {
+        // Get number of leaves.
+        let (leaf_max, _) = arch::__get_cpuid_max(0);
+        if leaf_max < LEAF_EXTENDED_FEATURES {
+            return false;
+        }
+
+        let cpuid = arch::__cpuid(LEAF_EXTENDED_FEATURES);
+
+        (cpuid.ebx & MASK_LEAF_EXFT_EBX_SHA) != 0
     }
 }
 

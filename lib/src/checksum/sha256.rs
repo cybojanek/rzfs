@@ -21,9 +21,15 @@ use crate::arch::x86_any::{is_bmi1_supported, is_bmi2_supported};
 
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
-    feature = "sha256-ssse3",
+    any(feature = "sha256-ssse3", feature = "sha256-sha"),
 ))]
 use crate::arch::x86_any::{is_sse2_supported, is_sse3_supported, is_ssse3_supported};
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    any(feature = "sha256-ssse3", feature = "sha256-sha"),
+))]
+use crate::arch::x86_any::is_sha_supported;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -40,6 +46,7 @@ const SHA_256_U32_COUNT: usize = 8;
  *   `BMI` uses integer registers, and does not use any floating point registers.
  * - [`Sha256Implementation::SSSE3`] uses `SSE2` and `SSSE3`. It does not use
  *   `BMI`, because it was not available at the time of `SSSE3`.
+ * - [`Sha256Implementation::SHA`] uses `SSE2`, `SSSE3`, and Intel `SHA`.
  */
 #[derive(Copy, Clone, Debug)]
 pub enum Sha256Implementation {
@@ -51,6 +58,9 @@ pub enum Sha256Implementation {
 
     /// SSSE3.
     SSSE3,
+
+    /// SHA extensions with SSE2 and SSSE3.
+    SHA,
 }
 
 /**
@@ -93,10 +103,11 @@ const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
     ],
 };
 
-const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 3] = [
+const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 4] = [
     Sha256Implementation::Generic,
     Sha256Implementation::BMI,
     Sha256Implementation::SSSE3,
+    Sha256Implementation::SHA,
 ];
 
 impl Sha256Implementation {
@@ -122,7 +133,19 @@ impl Sha256Implementation {
                 is_sse2_supported() && is_sse3_supported() && is_ssse3_supported()
             }
 
-            #[cfg(any(not(feature = "sha256-bmi"), not(feature = "sha256-ssse3")))]
+            #[cfg(feature = "sha256-sha")]
+            Sha256Implementation::SHA => {
+                is_sse2_supported()
+                    && is_sse3_supported()
+                    && is_ssse3_supported()
+                    && is_sha_supported()
+            }
+
+            #[cfg(any(
+                not(feature = "sha256-bmi"),
+                not(feature = "sha256-ssse3"),
+                not(feature = "sha256-sha"),
+            ))]
             _ => false,
         }
     }
@@ -133,6 +156,7 @@ impl Sha256Implementation {
             Sha256Implementation::Generic => "generic",
             Sha256Implementation::BMI => "bmi",
             Sha256Implementation::SSSE3 => "ssse3",
+            Sha256Implementation::SHA => "sha",
         }
     }
 }
@@ -200,7 +224,16 @@ impl Sha256ImplementationCtx {
                 update_blocks: Sha256::update_blocks_ssse3,
             }),
 
-            #[cfg(any(not(feature = "sha256-bmi"), not(feature = "sha256-ssse3")))]
+            #[cfg(feature = "sha256-sha")]
+            Sha256Implementation::SHA => Ok(Sha256ImplementationCtx {
+                update_blocks: Sha256::update_blocks_sha,
+            }),
+
+            #[cfg(any(
+                not(feature = "sha256-bmi"),
+                not(feature = "sha256-ssse3"),
+                not(feature = "sha256-sha"),
+            ))]
             _ => Err(ChecksumError::Unsupported {
                 checksum: ChecksumType::Sha256,
                 order,
@@ -1162,19 +1195,358 @@ impl Sha256 {
                     // Prevent unused assignment warning due to loop unroll.
                     let _ = round;
 
-                    state[0] = state[0].wrapping_add(a);
-                    state[1] = state[1].wrapping_add(b);
-                    state[2] = state[2].wrapping_add(c);
-                    state[3] = state[3].wrapping_add(d);
-                    state[4] = state[4].wrapping_add(e);
-                    state[5] = state[5].wrapping_add(f);
-                    state[6] = state[6].wrapping_add(g);
-                    state[7] = state[7].wrapping_add(h);
+                    a = a.wrapping_add(state[0]);
+                    b = b.wrapping_add(state[1]);
+                    c = c.wrapping_add(state[2]);
+                    d = d.wrapping_add(state[3]);
+                    e = e.wrapping_add(state[4]);
+                    f = f.wrapping_add(state[5]);
+                    g = g.wrapping_add(state[6]);
+                    h = h.wrapping_add(state[7]);
+
+                    state[0] = a;
+                    state[1] = b;
+                    state[2] = c;
+                    state[3] = d;
+                    state[4] = e;
+                    state[5] = f;
+                    state[6] = g;
+                    state[7] = h;
                 }
             }
         }
 
         unsafe { update_blocks_ssse3_impl(state, data) }
+    }
+
+    #[cfg(all(
+        feature = "sha256-sha",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn update_blocks_sha(state: &mut [u32], data: &[u8]) {
+        // Intrinsics used:
+        // +-----------------------+-------+
+        // | _mm_add_epi32         | SSE2  |
+        // | _mm_alignr_epi8       | SSSE3 |
+        // | _mm_lddqu_si128       | SSE3  |
+        // | _mm_load_si128        | SSE2  |
+        // | _mm_set_epi8          | SSE2  |
+        // | _mm_sha256msg1_epu32  | SHA   |
+        // | _mm_sha256msg2_epu32  | SHA   |
+        // | _mm_sha256rnds2_epu32 | SHA   |
+        // | _mm_shuffle_epi32     | SSE2  |
+        // | _mm_shuffle_epi8      | SSSE3 |
+        // | _mm_storeu_si128      | SSE2  |
+        // | _mm_unpackhi_epi64    | SSE2  |
+        // | _mm_unpacklo_epi64    | SSE2  |
+        // +-----------------------+-------+
+
+        macro_rules! SHA_256_K_M128I {
+            () => {
+                SHA_256_CONSTANTS.k.as_ptr() as *const arch::__m128i
+            };
+        }
+
+        // This function implements SHA according to the Intel paper entitled:
+        // Intel SHA Extensions - New Instructions Supporting the Secure Hashing
+        // Algorithm on Intel Architecture Processors
+
+        #[target_feature(enable = "sse2,sse3,ssse3,sha")]
+        unsafe fn update_blocks_sha_impl(state: &mut [u32], data: &[u8]) {
+            unsafe {
+                // Set the shuffle value.
+                #[cfg(target_endian = "little")]
+                let shuffle = arch::_mm_set_epi8(
+                    0x0c, 0x0d, 0x0e, 0x0f, // f3
+                    0x08, 0x09, 0x0a, 0x0b, // f2
+                    0x04, 0x05, 0x06, 0x07, // f1
+                    0x00, 0x01, 0x02, 0x03, // f0
+                );
+
+                // Load the saved state.
+                let state = state.as_ptr() as *mut arch::__m128i;
+                let mut abcd = arch::_mm_lddqu_si128(state.add(0));
+                let mut efgh = arch::_mm_lddqu_si128(state.add(1));
+
+                // Mix the registers for usage with _mm_sha256rnds2_epu32.
+                let mut sha_abef = arch::_mm_unpacklo_epi64(abcd, efgh);
+                let mut sha_cdgh = arch::_mm_unpackhi_epi64(abcd, efgh);
+
+                // The register has values a, b, c, and, d, but they look like:
+                // abef[0..32] = a, abef[32..64] = b
+                // abef[64..96] = e, abef[96..128] = f
+                // However, they need to be re-arranged for _mm_sha256rnds2_epu32:
+                // abef[0..32] = f, abef[32..64] = e
+                // abef[64..96] = b, abef[96..128] = a
+                sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
+                sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
+
+                // Iterate one block at a time.
+                let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    let block = block.as_ptr() as *const arch::__m128i;
+
+                    let mut abef = sha_abef;
+                    let mut cdgh = sha_cdgh;
+
+                    ////////////////////
+                    // Rounds 0 to 4.
+
+                    // Initialize w[0..4].
+                    let mut w_00_04 = arch::_mm_lddqu_si128(block.add(0));
+                    #[cfg(target_endian = "little")]
+                    {
+                        w_00_04 = arch::_mm_shuffle_epi8(w_00_04, shuffle);
+                    }
+
+                    // Initialize k[0..4].
+                    let k_00_04 = arch::_mm_load_si128(SHA_256_K_M128I!().add(0));
+
+                    // Initialize wk[0..4].
+                    let wk_00_04 = arch::_mm_add_epi32(w_00_04, k_00_04);
+
+                    // Do two rounds using wk[0..2].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_00_04);
+
+                    // Move wk[2..4] down to the lower bits.
+                    let wk_00_04_b = arch::_mm_shuffle_epi32(wk_00_04, 0b00001110);
+
+                    // Do two rounds using m[2..4].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_00_04_b);
+
+                    ////////////////////
+                    // Rounds 4 to 8.
+
+                    // Initialize w[0..4].
+                    let mut w_04_08 = arch::_mm_lddqu_si128(block.add(1));
+                    #[cfg(target_endian = "little")]
+                    {
+                        w_04_08 = arch::_mm_shuffle_epi8(w_04_08, shuffle);
+                    }
+
+                    // Initialize k[4..8].
+                    let k_04_08 = arch::_mm_load_si128(SHA_256_K_M128I!().add(1));
+
+                    // Initialize wk[4..8].
+                    let wk_04_08 = arch::_mm_add_epi32(w_04_08, k_04_08);
+
+                    // Do two rounds using wk[4..6].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_04_08);
+
+                    // Move wk[6..8] down to the lower bits.
+                    let wk_04_08_b = arch::_mm_shuffle_epi32(wk_04_08, 0b00001110);
+
+                    // Do two rounds using wk[6..8].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_04_08_b);
+
+                    // Compute intermediate calculation for w16 to w20.
+                    // w[0..4] + w[4..] => x[0..4].
+                    let x_00_04 = arch::_mm_sha256msg1_epu32(w_00_04, w_04_08);
+
+                    ////////////////////
+                    // Rounds 8 to 12.
+
+                    // Initialize w[8..12].
+                    let mut w_08_12 = arch::_mm_lddqu_si128(block.add(2));
+                    #[cfg(target_endian = "little")]
+                    {
+                        w_08_12 = arch::_mm_shuffle_epi8(w_08_12, shuffle);
+                    }
+
+                    // Initialize k[8..12].
+                    let k_08_12 = arch::_mm_load_si128(SHA_256_K_M128I!().add(2));
+
+                    // Initialize wk[8..12].
+                    let wk_08_12 = arch::_mm_add_epi32(w_08_12, k_08_12);
+
+                    // Do two rounds using wk[8..10].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_08_12);
+
+                    // Move wk[10..12] down to the lower bits.
+                    let wk_08_12_b = arch::_mm_shuffle_epi32(wk_08_12, 0b00001110);
+
+                    // Do two rounds using wk[10..12].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_08_12_b);
+
+                    // Compute intermediate calculation for w20 to w24.
+                    // w[4..8] + w[8..] => x[4..8].
+                    let x_04_08 = arch::_mm_sha256msg1_epu32(w_04_08, w_08_12);
+
+                    ////////////////////
+                    // Rounds 12 to 16.
+
+                    // Initialize w[12..16].
+                    let mut w_12_16 = arch::_mm_lddqu_si128(block.add(3));
+                    #[cfg(target_endian = "little")]
+                    {
+                        w_12_16 = arch::_mm_shuffle_epi8(w_12_16, shuffle);
+                    }
+
+                    // Initialize k[12..16].
+                    let k_12_16 = arch::_mm_load_si128(SHA_256_K_M128I!().add(3));
+
+                    // Initialize wk[12..16].
+                    let wk_12_16 = arch::_mm_add_epi32(w_12_16, k_12_16);
+
+                    // Do two rounds using wk[12..14].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_12_16);
+
+                    // sha256msg2 requires that w[-7] be added by the caller.
+                    // For w_16_20, w_09_13 is needed.
+                    let w_09_13 = arch::_mm_alignr_epi8(w_12_16, w_08_12, 4);
+                    let z_00_04 = arch::_mm_add_epi32(x_00_04, w_09_13);
+                    let w_16_20 = arch::_mm_sha256msg2_epu32(z_00_04, w_12_16);
+
+                    // Move wk[14..16] down to the lower bits.
+                    let wk_12_16_b = arch::_mm_shuffle_epi32(wk_12_16, 0b00001110);
+
+                    // Do two rounds using wk[14..16].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_12_16_b);
+
+                    // Compute intermediate calculation for w24 to w28.
+                    // w[8..12] + w[12..] => x[8..12].
+                    let x_08_12 = arch::_mm_sha256msg1_epu32(w_08_12, w_12_16);
+
+                    ////////////////////
+                    // Rounds 16 to 52.
+                    let mut rounds = 16;
+
+                    let mut w_12_16 = w_12_16;
+                    let mut w_16_20 = w_16_20;
+                    let mut x_04_08 = x_04_08;
+                    let mut x_08_12 = x_08_12;
+
+                    while rounds < 52 {
+                        // Initialize k[16..20].
+                        let k_16_20 = arch::_mm_lddqu_si128(
+                            SHA_256_CONSTANTS.k[rounds..].as_ptr() as *const _
+                        );
+
+                        // Initialize wk[16..20].
+                        let wk_16_20 = arch::_mm_add_epi32(w_16_20, k_16_20);
+
+                        // Do two rounds using wk[16..18].
+                        cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_16_20);
+
+                        // sha256msg2 requires that w[-7] be added by the caller.
+                        // For w_20_24, w_13_17 is needed.
+                        let w_13_17 = arch::_mm_alignr_epi8(w_16_20, w_12_16, 4);
+                        let z_04_08 = arch::_mm_add_epi32(x_04_08, w_13_17);
+                        let w_20_24 = arch::_mm_sha256msg2_epu32(z_04_08, w_16_20);
+
+                        // Move wk[18..20] down to the lower bits.
+                        let wk_16_20_b = arch::_mm_shuffle_epi32(wk_16_20, 0b00001110);
+
+                        // Do two rounds using wk[18..20].
+                        abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_16_20_b);
+
+                        // Compute intermediate calculation for w24 to w28.
+                        // w[12..16] + w[17..] => x[12..16].
+                        let x_12_16 = arch::_mm_sha256msg1_epu32(w_12_16, w_16_20);
+
+                        rounds += 4;
+
+                        // Advance variables.
+                        w_12_16 = w_16_20;
+                        w_16_20 = w_20_24;
+                        x_04_08 = x_08_12;
+                        x_08_12 = x_12_16;
+                    }
+
+                    ////////////////////
+                    // Rename for clarity.
+                    let w_48_52 = w_12_16;
+                    let w_52_56 = w_16_20;
+                    let x_40_44 = x_04_08;
+                    let x_44_48 = x_08_12;
+
+                    ////////////////////
+                    // Rounds 52 to 56.
+
+                    // Initialize k[52..56].
+                    let k_52_56 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(13));
+
+                    // Initialize wk[52..56].
+                    let wk_52_56 = arch::_mm_add_epi32(w_52_56, k_52_56);
+
+                    // Do two rounds using wk[52..54].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_52_56);
+
+                    // sha256msg2 requires that w[-7] be added by the caller.
+                    // For w_56_60, w_49_53 is needed.
+                    let w_49_53 = arch::_mm_alignr_epi8(w_52_56, w_48_52, 4);
+                    let z_40_44 = arch::_mm_add_epi32(x_40_44, w_49_53);
+                    let w_56_60 = arch::_mm_sha256msg2_epu32(z_40_44, w_52_56);
+
+                    // Move wk[54..56] down to the lower bits.
+                    let wk_52_56_b = arch::_mm_shuffle_epi32(wk_52_56, 0b00001110);
+
+                    // Do two rounds using wk[54..56].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_52_56_b);
+
+                    ////////////////////
+                    // Rounds 56 to 60.
+
+                    // Initialize k[56..60].
+                    let k_56_60 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(14));
+
+                    // Initialize wk[56..60].
+                    let wk_56_60 = arch::_mm_add_epi32(w_56_60, k_56_60);
+
+                    // Do two rounds using wk[56..58].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_56_60);
+
+                    // sha256msg2 requires that w[-7] be added by the caller.
+                    // For w_60_64, w_53_61 is needed.
+                    let w_53_57 = arch::_mm_alignr_epi8(w_56_60, w_52_56, 4);
+                    let z_44_48 = arch::_mm_add_epi32(x_44_48, w_53_57);
+                    let w_60_64 = arch::_mm_sha256msg2_epu32(z_44_48, w_56_60);
+
+                    // Move wk[58..60] down to the lower bits.
+                    let wk_56_60_b = arch::_mm_shuffle_epi32(wk_56_60, 0b00001110);
+
+                    // Do two rounds using wk[58..60].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_56_60_b);
+
+                    ////////////////////
+                    // Rounds 60 to 64.
+
+                    // Initialize k[60..64].
+                    let k_60_64 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(15));
+
+                    // Initialize wk[60..64].
+                    let wk_60_64 = arch::_mm_add_epi32(w_60_64, k_60_64);
+
+                    // Do two rounds using wk[60..62].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_60_64);
+
+                    // Move wk[62..64] down to the lower bits.
+                    let wk_60_64_b = arch::_mm_shuffle_epi32(wk_60_64, 0b00001110);
+
+                    // Do two rounds using wk[62..64].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_60_64_b);
+
+                    ////////////////////
+                    // Done.
+                    sha_abef = arch::_mm_add_epi32(sha_abef, abef);
+                    sha_cdgh = arch::_mm_add_epi32(sha_cdgh, cdgh);
+                }
+
+                sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
+                sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
+
+                // Unpack the registers for the state.
+                abcd = arch::_mm_unpacklo_epi64(sha_abef, sha_cdgh);
+                efgh = arch::_mm_unpackhi_epi64(sha_abef, sha_cdgh);
+
+                // Save the state.
+                arch::_mm_storeu_si128(state.add(0), abcd);
+                arch::_mm_storeu_si128(state.add(1), efgh);
+            }
+        }
+
+        unsafe { update_blocks_sha_impl(state, data) }
     }
 }
 
@@ -1566,5 +1938,10 @@ mod tests {
     #[test]
     fn sha256_ssse3() -> Result<(), ChecksumError> {
         test_optional_implementation(Sha256Implementation::SSSE3)
+    }
+
+    #[test]
+    fn sha256_sha() -> Result<(), ChecksumError> {
+        test_optional_implementation(Sha256Implementation::SHA)
     }
 }
