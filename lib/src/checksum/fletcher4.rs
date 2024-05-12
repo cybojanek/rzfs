@@ -841,10 +841,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_sse2_byteswap_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each dual stream into an xmm register.
-                let mut a = arch::_mm_loadu_si128(state[0..2].as_ptr() as *const _);
-                let mut b = arch::_mm_loadu_si128(state[2..4].as_ptr() as *const _);
-                let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
-                let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m128i;
+                let mut a = arch::_mm_loadu_si128(state.add(0));
+                let mut b = arch::_mm_loadu_si128(state.add(1));
+                let mut c = arch::_mm_loadu_si128(state.add(2));
+                let mut d = arch::_mm_loadu_si128(state.add(3));
 
                 // Iterate two blocks at a time.
                 let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
@@ -873,10 +874,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm_storeu_si128(state[0..2].as_mut_ptr() as *mut _, a);
-                arch::_mm_storeu_si128(state[2..4].as_mut_ptr() as *mut _, b);
-                arch::_mm_storeu_si128(state[4..6].as_mut_ptr() as *mut _, c);
-                arch::_mm_storeu_si128(state[6..8].as_mut_ptr() as *mut _, d);
+                arch::_mm_storeu_si128(state.add(0), a);
+                arch::_mm_storeu_si128(state.add(1), b);
+                arch::_mm_storeu_si128(state.add(2), c);
+                arch::_mm_storeu_si128(state.add(3), d);
             }
         }
 
@@ -902,10 +903,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_sse2_native_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each dual stream into an xmm register.
-                let mut a = arch::_mm_loadu_si128(state[0..2].as_ptr() as *const _);
-                let mut b = arch::_mm_loadu_si128(state[2..4].as_ptr() as *const _);
-                let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
-                let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m128i;
+                let mut a = arch::_mm_loadu_si128(state.add(0));
+                let mut b = arch::_mm_loadu_si128(state.add(1));
+                let mut c = arch::_mm_loadu_si128(state.add(2));
+                let mut d = arch::_mm_loadu_si128(state.add(3));
 
                 // Load zero into an xmm register.
                 let zero = arch::_mm_setzero_si128();
@@ -957,10 +959,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm_storeu_si128(state[0..2].as_mut_ptr() as *mut _, a);
-                arch::_mm_storeu_si128(state[2..4].as_mut_ptr() as *mut _, b);
-                arch::_mm_storeu_si128(state[4..6].as_mut_ptr() as *mut _, c);
-                arch::_mm_storeu_si128(state[6..8].as_mut_ptr() as *mut _, d);
+                arch::_mm_storeu_si128(state.add(0), a);
+                arch::_mm_storeu_si128(state.add(1), b);
+                arch::_mm_storeu_si128(state.add(2), c);
+                arch::_mm_storeu_si128(state.add(3), d);
             }
         }
 
@@ -976,7 +978,7 @@ impl Fletcher4 {
         // +--------------------+-------+
         // | _mm_add_epi64      | SSE2  |
         // | _mm_loadu_si128    | SSE2  |
-        // | _mm_set_epi32      | SSE2  |
+        // | _mm_set_epi8       | SSE2  |
         // | _mm_setzero_si128  | SSE2  |
         // | _mm_shuffle_epi8   | SSSE3 |
         // | _mm_storeu_si128   | SSE2  |
@@ -988,10 +990,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_ssse3_byteswap_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each dual stream into an xmm register.
-                let mut a = arch::_mm_loadu_si128(state[0..2].as_ptr() as *const _);
-                let mut b = arch::_mm_loadu_si128(state[2..4].as_ptr() as *const _);
-                let mut c = arch::_mm_loadu_si128(state[4..6].as_ptr() as *const _);
-                let mut d = arch::_mm_loadu_si128(state[6..8].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m128i;
+                let mut a = arch::_mm_loadu_si128(state.add(0));
+                let mut b = arch::_mm_loadu_si128(state.add(1));
+                let mut c = arch::_mm_loadu_si128(state.add(2));
+                let mut d = arch::_mm_loadu_si128(state.add(3));
 
                 // Load zero into an xmm register.
                 let zero = arch::_mm_setzero_si128();
@@ -1064,10 +1067,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm_storeu_si128(state[0..2].as_mut_ptr() as *mut _, a);
-                arch::_mm_storeu_si128(state[2..4].as_mut_ptr() as *mut _, b);
-                arch::_mm_storeu_si128(state[4..6].as_mut_ptr() as *mut _, c);
-                arch::_mm_storeu_si128(state[6..8].as_mut_ptr() as *mut _, d);
+                arch::_mm_storeu_si128(state.add(0), a);
+                arch::_mm_storeu_si128(state.add(1), b);
+                arch::_mm_storeu_si128(state.add(2), c);
+                arch::_mm_storeu_si128(state.add(3), d);
             }
         }
 
@@ -1101,10 +1104,11 @@ impl Fletcher4 {
                 );
 
                 // Load each quad stream into a ymm register.
-                let mut a = arch::_mm256_lddqu_si256(state[0..4].as_ptr() as *const _);
-                let mut b = arch::_mm256_lddqu_si256(state[4..8].as_ptr() as *const _);
-                let mut c = arch::_mm256_lddqu_si256(state[8..12].as_ptr() as *const _);
-                let mut d = arch::_mm256_lddqu_si256(state[12..16].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m256i;
+                let mut a = arch::_mm256_lddqu_si256(state.add(0));
+                let mut b = arch::_mm256_lddqu_si256(state.add(1));
+                let mut c = arch::_mm256_lddqu_si256(state.add(2));
+                let mut d = arch::_mm256_lddqu_si256(state.add(3));
 
                 // Iterate 128 bits at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
@@ -1156,10 +1160,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm256_storeu_si256(state[0..4].as_mut_ptr() as *mut _, a);
-                arch::_mm256_storeu_si256(state[4..8].as_mut_ptr() as *mut _, b);
-                arch::_mm256_storeu_si256(state[8..12].as_mut_ptr() as *mut _, c);
-                arch::_mm256_storeu_si256(state[12..16].as_mut_ptr() as *mut _, d);
+                arch::_mm256_storeu_si256(state.add(0), a);
+                arch::_mm256_storeu_si256(state.add(1), b);
+                arch::_mm256_storeu_si256(state.add(2), c);
+                arch::_mm256_storeu_si256(state.add(3), d);
             }
         }
 
@@ -1184,10 +1188,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_avx2_native_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each quad stream into a ymm register.
-                let mut a = arch::_mm256_lddqu_si256(state[0..4].as_ptr() as *const _);
-                let mut b = arch::_mm256_lddqu_si256(state[4..8].as_ptr() as *const _);
-                let mut c = arch::_mm256_lddqu_si256(state[8..12].as_ptr() as *const _);
-                let mut d = arch::_mm256_lddqu_si256(state[12..16].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m256i;
+                let mut a = arch::_mm256_lddqu_si256(state.add(0));
+                let mut b = arch::_mm256_lddqu_si256(state.add(1));
+                let mut c = arch::_mm256_lddqu_si256(state.add(2));
+                let mut d = arch::_mm256_lddqu_si256(state.add(3));
 
                 // Iterate 128 bits at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
@@ -1219,10 +1224,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm256_storeu_si256(state[0..4].as_mut_ptr() as *mut _, a);
-                arch::_mm256_storeu_si256(state[4..8].as_mut_ptr() as *mut _, b);
-                arch::_mm256_storeu_si256(state[8..12].as_mut_ptr() as *mut _, c);
-                arch::_mm256_storeu_si256(state[12..16].as_mut_ptr() as *mut _, d);
+                arch::_mm256_storeu_si256(state.add(0), a);
+                arch::_mm256_storeu_si256(state.add(1), b);
+                arch::_mm256_storeu_si256(state.add(2), c);
+                arch::_mm256_storeu_si256(state.add(3), d);
             }
         }
 
@@ -1251,10 +1256,11 @@ impl Fletcher4 {
             //                  an AVX512BW instruction.
             unsafe {
                 // Load each octo stream into a zmm register.
-                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
-                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
-                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
-                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m512i;
+                let mut a = arch::_mm512_lddqu_si512(state.add(0));
+                let mut b = arch::_mm512_lddqu_si512(state.add(1));
+                let mut c = arch::_mm512_lddqu_si512(state.add(2));
+                let mut d = arch::_mm512_lddqu_si512(state.add(3));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1314,10 +1320,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
-                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
-                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
-                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+                arch::_mm512_storeu_si512(state.add(0), a);
+                arch::_mm512_storeu_si512(state.add(1), b);
+                arch::_mm512_storeu_si512(state.add(2), c);
+                arch::_mm512_storeu_si512(state.add(3), d);
             }
         }
 
@@ -1342,10 +1348,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each octo stream into a zmm register.
-                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
-                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
-                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
-                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m512i;
+                let mut a = arch::_mm512_lddqu_si512(state.add(0));
+                let mut b = arch::_mm512_lddqu_si512(state.add(1));
+                let mut c = arch::_mm512_lddqu_si512(state.add(2));
+                let mut d = arch::_mm512_lddqu_si512(state.add(3));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1377,10 +1384,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
-                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
-                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
-                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+                arch::_mm512_storeu_si512(state.add(0), a);
+                arch::_mm512_storeu_si512(state.add(1), b);
+                arch::_mm512_storeu_si512(state.add(2), c);
+                arch::_mm512_storeu_si512(state.add(3), d);
             }
         }
 
@@ -1418,10 +1425,11 @@ impl Fletcher4 {
                 );
 
                 // Load each octo stream into a zmm register.
-                let mut a = arch::_mm512_loadu_si512(state[0..8].as_ptr() as *const _);
-                let mut b = arch::_mm512_loadu_si512(state[8..16].as_ptr() as *const _);
-                let mut c = arch::_mm512_loadu_si512(state[16..24].as_ptr() as *const _);
-                let mut d = arch::_mm512_loadu_si512(state[24..32].as_ptr() as *const _);
+                let state = state.as_ptr() as *mut arch::__m512i;
+                let mut a = arch::_mm512_lddqu_si512(state.add(0));
+                let mut b = arch::_mm512_lddqu_si512(state.add(1));
+                let mut c = arch::_mm512_lddqu_si512(state.add(2));
+                let mut d = arch::_mm512_lddqu_si512(state.add(3));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1473,10 +1481,10 @@ impl Fletcher4 {
                 }
 
                 // Save state.
-                arch::_mm512_storeu_si512(state[0..8].as_mut_ptr() as *mut _, a);
-                arch::_mm512_storeu_si512(state[8..16].as_mut_ptr() as *mut _, b);
-                arch::_mm512_storeu_si512(state[16..24].as_mut_ptr() as *mut _, c);
-                arch::_mm512_storeu_si512(state[24..32].as_mut_ptr() as *mut _, d);
+                arch::_mm512_storeu_si512(state.add(0), a);
+                arch::_mm512_storeu_si512(state.add(1), b);
+                arch::_mm512_storeu_si512(state.add(2), c);
+                arch::_mm512_storeu_si512(state.add(3), d);
             }
         }
 
