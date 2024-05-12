@@ -27,9 +27,15 @@ use crate::arch::x86_any::{is_sse2_supported, is_sse3_supported, is_ssse3_suppor
 
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
-    any(feature = "sha256-avx"),
+    any(feature = "sha256-avx", feature = "sha256-avx2"),
 ))]
 use crate::arch::x86_any::is_avx_supported;
+
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    any(feature = "sha256-avx2"),
+))]
+use crate::arch::x86_any::is_avx2_supported;
 
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
@@ -54,6 +60,12 @@ const SHA_256_U32_COUNT: usize = 8;
  *   `BMI`, because it was not available at the time of `SSSE3`.
  * - [`Sha256Implementation::AVX`] uses `AVX`. It does not use
  *   `BMI`, because it was not available at the time of `AVX`.
+ * - [`Sha256Implementation::AVX2`] uses `AVX`, `AVX2`, `BMI1`, and `BMI2, since
+ *   they were all released at the same time on Haswell. AMD has released
+ *   processors with just `BMI1` support, but this implementation requires both.
+ *   In order to take advantage of 256 bit SIMD, this implementation schedules
+ *   two blocks at a time, and gracefully handles inputs that are not multiples
+ *   of two blocks.
  * - [`Sha256Implementation::SHA`] uses `SSE2`, `SSSE3`, and Intel `SHA`.
  */
 #[derive(Copy, Clone, Debug)]
@@ -70,6 +82,9 @@ pub enum Sha256Implementation {
     /// AVX.
     AVX,
 
+    /// AVX2 with BMI1 and BMI2.
+    AVX2,
+
     /// SHA extensions with SSE2 and SSSE3.
     SHA,
 }
@@ -79,6 +94,11 @@ pub enum Sha256Implementation {
  */
 #[repr(C, align(32))]
 struct Sha256Constants {
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        any(feature = "sha256-avx2"),
+    ))]
+    k2: [u32; 128],
     k: [u32; 64],
     h: [u32; 8],
 }
@@ -96,6 +116,32 @@ struct WK16 {
 }
 
 const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
+    // 256 bit k values, duplicated for 128 bit lanes of AVX2
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        any(feature = "sha256-avx2"),
+    ))]
+    k2: [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x428a2f98, 0x71374491, 0xb5c0fbcf,
+        0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0x3956c25b, 0x59f111f1,
+        0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0xd807aa98,
+        0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6,
+        0x240ca1cc, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa,
+        0x5cb0a9dc, 0x76f988da, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
+        0xa831c66d, 0xb00327c8, 0xbf597fc7, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0xc6e00bf3, 0xd5a79147, 0x06ca6351,
+        0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x27b70a85, 0x2e1b2138,
+        0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0x650a7354,
+        0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585,
+        0x106aa070, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+        0x2748774c, 0x34b0bcb5, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3,
+        0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x748f82ee, 0x78a5636f, 0x84c87814,
+        0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2, 0x90befffa, 0xa4506ceb,
+        0xbef9a3f7, 0xc67178f2,
+    ],
     k: [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
         0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
@@ -114,11 +160,12 @@ const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
     ],
 };
 
-const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 5] = [
+const ALL_SHA_256_IMPLEMENTATIONS: [Sha256Implementation; 6] = [
     Sha256Implementation::Generic,
     Sha256Implementation::BMI,
     Sha256Implementation::SSSE3,
     Sha256Implementation::AVX,
+    Sha256Implementation::AVX2,
     Sha256Implementation::SHA,
 ];
 
@@ -148,6 +195,14 @@ impl Sha256Implementation {
             #[cfg(feature = "sha256-avx")]
             Sha256Implementation::AVX => is_avx_supported(),
 
+            #[cfg(feature = "sha256-avx2")]
+            Sha256Implementation::AVX2 => {
+                is_avx_supported()
+                    && is_avx2_supported()
+                    && is_bmi1_supported()
+                    && is_bmi2_supported()
+            }
+
             #[cfg(feature = "sha256-sha")]
             Sha256Implementation::SHA => {
                 is_sse2_supported()
@@ -160,6 +215,7 @@ impl Sha256Implementation {
                 not(feature = "sha256-bmi"),
                 not(feature = "sha256-ssse3"),
                 not(feature = "sha256-avx"),
+                not(feature = "sha256-avx2"),
                 not(feature = "sha256-sha"),
             ))]
             _ => false,
@@ -173,6 +229,7 @@ impl Sha256Implementation {
             Sha256Implementation::BMI => "bmi",
             Sha256Implementation::SSSE3 => "ssse3",
             Sha256Implementation::AVX => "avx",
+            Sha256Implementation::AVX2 => "avx2",
             Sha256Implementation::SHA => "sha",
         }
     }
@@ -246,6 +303,11 @@ impl Sha256ImplementationCtx {
                 update_blocks: Sha256::update_blocks_avx,
             }),
 
+            #[cfg(feature = "sha256-avx2")]
+            Sha256Implementation::AVX2 => Ok(Sha256ImplementationCtx {
+                update_blocks: Sha256::update_blocks_avx2,
+            }),
+
             #[cfg(feature = "sha256-sha")]
             Sha256Implementation::SHA => Ok(Sha256ImplementationCtx {
                 update_blocks: Sha256::update_blocks_sha,
@@ -255,6 +317,7 @@ impl Sha256ImplementationCtx {
                 not(feature = "sha256-bmi"),
                 not(feature = "sha256-ssse3"),
                 not(feature = "sha256-avx"),
+                not(feature = "sha256-avx2"),
                 not(feature = "sha256-sha"),
             ))]
             _ => Err(ChecksumError::Unsupported {
@@ -1259,7 +1322,7 @@ impl Sha256 {
     }
 
     #[cfg(all(
-        feature = "sha256-avx",
+        any(feature = "sha256-avx", feature = "sha256-avx2"),
         any(target_arch = "x86", target_arch = "x86_64")
     ))]
     fn update_blocks_avx(state: &mut [u32], data: &[u8]) {
@@ -1405,6 +1468,546 @@ impl Sha256 {
         }
 
         unsafe { update_blocks_avx_impl(state, data) }
+    }
+
+    #[cfg(all(
+        feature = "sha256-avx2",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    fn update_blocks_avx2(state: &mut [u32], data: &[u8]) {
+        // Intrinsics used:
+        // +--------------------+--------+
+        // | _mm_add_epi32      | SSE2*  |
+        // | _mm_alignr_epi8    | SSSE3* |
+        // | _mm_lddqu_si128    | SSE3*  |
+        // | _mm_load_si128     | SSE2*  |
+        // | _mm_or_si128       | SSE2*  |
+        // | _mm_set_epi8       | SSE2*  |
+        // | _mm_shuffle_epi32  | SSE2*  |
+        // | _mm_shuffle_epi8   | SSSE3* |
+        // | _mm_slli_epi32     | SSE2*  |
+        // | _mm_srli_epi32     | SSE2*  |
+        // | _mm_srli_epi64     | SSE2*  |
+        // | _mm_srli_si128     | SSE2*  |
+        // | _mm_storeu_si128   | SSE2*  |
+        // | _mm_unpacklo_epi32 | SSE2*  |
+        // | _mm_xor_si128      | SSE2*  |
+        // +--------------------+--------+
+        //
+        // *Although these intrinsics are marked as SSE2 or SSSE3, they have
+        // AVX encoded equivalents, and so they are supported with AVX.
+
+        // This function implements the AVX part of the Intel paper entitled:
+        // Fast SHA-256 Implementations on Intel Architecture Processors
+
+        /// Do a round of calculations. Caller must swap variables.
+        macro_rules! round {
+            ($wk:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr
+            ) => {
+                // Expand and re-order variables to minimize register usage, and
+                // minimize dependencies.
+                let ch_b = !$e;
+                let ch = $e & $f;
+                let ch_b = ch_b & $g;
+                let ch = ch ^ ch_b;
+
+                // Don't use Intel optimization, because BMI is available.
+                let s1 = $e.rotate_right(6);
+                let s1_b = $e.rotate_right(11);
+                let s1 = s1 ^ s1_b;
+                let s1_c = $e.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add($wk);
+                let temp1 = temp1.wrapping_add(ch);
+
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
+
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
+
+                // Don't use Intel optimization, because BMI is available.
+                let s0 = $a.rotate_right(2);
+                let s0_b = $a.rotate_right(13);
+                let s0 = s0 ^ s0_b;
+                let s0_c = $a.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+            };
+        }
+
+        /** Schedule the next four values across two blocks, and do four rounds
+         * of calculations.
+         *
+         * Caller must swap variables.
+         */
+        macro_rules! schedule_and_rounds {
+            ($kp:expr,
+             $wk:expr,
+             $a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr,
+             $w_00_04:expr, $w_04_08:expr, $w_08_12:expr, $w_12_16:expr
+            ) => {
+                ////////////////////////
+                // Round 1.
+
+                    // Pre-compute SHA_256_CONSTANTS.k2[i] + w[i]
+                    let k = arch::_mm256_load_si256($kp);
+                    $kp = $kp.add(1);
+
+                let ch_b = !$e;
+                let ch = $e & $f;
+
+                    let k = arch::_mm256_add_epi32(k, $w_00_04);
+                    // TODO(cybojanek): Try to add $w[$round..$round+4] + [h, g, f, e]
+                    //                  Maybe _mm256_insert_epi32 as it is updated.
+
+                let ch_b = ch_b & $g;
+                let ch = ch ^ ch_b;
+
+                    arch::_mm256_storeu_si256($wk as *mut _, k);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s1 = $e.rotate_right(6);
+                let s1_b = $e.rotate_right(11);
+
+                    // s0 = w[i-15].ror(7) ^ w[i-15].ror(18) ^ (w[i-15] >> 3)
+                    // s0_16_20 minus 15, w_01_05 is needed
+                    // Compute w_01_05 by combining registers.
+                    let w_01_05 = arch::_mm256_alignr_epi8($w_04_08, $w_00_04, 4);
+
+                let s1 = s1 ^ s1_b;
+                let s1_c = $e.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                    let w_01_05_ror_7_a = arch::_mm256_srli_epi32(w_01_05, 7);
+
+                let temp1 = $h.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                let temp1 = temp1.wrapping_add(*$wk.add(0));
+
+                // Caller swaps variables.
+                $d = $d.wrapping_add(temp1);
+
+                    let w_01_05_ror_7_b = arch::_mm256_slli_epi32(w_01_05, 32 - 7);
+
+                let maj = $a & $b;
+                let maj_b = $a & $c;
+
+                    let w_01_05_ror_7 = arch::_mm256_or_si256(w_01_05_ror_7_a, w_01_05_ror_7_b);
+
+                let maj = maj ^ maj_b;
+                let maj_c = $b & $c;
+                let maj = maj ^ maj_c;
+
+                    let w_01_05_ror_18_a = arch::_mm256_srli_epi32(w_01_05, 18);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s0 = $a.rotate_right(2);
+                let s0_b = $a.rotate_right(13);
+
+                    let w_01_05_ror_18_b = arch::_mm256_slli_epi32(w_01_05, 32 - 18);
+
+                let s0 = s0 ^ s0_b;
+                let s0_c = $a.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                    let w_01_05_ror_18 = arch::_mm256_or_si256(w_01_05_ror_18_a, w_01_05_ror_18_b);
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $h = temp1.wrapping_add(temp2);
+
+                ////////////////////////
+                // Round 2.
+
+                    let s0_16_20_a = arch::_mm256_xor_si256(w_01_05_ror_7, w_01_05_ror_18);
+
+                let ch_b = !$d;
+                let ch = $d & $e;
+
+                    let s0_16_20_b = arch::_mm256_srli_epi32(w_01_05, 3);
+
+                let ch_b = ch_b & $f;
+                let ch = ch ^ ch_b;
+
+                    let s0_16_20 = arch::_mm256_xor_si256(s0_16_20_a, s0_16_20_b);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s1 = $d.rotate_right(6);
+                let s1_b = $d.rotate_right(11);
+
+                    // w[i] = w[i-16] + s0 + w[i-7] + s1
+                    // w_16_20 minus 7, w_09_13 is needed.
+                    // w_16_20 minus 16, w_00_04 is available.
+                    // s0 is available.
+                    let w_16_20_minus_s1_minus_w7 = arch::_mm256_add_epi32($w_00_04, s0_16_20);
+
+                let s1 = s1 ^ s1_b;
+                let s1_c = $d.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                    let w_09_13 = arch::_mm256_alignr_epi8($w_12_16, $w_08_12, 4);
+
+                let temp1 = $g.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                // let temp1 = temp1.wrapping_add(SHA_256_CONSTANTS.k[$round]);
+                let temp1 = temp1.wrapping_add(*$wk.add(1));
+
+                // Caller swaps variables.
+                $c = $c.wrapping_add(temp1);
+
+                    // Instead of w_16_20_minus_s1, start re-using w_00_04.
+                    $w_00_04 = arch::_mm256_add_epi32(w_16_20_minus_s1_minus_w7, w_09_13);
+
+                let maj = $h & $a;
+                let maj_b = $h & $b;
+
+                    // s1 = w[i-2].ror(17) ^ w[i-2].ror(19) ^ (w[i-2] >> 10)
+                    // w_16_20 minus 2, w_14_18 is needed.
+                    // However, that means that w_16_18 needs to be computed, so
+                    // compute s1_14_18.
+                    // Use optimization from Intel paper, and load w[14] and w[15] as
+                    // [15, 15, 14, 14] in order to perform rotation by shifting
+                    // across a u64 created from concatenating two u32.
+                    let w_1414_1515 = arch::_mm256_unpackhi_epi32($w_12_16, $w_12_16);
+
+                let maj = maj ^ maj_b;
+                let maj_c = $a & $b;
+                let maj = maj ^ maj_c;
+
+                    let w_14gg_15gg_ror_17 = arch::_mm256_srli_epi64(w_1414_1515, 17);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s0 = $h.rotate_right(2);
+                let s0_b = $h.rotate_right(13);
+
+                    let w_14gg_15gg_ror_19 = arch::_mm256_srli_epi64(w_1414_1515, 19);
+
+                let s0 = s0 ^ s0_b;
+                let s0_c = $h.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                    let w_14gg_15gg = arch::_mm256_xor_si256(w_14gg_15gg_ror_17, w_14gg_15gg_ror_19);
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $g = temp1.wrapping_add(temp2);
+
+                ////////////////////////
+                // Round 3.
+
+                    // [x, 15', x, 14'] -> [15', 14', x, x]
+                    let w_gggg_1415_ror = arch::_mm256_shuffle_epi32(w_14gg_15gg, 0b10000000);
+
+                let ch_b = !$c;
+                let ch = $c & $d;
+
+                    let s1_14_18_a = arch::_mm256_srli_epi32($w_12_16, 10);
+
+                let ch_b = ch_b & $e;
+                let ch = ch ^ ch_b;
+
+                    // Shift s1_14_18, so that 16_18 are in the lower position to match
+                    // their positions in w_16_20_minus_s1.
+                    let s1_14_18 = arch::_mm256_xor_si256(w_gggg_1415_ror, s1_14_18_a);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s1 = $c.rotate_right(6);
+                let s1_b = $c.rotate_right(11);
+
+                    // Compute w_16_20_18, which holds the correct values for w_16_18.
+                    let w_16_20_18_a = arch::_mm256_srli_si256(s1_14_18, 8);
+
+                let s1 = s1 ^ s1_b;
+                let s1_c = $c.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                let temp1 = $f.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                // let temp1 = temp1.wrapping_add(SHA_256_CONSTANTS.k[$round]);
+                let temp1 = temp1.wrapping_add(*$wk.add(2));
+
+                // Caller swaps variables.
+                $b = $b.wrapping_add(temp1);
+
+                let maj = $g & $h;
+                let maj_b = $g & $a;
+
+                    let w_16_20_18 = arch::_mm256_add_epi32($w_00_04, w_16_20_18_a);
+
+                let maj = maj ^ maj_b;
+                let maj_c = $h & $a;
+                let maj = maj ^ maj_c;
+
+                    // Combine w_12_16 with w_16_20_18 to make w_14_18.
+                    let w_14_18 = arch::_mm256_alignr_epi8(w_16_20_18, $w_12_16, 8);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s0 = $g.rotate_right(2);
+                let s0_b = $g.rotate_right(13);
+
+                    // Use optimization from Intel paper and load w[16], w[17] as
+                    // [17, 17, 16, 16] in order to perform rotation by shifting
+                    // across a u64 created from concatenating two u32.
+                    let w_1616_1717 = arch::_mm256_unpacklo_epi32(w_16_20_18, w_16_20_18);
+
+                let s0 = s0 ^ s0_b;
+                let s0_c = $g.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                    let w_16gg_17gg_ror_17 = arch::_mm256_srli_epi64(w_1616_1717, 17);
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $f = temp1.wrapping_add(temp2);
+
+                ////////////////////////
+                // Round 4.
+
+                    let w_16gg_17gg_ror_19 = arch::_mm256_srli_epi64(w_1616_1717, 19);
+
+                let ch_b = !$b;
+                let ch = $b & $c;
+
+                    let w_16gg_17gg = arch::_mm256_xor_si256(w_16gg_17gg_ror_17, w_16gg_17gg_ror_19);
+
+                let ch_b = ch_b & $d;
+                let ch = ch ^ ch_b;
+
+                    // [x, 17', x, 16'] -> [x, x, 17', 16']
+                    let w_1617_gggg = arch::_mm256_shuffle_epi32(w_16gg_17gg, 0b00001000);
+
+                // Don't use Intel optimization, because BMI is available.
+                let s1 = $b.rotate_right(6);
+                let s1_b = $b.rotate_right(11);
+
+                    let w_14_18_ror = arch::_mm256_alignr_epi8(w_1617_gggg, w_gggg_1415_ror, 8);
+
+                let s1 = s1 ^ s1_b;
+                let s1_c = $b.rotate_right(25);
+                let s1 = s1 ^ s1_c;
+
+                    // Compute s1_16_20.
+                    let s1_16_20_b = arch::_mm256_srli_epi32(w_14_18, 10);
+
+                let temp1 = $e.wrapping_add(s1);
+                let temp1 = temp1.wrapping_add(ch);
+                // let temp1 = temp1.wrapping_add(SHA_256_CONSTANTS.k[$round]);
+                let temp1 = temp1.wrapping_add(*$wk.add(3));
+
+                // Caller swaps variables.
+                $a = $a.wrapping_add(temp1);
+
+                    let s1_16_20 = arch::_mm256_xor_si256(w_14_18_ror, s1_16_20_b);
+
+                let maj = $f & $g;
+                let maj_b = $f & $h;
+
+                    // Add s1 to w.
+                    $w_00_04 = arch::_mm256_add_epi32($w_00_04, s1_16_20);
+
+                let maj = maj ^ maj_b;
+                let maj_c = $g & $h;
+                let maj = maj ^ maj_c;
+
+                // Don't use Intel optimization, because BMI is available.
+                let s0 = $f.rotate_right(2);
+                let s0_b = $f.rotate_right(13);
+                let s0 = s0 ^ s0_b;
+                let s0_c = $f.rotate_right(22);
+                let s0 = s0 ^ s0_c;
+
+                let temp2 = s0.wrapping_add(maj);
+
+                // Caller swaps variables.
+                $e = temp1.wrapping_add(temp2);
+
+                $wk = $wk.add(8);
+
+                ////////////////////////
+            };
+        }
+
+        #[target_feature(enable = "avx,avx2,bmi1,bmi2")]
+        unsafe fn update_blocks_avx2_impl(state: &mut [u32], data: &[u8]) {
+            unsafe {
+                // Set the shuffle value.
+                #[cfg(target_endian = "little")]
+                let shuffle_256 = arch::_mm256_set_epi8(
+                    0x0c, 0x0d, 0x0e, 0x0f, // f3
+                    0x08, 0x09, 0x0a, 0x0b, // f2
+                    0x04, 0x05, 0x06, 0x07, // f1
+                    0x00, 0x01, 0x02, 0x03, // f0
+                    0x0c, 0x0d, 0x0e, 0x0f, // f3
+                    0x08, 0x09, 0x0a, 0x0b, // f2
+                    0x04, 0x05, 0x06, 0x07, // f1
+                    0x00, 0x01, 0x02, 0x03, // f0
+                );
+
+                let mut w: [u32; 128] = [0; 128];
+
+                // Initialize local variables.
+                let mut a = state[0];
+                let mut b = state[1];
+                let mut c = state[2];
+                let mut d = state[3];
+                let mut e = state[4];
+                let mut f = state[5];
+                let mut g = state[6];
+                let mut h = state[7];
+
+                // Iterate two blocks at a time.
+                let mut iter = data.chunks_exact(2 * SHA_256_BLOCK_SIZE);
+
+                for block in iter.by_ref() {
+                    // Initialize w[0..32].
+                    let block = block.as_ptr() as *const arch::__m256i;
+                    let mut w01 = arch::_mm256_lddqu_si256(block.add(0));
+                    let mut w23 = arch::_mm256_lddqu_si256(block.add(1));
+                    let mut w45 = arch::_mm256_lddqu_si256(block.add(2));
+                    let mut w67 = arch::_mm256_lddqu_si256(block.add(3));
+
+                    #[cfg(target_endian = "little")]
+                    {
+                        w01 = arch::_mm256_shuffle_epi8(w01, shuffle_256);
+                        w23 = arch::_mm256_shuffle_epi8(w23, shuffle_256);
+                        w45 = arch::_mm256_shuffle_epi8(w45, shuffle_256);
+                        w67 = arch::_mm256_shuffle_epi8(w67, shuffle_256);
+                    }
+
+                    // Permute the lanes, so that the scheduling works correctly.
+                    let w04 = arch::_mm256_permute2x128_si256(w01, w45, 0b00100000);
+                    let w15 = arch::_mm256_permute2x128_si256(w01, w45, 0b00110001);
+                    let w26 = arch::_mm256_permute2x128_si256(w23, w67, 0b00100000);
+                    let w37 = arch::_mm256_permute2x128_si256(w23, w67, 0b00110001);
+
+                    // Rename for clarity below.
+                    let mut w0 = w04;
+                    let mut w1 = w15;
+                    let mut w2 = w26;
+                    let mut w3 = w37;
+
+                    // Use pointer, because blocks scheduled in w are blended.
+                    let mut wp = w.as_mut_ptr();
+                    let mut kp = SHA_256_CONSTANTS.k2.as_ptr() as *const arch::__m256i;
+
+                    for _ in 0..3 {
+                        schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w0, w1, w2, w3);
+                        schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w1, w2, w3, w0);
+                        schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w2, w3, w0, w1);
+                        schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w3, w0, w1, w2);
+                    }
+
+                    let k0 = arch::_mm256_load_si256(kp.add(0));
+                    let k0 = arch::_mm256_add_epi32(k0, w0);
+                    arch::_mm256_storeu_si256(wp as *mut _, k0);
+                    round!(*wp.add(0), a, b, c, d, e, f, g, h);
+                    round!(*wp.add(1), h, a, b, c, d, e, f, g);
+                    round!(*wp.add(2), g, h, a, b, c, d, e, f);
+                    round!(*wp.add(3), f, g, h, a, b, c, d, e);
+                    wp = wp.add(8);
+
+                    let k1 = arch::_mm256_load_si256(kp.add(1));
+                    let k1 = arch::_mm256_add_epi32(k1, w1);
+                    arch::_mm256_storeu_si256(wp as *mut _, k1);
+                    round!(*wp.add(0), e, f, g, h, a, b, c, d);
+                    round!(*wp.add(1), d, e, f, g, h, a, b, c);
+                    round!(*wp.add(2), c, d, e, f, g, h, a, b);
+                    round!(*wp.add(3), b, c, d, e, f, g, h, a);
+                    wp = wp.add(8);
+
+                    let k2 = arch::_mm256_load_si256(kp.add(2));
+                    let k2 = arch::_mm256_add_epi32(k2, w2);
+                    arch::_mm256_storeu_si256(wp as *mut _, k2);
+                    round!(*wp.add(0), a, b, c, d, e, f, g, h);
+                    round!(*wp.add(1), h, a, b, c, d, e, f, g);
+                    round!(*wp.add(2), g, h, a, b, c, d, e, f);
+                    round!(*wp.add(3), f, g, h, a, b, c, d, e);
+                    wp = wp.add(8);
+
+                    let k3 = arch::_mm256_load_si256(kp.add(3));
+                    let k3 = arch::_mm256_add_epi32(k3, w3);
+                    arch::_mm256_storeu_si256(wp as *mut _, k3);
+                    round!(*wp.add(0), e, f, g, h, a, b, c, d);
+                    round!(*wp.add(1), d, e, f, g, h, a, b, c);
+                    round!(*wp.add(2), c, d, e, f, g, h, a, b);
+                    round!(*wp.add(3), b, c, d, e, f, g, h, a);
+
+                    a = a.wrapping_add(state[0]);
+                    b = b.wrapping_add(state[1]);
+                    c = c.wrapping_add(state[2]);
+                    d = d.wrapping_add(state[3]);
+                    e = e.wrapping_add(state[4]);
+                    f = f.wrapping_add(state[5]);
+                    g = g.wrapping_add(state[6]);
+                    h = h.wrapping_add(state[7]);
+
+                    state[0] = a;
+                    state[1] = b;
+                    state[2] = c;
+                    state[3] = d;
+                    state[4] = e;
+                    state[5] = f;
+                    state[6] = g;
+                    state[7] = h;
+
+                    // Skip w0 and jump to w4 from w04 result.
+                    let mut wp = w.as_mut_ptr().add(4);
+
+                    for _ in 0..8 {
+                        round!(*wp.add(0), a, b, c, d, e, f, g, h);
+                        round!(*wp.add(1), h, a, b, c, d, e, f, g);
+                        round!(*wp.add(2), g, h, a, b, c, d, e, f);
+                        round!(*wp.add(3), f, g, h, a, b, c, d, e);
+                        wp = wp.add(8);
+                        round!(*wp.add(0), e, f, g, h, a, b, c, d);
+                        round!(*wp.add(1), d, e, f, g, h, a, b, c);
+                        round!(*wp.add(2), c, d, e, f, g, h, a, b);
+                        round!(*wp.add(3), b, c, d, e, f, g, h, a);
+                        wp = wp.add(8);
+                    }
+
+                    a = a.wrapping_add(state[0]);
+                    b = b.wrapping_add(state[1]);
+                    c = c.wrapping_add(state[2]);
+                    d = d.wrapping_add(state[3]);
+                    e = e.wrapping_add(state[4]);
+                    f = f.wrapping_add(state[5]);
+                    g = g.wrapping_add(state[6]);
+                    h = h.wrapping_add(state[7]);
+
+                    state[0] = a;
+                    state[1] = b;
+                    state[2] = c;
+                    state[3] = d;
+                    state[4] = e;
+                    state[5] = f;
+                    state[6] = g;
+                    state[7] = h;
+                }
+
+                // Gracefully handle the last block.
+                let remainder = iter.remainder();
+                if remainder.len() > 0 {
+                    Sha256::update_blocks_avx(state, remainder);
+                }
+            }
+        }
+
+        unsafe { update_blocks_avx2_impl(state, data) }
     }
 
     #[cfg(all(
@@ -2131,6 +2734,11 @@ mod tests {
     #[test]
     fn sha256_avx() -> Result<(), ChecksumError> {
         test_optional_implementation(Sha256Implementation::AVX)
+    }
+
+    #[test]
+    fn sha256_avx2() -> Result<(), ChecksumError> {
+        test_optional_implementation(Sha256Implementation::AVX2)
     }
 
     #[test]
