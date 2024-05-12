@@ -30,9 +30,10 @@ fletcher4-avx2 = []
 fletcher4-avx512f = []
 fletcher4-avx512bw = []
 
-sha256-accel = ["sha256-bmi", "sha256-ssse3", "sha256-sha"]
+sha256-accel = ["sha256-bmi", "sha256-ssse3", "sha256-avx", "sha256-sha"]
 sha256-bmi = []
 sha256-ssse3 = []
+sha256-avx = []
 sha256-sha = []
 
 [dependencies]
