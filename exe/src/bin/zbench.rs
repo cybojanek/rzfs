@@ -11,7 +11,6 @@ use zfs::checksum::{
 use zfs::phys::{ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
 
 const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
-const MICROSECONDS_IN_MILLISECOND: u64 = 1_000;
 
 fn benchmark_checksum(
     checksum: &mut dyn Checksum,
@@ -171,7 +170,7 @@ fn print_usage(arg0: &str) {
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
 
-    let duration_us = MICROSECONDS_IN_MILLISECOND;
+    let duration_us = 3 * MICROSECONDS_PER_SECOND;
 
     if args.len() != 2 {
         print_usage(&args[0]);
