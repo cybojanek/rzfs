@@ -5,6 +5,7 @@ use core::fmt;
 #[cfg(feature = "std")]
 use std::error;
 
+use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVerifyError, Sha256};
 use crate::phys::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, Version,
@@ -142,14 +143,18 @@ impl UberBlock {
      */
     pub fn from_bytes(
         bytes: &[u8; UberBlock::LENGTH],
-        _offset: u64,
+        offset: u64,
+        sha256: &mut Sha256,
     ) -> Result<Option<UberBlock>, UberBlockDecodeError> {
         ////////////////////////////////
-        // Verify checksum.
-        // TODO(cybojanek): Implement.
+        // Check if the UberBlock is empty.
         if UberBlock::bytes_are_empty(bytes, false) {
             return Ok(None);
         }
+
+        ////////////////////////////////
+        // Verify checksum.
+        label_verify(bytes, offset, sha256)?;
 
         ////////////////////////////////
         // Create decoder.
@@ -230,7 +235,8 @@ impl UberBlock {
     pub fn to_bytes(
         &self,
         bytes: &mut [u8; UberBlock::LENGTH],
-        _offset: u64,
+        offset: u64,
+        sha256: &mut Sha256,
     ) -> Result<(), UberBlockEncodeError> {
         ////////////////////////////////
         // Create encoder.
@@ -274,8 +280,7 @@ impl UberBlock {
 
         ////////////////////////////////
         // Compute checksum.
-        // TODO(cybojanek): implement
-        // label_checksum(bytes, offset, self.endian)?;
+        label_checksum(bytes, offset, sha256, self.order)?;
 
         ////////////////////////////////
         // Success.
@@ -301,6 +306,12 @@ pub enum UberBlockDecodeError {
         err: EndianDecodeError,
     },
 
+    /// Label checksum verification error.
+    LabelVerify {
+        /// Error.
+        err: LabelVerifyError,
+    },
+
     /// [`Version`] decode error.
     Version {
         /// Error.
@@ -312,6 +323,12 @@ pub enum UberBlockDecodeError {
         /// Error.
         err: UberBlockMmpDecodeError,
     },
+}
+
+impl From<LabelVerifyError> for UberBlockDecodeError {
+    fn from(value: LabelVerifyError) -> Self {
+        UberBlockDecodeError::LabelVerify { err: value }
+    }
 }
 
 impl From<BlockPointerDecodeError> for UberBlockDecodeError {
@@ -350,6 +367,9 @@ impl fmt::Display for UberBlockDecodeError {
             UberBlockDecodeError::Endian { err } => {
                 write!(f, "UberBlock decode error, endian: [{err}]")
             }
+            UberBlockDecodeError::LabelVerify { err } => {
+                write!(f, "UberBlock decode error, label verify: [{err}]")
+            }
             UberBlockDecodeError::UberBlockMmp { err } => {
                 write!(f, "UberBlock decode error, MMP: [{err}]")
             }
@@ -367,6 +387,7 @@ impl error::Error for UberBlockDecodeError {
             UberBlockDecodeError::BlockPointer { err } => Some(err),
             UberBlockDecodeError::EmptyBlockPointer {} => None,
             UberBlockDecodeError::Endian { err } => Some(err),
+            UberBlockDecodeError::LabelVerify { err } => Some(err),
             UberBlockDecodeError::UberBlockMmp { err } => Some(err),
             UberBlockDecodeError::Version { err } => Some(err),
         }
@@ -388,11 +409,23 @@ pub enum UberBlockEncodeError {
         err: EndianEncodeError,
     },
 
+    /// Label checksum error.
+    LabelChecksum {
+        /// Error.
+        err: LabelChecksumError,
+    },
+
     /// [`UberBlockMmp`] encode error.
     UberBlockMmp {
         /// Error.
         err: UberBlockMmpEncodeError,
     },
+}
+
+impl From<LabelChecksumError> for UberBlockEncodeError {
+    fn from(value: LabelChecksumError) -> Self {
+        UberBlockEncodeError::LabelChecksum { err: value }
+    }
 }
 
 impl From<BlockPointerEncodeError> for UberBlockEncodeError {
@@ -422,6 +455,9 @@ impl fmt::Display for UberBlockEncodeError {
             UberBlockEncodeError::Endian { err } => {
                 write!(f, "UberBlock encode error, endian: [{err}]")
             }
+            UberBlockEncodeError::LabelChecksum { err } => {
+                write!(f, "UberBlock encode error, label checksum: [{err}]")
+            }
             UberBlockEncodeError::UberBlockMmp { err } => {
                 write!(f, "UberBlock encode error, MMP: [{err}]")
             }
@@ -435,6 +471,7 @@ impl error::Error for UberBlockEncodeError {
         match self {
             UberBlockEncodeError::BlockPointer { err } => Some(err),
             UberBlockEncodeError::Endian { err } => Some(err),
+            UberBlockEncodeError::LabelChecksum { err } => Some(err),
             UberBlockEncodeError::UberBlockMmp { err } => Some(err),
         }
     }
