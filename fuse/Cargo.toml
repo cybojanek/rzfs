@@ -13,7 +13,7 @@ homepage = "https://github.com/cybojanek/rzfs"
 name = "zfs_fuse"
 
 [[bin]]
-name = "rzfs_fuse"
+name = "rzfs-fuse"
 
 [dependencies]
 fuser = { "version" = "0.14.0" }
