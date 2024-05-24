@@ -31,6 +31,13 @@ pub use endian::{
 pub(crate) mod feature;
 pub use feature::Feature;
 
+pub(crate) mod label;
+pub use label::{
+    Blank, BlankDecodeError, BlankEncodeError, BootBlock, BootBlockDecodeError,
+    BootBlockEncodeError, BootHeader, BootHeaderDecodeError, BootHeaderEncodeError, Label,
+    LabelSectorsError, NvPairs, NvPairsDecodeError, NvPairsEncodeError,
+};
+
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
