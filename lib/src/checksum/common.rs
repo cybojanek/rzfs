@@ -77,4 +77,14 @@ pub trait Checksum {
      * Returns [`ChecksumError`] in case of error.
      */
     fn finalize(&mut self) -> Result<[u64; 4], ChecksumError>;
+
+    /** Hash the data and return the result.
+     *
+     * Data is returned in native byte order.
+     *
+     * # Errors
+     *
+     * Returns [`ChecksumError`] in case of error.
+     */
+    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError>;
 }
