@@ -1565,6 +1565,12 @@ impl Checksum for Fletcher4 {
 
         Ok(result)
     }
+
+    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError> {
+        self.reset()?;
+        self.update(data)?;
+        self.finalize()
+    }
 }
 
 #[cfg(test)]

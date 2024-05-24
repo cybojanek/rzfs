@@ -2437,6 +2437,12 @@ impl Checksum for Sha256 {
             (u64::from(self.state[6]) << 32) | u64::from(self.state[7]),
         ])
     }
+
+    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError> {
+        self.reset()?;
+        self.update(data)?;
+        self.finalize()
+    }
 }
 
 #[cfg(test)]
