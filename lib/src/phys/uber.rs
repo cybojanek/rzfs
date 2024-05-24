@@ -138,8 +138,7 @@ impl UberBlock {
      *
      * # Errors
      *
-     * Returns [`UberBlockDecodeError`] if there are not enough bytes,
-     * or magic is invalid.
+     * Returns [`UberBlockDecodeError`] on error.
      */
     pub fn from_bytes(
         bytes: &[u8; UberBlock::LENGTH],
@@ -226,8 +225,7 @@ impl UberBlock {
      *
      * # Errors
      *
-     * Returns [`UberBlockEncodeError`] if there is not enough space or
-     * uberblock is invalid.
+     * Returns [`UberBlockEncodeError`] on error.
      */
     pub fn to_bytes(
         &self,
@@ -344,19 +342,19 @@ impl fmt::Display for UberBlockDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockDecodeError::BlockPointer { err } => {
-                write!(f, "UberBlock decode error: block pointer: {err}")
+                write!(f, "UberBlock decode error, block pointer: [{err}]")
             }
             UberBlockDecodeError::EmptyBlockPointer {} => {
-                write!(f, "UberBlock decode error: empty block pointer")
+                write!(f, "UberBlock decode error, empty block[ pointer]")
             }
             UberBlockDecodeError::Endian { err } => {
-                write!(f, "UberBlock decode error: endian: {err}")
+                write!(f, "UberBlock decode error, endian: [{err}]")
             }
             UberBlockDecodeError::UberBlockMmp { err } => {
-                write!(f, "UberBlock decode error: MMP: {err}")
+                write!(f, "UberBlock decode error, MMP: [{err}]")
             }
             UberBlockDecodeError::Version { err } => {
-                write!(f, "UberBlock decode error: version: {err}")
+                write!(f, "UberBlock decode error, version: [{err}]")
             }
         }
     }
@@ -419,13 +417,13 @@ impl fmt::Display for UberBlockEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockEncodeError::BlockPointer { err } => {
-                write!(f, "UberBlock encode error: BlockPointer: {err}")
+                write!(f, "UberBlock encode error, BlockPointer: [{err}]")
             }
             UberBlockEncodeError::Endian { err } => {
-                write!(f, "UberBlock encode error: endian: {err}")
+                write!(f, "UberBlock encode error, endian: [{err}]")
             }
             UberBlockEncodeError::UberBlockMmp { err } => {
-                write!(f, "UberBlock encode error: MMP: {err}")
+                write!(f, "UberBlock encode error, MMP: [{err}]")
             }
         }
     }
@@ -565,7 +563,7 @@ impl UberBlockMmp {
      *
      * # Errors
      *
-     * Returns [`UberBlockMmpDecodeError`] in case of decoding error.
+     * Returns [`UberBlockMmpDecodeError`] on error.
      */
     pub fn from_decoder(
         decoder: &EndianDecoder<'_>,
@@ -657,7 +655,7 @@ impl UberBlockMmp {
      *
      * # Errors
      *
-     * Returns [`UberBlockMmpEncodeError`] in case of encoding error.
+     * Returns [`UberBlockMmpEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
@@ -743,7 +741,7 @@ impl fmt::Display for UberBlockMmpDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockMmpDecodeError::Endian { err } => {
-                write!(f, "UberBlockMmp decode error, endian: {err}")
+                write!(f, "UberBlockMmp decode error, endian: [{err}]")
             }
             UberBlockMmpDecodeError::InvalidMagic { magic } => {
                 write!(f, "UberBlockMmp decode error, invalid magic 0x{magic:016x}")
@@ -804,7 +802,7 @@ impl fmt::Display for UberBlockMmpEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockMmpEncodeError::Endian { err } => {
-                write!(f, "UberBlockMmp encode error, endian: {err}")
+                write!(f, "UberBlockMmp encode error, endian: [{err}]")
             }
             UberBlockMmpEncodeError::WriteIntervalTooLarge { write_interval } => {
                 write!(
