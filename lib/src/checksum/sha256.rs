@@ -2364,7 +2364,7 @@ impl Checksum for Sha256 {
             if self.buffer_fill == SHA_256_BLOCK_SIZE {
                 let full_blocks_data = &self.buffer[0..self.buffer_fill];
                 self.bytes_processed += SHA_256_BLOCK_SIZE as u64;
-                Sha256::update_blocks_generic(&mut self.state, &full_blocks_data);
+                (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
                 self.buffer_fill = 0;
             }
         }
@@ -2401,7 +2401,7 @@ impl Checksum for Sha256 {
             self.buffer_fill = 0;
 
             let data = &self.buffer[0..SHA_256_BLOCK_SIZE];
-            Sha256::update_blocks_generic(&mut self.state, &data);
+            (self.impl_ctx.update_blocks)(&mut self.state, &data);
         }
 
         // Set the 1 bit.
@@ -2420,7 +2420,7 @@ impl Checksum for Sha256 {
 
         // Process last block.
         let data = &self.buffer[0..SHA_256_BLOCK_SIZE];
-        Sha256::update_blocks_generic(&mut self.state, &data);
+        (self.impl_ctx.update_blocks)(&mut self.state, &data);
 
         // Encode result to u64.
         Ok([
