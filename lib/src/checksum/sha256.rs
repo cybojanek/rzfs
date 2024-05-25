@@ -271,14 +271,10 @@ pub struct Sha256 {
 }
 
 impl Sha256ImplementationCtx {
-    fn new(
-        order: EndianOrder,
-        implementation: Sha256Implementation,
-    ) -> Result<Sha256ImplementationCtx, ChecksumError> {
+    fn new(implementation: Sha256Implementation) -> Result<Sha256ImplementationCtx, ChecksumError> {
         if !implementation.is_supported() {
             return Err(ChecksumError::Unsupported {
                 checksum: ChecksumType::Sha256,
-                order,
                 implementation: implementation.to_str(),
             });
         }
@@ -684,16 +680,13 @@ impl Sha256 {
      *
      * Returns [`ChecksumError`] if the implementation is not supported.
      */
-    pub fn new(
-        order: EndianOrder,
-        implementation: Sha256Implementation,
-    ) -> Result<Sha256, ChecksumError> {
+    pub fn new(implementation: Sha256Implementation) -> Result<Sha256, ChecksumError> {
         Ok(Sha256 {
             bytes_processed: 0,
             buffer_fill: 0,
             buffer: [0; SHA_256_BLOCK_SIZE],
             state: SHA_256_CONSTANTS.h,
-            impl_ctx: Sha256ImplementationCtx::new(order, implementation)?,
+            impl_ctx: Sha256ImplementationCtx::new(implementation)?,
         })
     }
 
@@ -2342,7 +2335,7 @@ impl Sha256 {
 }
 
 impl Checksum for Sha256 {
-    fn reset(&mut self) -> Result<(), ChecksumError> {
+    fn reset(&mut self, _order: EndianOrder) -> Result<(), ChecksumError> {
         self.bytes_processed = 0;
         self.buffer = [0; SHA_256_BLOCK_SIZE];
         self.buffer_fill = 0;
@@ -2438,8 +2431,8 @@ impl Checksum for Sha256 {
         ])
     }
 
-    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError> {
-        self.reset()?;
+    fn hash(&mut self, data: &[u8], order: EndianOrder) -> Result<[u64; 4], ChecksumError> {
+        self.reset(order)?;
         self.update(data)?;
         self.finalize()
     }
@@ -2636,6 +2629,7 @@ mod tests {
 
     fn run_test_vector(
         h: &mut Sha256,
+        order: EndianOrder,
         vector: &[u8],
         checksums: &[(usize, [u64; 4])],
     ) -> Result<(), ChecksumError> {
@@ -2646,12 +2640,10 @@ mod tests {
 
             if size <= vector.len() {
                 // Single update call.
-                h.reset()?;
-                h.update(&vector[0..size])?;
-                assert_eq!(h.finalize()?, checksum, "size {}", size);
+                assert_eq!(h.hash(&vector[0..size], order)?, checksum, "size {}", size);
 
                 // Partial update.
-                h.reset()?;
+                h.reset(order)?;
                 let mut offset = 0;
 
                 h.update(&vector[0..size / 3])?;
@@ -2666,7 +2658,7 @@ mod tests {
             } else {
                 // Multiple calls.
                 let mut todo = size;
-                h.reset()?;
+                h.reset(order)?;
 
                 while todo > 0 {
                     let can_do = cmp::min(todo, vector.len());
@@ -2684,11 +2676,21 @@ mod tests {
     fn test_required_implementation(
         implementation: Sha256Implementation,
     ) -> Result<(), ChecksumError> {
-        let mut h = Sha256::new(EndianOrder::Big, implementation)?;
-        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_CHECKSUMS)?;
+        let mut h = Sha256::new(implementation)?;
 
-        let mut h = Sha256::new(EndianOrder::Little, implementation)?;
-        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_CHECKSUMS)?;
+        run_test_vector(
+            &mut h,
+            EndianOrder::Big,
+            &TEST_VECTOR_A,
+            &TEST_VECTOR_A_CHECKSUMS,
+        )?;
+
+        run_test_vector(
+            &mut h,
+            EndianOrder::Little,
+            &TEST_VECTOR_A,
+            &TEST_VECTOR_A_CHECKSUMS,
+        )?;
 
         Ok(())
     }
@@ -2696,29 +2698,17 @@ mod tests {
     fn test_optional_implementation(
         implementation: Sha256Implementation,
     ) -> Result<(), ChecksumError> {
-        // Assume the implementation is supported.
-        let mut supported: [bool; 2] = [true, true];
-        let orders: [EndianOrder; 2] = [EndianOrder::Big, EndianOrder::Little];
+        let supported = match Sha256::new(implementation) {
+            _e @ Err(ChecksumError::Unsupported {
+                checksum: _,
+                implementation: _,
+            }) => false,
+            _ => true,
+        };
 
-        for (idx, order) in orders.iter().enumerate() {
-            if let Err(
-                _e @ ChecksumError::Unsupported {
-                    checksum: _,
-                    order: _,
-                    implementation: _,
-                },
-            ) = Sha256::new(*order, implementation)
-            {
-                supported[idx] = false;
-            }
-        }
-
-        // Check Big and Little are either both support, or both not supported.
-        assert_eq!(supported[0], supported[1]);
-
-        match supported[0] {
-            true => test_required_implementation(implementation),
+        match supported {
             false => Ok(()),
+            true => test_required_implementation(implementation),
         }
     }
 

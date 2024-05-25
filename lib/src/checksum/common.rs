@@ -13,8 +13,6 @@ pub enum ChecksumError {
     Unsupported {
         /// Unsupported value.
         checksum: ChecksumType,
-        /// Unsupported value.
-        order: EndianOrder,
         /// Implementation.
         implementation: &'static str,
     },
@@ -25,13 +23,9 @@ impl fmt::Display for ChecksumError {
         match self {
             ChecksumError::Unsupported {
                 checksum,
-                order,
                 implementation,
             } => {
-                write!(
-                    f,
-                    "Checksum unsupported {checksum} {order} {implementation}"
-                )
+                write!(f, "Checksum unsupported {checksum} {implementation}")
             }
         }
     }
@@ -49,13 +43,13 @@ impl error::Error for ChecksumError {
 /** Checksum for on disk data integrity.
  */
 pub trait Checksum {
-    /** Reset the checksum to initial state.
+    /** Reset the checksum to initial state to update bytes in [`EndianOrder`].
      *
      * # Errors
      *
      * Returns [`ChecksumError`] in case of error.
      */
-    fn reset(&mut self) -> Result<(), ChecksumError>;
+    fn reset(&mut self, order: EndianOrder) -> Result<(), ChecksumError>;
 
     /** Update the checksum state with the given bytes.
      *
@@ -70,7 +64,7 @@ pub trait Checksum {
 
     /** Finalize the checksum and return the result.
      *
-     * Data is returned in native byte order.
+     * Checksum is returned in native byte order.
      *
      * # Errors
      *
@@ -78,13 +72,13 @@ pub trait Checksum {
      */
     fn finalize(&mut self) -> Result<[u64; 4], ChecksumError>;
 
-    /** Hash the data and return the result.
+    /** Hash the bytes in [`EndianOrder`] and return the result.
      *
-     * Data is returned in native byte order.
+     * Checksum is returned in native byte order.
      *
      * # Errors
      *
      * Returns [`ChecksumError`] in case of error.
      */
-    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError>;
+    fn hash(&mut self, data: &[u8], order: EndianOrder) -> Result<[u64; 4], ChecksumError>;
 }
