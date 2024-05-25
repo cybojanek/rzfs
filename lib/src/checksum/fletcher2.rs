@@ -1100,9 +1100,9 @@ impl Fletcher2 {
             //                  an AVX512BW instruction.
             unsafe {
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut ab = arch::_mm512_loadu_epi64(state.add(0));
-                let mut cd = arch::_mm512_loadu_epi64(state.add(1));
+                let state = state.as_ptr() as *mut i32;
+                let mut ab = arch::_mm512_loadu_si512(state.add(0));
+                let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
                 // Iterate four blocks at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
@@ -1123,7 +1123,7 @@ impl Fletcher2 {
 
                 for block in iter.by_ref() {
                     // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_epi64(block.as_ptr() as *const _);
+                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
 
                     // Select one byte of each u64 value.
                     let s0 = arch::_mm512_and_epi64(values, mask0);
@@ -1166,7 +1166,7 @@ impl Fletcher2 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(1), cd);
+                arch::_mm512_storeu_si512(state.add(16), cd);
             }
         }
 
@@ -1189,16 +1189,16 @@ impl Fletcher2 {
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut ab = arch::_mm512_loadu_epi64(state.add(0));
-                let mut cd = arch::_mm512_loadu_epi64(state.add(1));
+                let state = state.as_ptr() as *mut i32;
+                let mut ab = arch::_mm512_loadu_si512(state.add(0));
+                let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
                 // Iterate four blocks at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
 
                 for block in iter.by_ref() {
                     // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_epi64(block.as_ptr() as *const _);
+                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
 
                     // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
                     // ...
@@ -1208,7 +1208,7 @@ impl Fletcher2 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(1), cd);
+                arch::_mm512_storeu_si512(state.add(16), cd);
             }
         }
 
@@ -1244,16 +1244,16 @@ impl Fletcher2 {
                 );
 
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut ab = arch::_mm512_loadu_epi64(state.add(0));
-                let mut cd = arch::_mm512_loadu_epi64(state.add(1));
+                let state = state.as_ptr() as *mut i32;
+                let mut ab = arch::_mm512_loadu_si512(state.add(0));
+                let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
                 // Iterate four blocks at a time.
                 let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
 
                 for block in iter.by_ref() {
                     // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_epi64(block.as_ptr() as *const _);
+                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
 
                     // Swap the order of the 8-byte parts of values.
                     // Each byte of shuffle indicates the byte index of values.
@@ -1278,7 +1278,7 @@ impl Fletcher2 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(1), cd);
+                arch::_mm512_storeu_si512(state.add(16), cd);
             }
         }
 

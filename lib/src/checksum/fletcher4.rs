@@ -1261,11 +1261,11 @@ impl Fletcher4 {
             //                  an AVX512BW instruction.
             unsafe {
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut a = arch::_mm512_lddqu_si512(state.add(0));
-                let mut b = arch::_mm512_lddqu_si512(state.add(1));
-                let mut c = arch::_mm512_lddqu_si512(state.add(2));
-                let mut d = arch::_mm512_lddqu_si512(state.add(3));
+                let state = state.as_ptr() as *mut i32;
+                let mut a = arch::_mm512_loadu_si512(state.add(0));
+                let mut b = arch::_mm512_loadu_si512(state.add(16));
+                let mut c = arch::_mm512_loadu_si512(state.add(32));
+                let mut d = arch::_mm512_loadu_si512(state.add(48));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1326,9 +1326,9 @@ impl Fletcher4 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(1), b);
-                arch::_mm512_storeu_si512(state.add(2), c);
-                arch::_mm512_storeu_si512(state.add(3), d);
+                arch::_mm512_storeu_si512(state.add(16), b);
+                arch::_mm512_storeu_si512(state.add(32), c);
+                arch::_mm512_storeu_si512(state.add(48), d);
             }
         }
 
@@ -1353,11 +1353,11 @@ impl Fletcher4 {
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
             unsafe {
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut a = arch::_mm512_lddqu_si512(state.add(0));
-                let mut b = arch::_mm512_lddqu_si512(state.add(1));
-                let mut c = arch::_mm512_lddqu_si512(state.add(2));
-                let mut d = arch::_mm512_lddqu_si512(state.add(3));
+                let state = state.as_ptr() as *mut i32;
+                let mut a = arch::_mm512_loadu_si512(state.add(0));
+                let mut b = arch::_mm512_loadu_si512(state.add(16));
+                let mut c = arch::_mm512_loadu_si512(state.add(32));
+                let mut d = arch::_mm512_loadu_si512(state.add(48));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1390,9 +1390,9 @@ impl Fletcher4 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(1), b);
-                arch::_mm512_storeu_si512(state.add(2), c);
-                arch::_mm512_storeu_si512(state.add(3), d);
+                arch::_mm512_storeu_si512(state.add(16), b);
+                arch::_mm512_storeu_si512(state.add(32), c);
+                arch::_mm512_storeu_si512(state.add(48), d);
             }
         }
 
@@ -1430,11 +1430,11 @@ impl Fletcher4 {
                 );
 
                 // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut arch::__m512i;
-                let mut a = arch::_mm512_lddqu_si512(state.add(0));
-                let mut b = arch::_mm512_lddqu_si512(state.add(1));
-                let mut c = arch::_mm512_lddqu_si512(state.add(2));
-                let mut d = arch::_mm512_lddqu_si512(state.add(3));
+                let state = state.as_ptr() as *mut i32;
+                let mut a = arch::_mm512_loadu_si512(state.add(0));
+                let mut b = arch::_mm512_loadu_si512(state.add(16));
+                let mut c = arch::_mm512_loadu_si512(state.add(32));
+                let mut d = arch::_mm512_loadu_si512(state.add(48));
 
                 // Iterate 256 bits at a time.
                 let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
@@ -1487,9 +1487,9 @@ impl Fletcher4 {
 
                 // Save state.
                 arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(1), b);
-                arch::_mm512_storeu_si512(state.add(2), c);
-                arch::_mm512_storeu_si512(state.add(3), d);
+                arch::_mm512_storeu_si512(state.add(16), b);
+                arch::_mm512_storeu_si512(state.add(32), c);
+                arch::_mm512_storeu_si512(state.add(48), d);
             }
         }
 
