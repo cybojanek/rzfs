@@ -168,6 +168,54 @@ impl Fletcher2Implementation {
             Fletcher2Implementation::AVX512BW => "avx512bw",
         }
     }
+
+    /** Get implementation context.
+     *
+     * # Errors
+     *
+     * Returns [`ChecksumError`] if the implementation is not supported.
+     */
+    fn get_implementation_ctx(&self) -> Result<&'static Fletcher2ImplementationCtx, ChecksumError> {
+        if !self.is_supported() {
+            return Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher2,
+                implementation: self.to_str(),
+            });
+        }
+
+        match self {
+            Fletcher2Implementation::Generic => Ok(&FLETCHER_2_IMPL_CTX_GENERIC),
+            Fletcher2Implementation::SuperScalar2 => Ok(&FLETCHER_2_IMPL_CTX_SUPERSCALAR_2),
+            Fletcher2Implementation::SuperScalar4 => Ok(&FLETCHER_2_IMPL_CTX_SUPERSCALAR_4),
+
+            #[cfg(feature = "fletcher2-sse2")]
+            Fletcher2Implementation::SSE2 => Ok(&FLETCHER_2_IMPL_CTX_SSE2),
+
+            #[cfg(feature = "fletcher2-ssse3")]
+            Fletcher2Implementation::SSSE3 => Ok(&FLETCHER_2_IMPL_CTX_SSSE3),
+
+            #[cfg(feature = "fletcher2-avx2")]
+            Fletcher2Implementation::AVX2 => Ok(&FLETCHER_2_IMPL_CTX_AVX2),
+
+            #[cfg(feature = "fletcher2-avx512f")]
+            Fletcher2Implementation::AVX512F => Ok(&FLETCHER_2_IMPL_CTX_AVX512F),
+
+            #[cfg(feature = "fletcher2-avx512bw")]
+            Fletcher2Implementation::AVX512BW => Ok(&FLETCHER_2_IMPL_CTX_AVX512BW),
+
+            #[cfg(any(
+                not(feature = "fletcher2-sse2"),
+                not(feature = "fletcher2-ssse3"),
+                not(feature = "fletcher2-avx2"),
+                not(feature = "fletcher2-avx512f"),
+                not(feature = "fletcher2-avx512bw"),
+            ))]
+            _ => Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher2,
+                implementation: self.to_str(),
+            }),
+        }
+    }
 }
 
 impl Display for Fletcher2Implementation {
@@ -189,12 +237,106 @@ struct Fletcher2ImplementationCtx {
     /// A multiple of [`FLETCHER_2_BLOCK_SIZE`].
     block_size: usize,
 
-    /// Implementation of [`Fletcher2UpdateBlock`].
-    update_blocks: Fletcher2UpdateBlock,
+    /// Big endian implementation of [`Fletcher2UpdateBlock`].
+    update_blocks_big: Fletcher2UpdateBlock,
+
+    /// Little Endian implementation of [`Fletcher2UpdateBlock`].
+    update_blocks_little: Fletcher2UpdateBlock,
 
     /// Implementation of [`Fletcher2FinishBlocks`].
     finish_blocks: Fletcher2FinishBlocks,
 }
+
+const FLETCHER_2_IMPL_CTX_GENERIC: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: FLETCHER_2_BLOCK_SIZE,
+    update_blocks_big: Fletcher2::update_blocks_generic_big,
+    update_blocks_little: Fletcher2::update_blocks_generic_little,
+    finish_blocks: Fletcher2::finish_blocks_single_stream,
+};
+
+const FLETCHER_2_IMPL_CTX_SUPERSCALAR_2: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: 2 * FLETCHER_2_BLOCK_SIZE,
+    update_blocks_big: Fletcher2::update_blocks_superscalar2_big,
+    update_blocks_little: Fletcher2::update_blocks_superscalar2_little,
+    finish_blocks: Fletcher2::finish_blocks_dual_stream,
+};
+
+const FLETCHER_2_IMPL_CTX_SUPERSCALAR_4: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: 4 * FLETCHER_2_BLOCK_SIZE,
+    update_blocks_big: Fletcher2::update_blocks_superscalar4_big,
+    update_blocks_little: Fletcher2::update_blocks_superscalar4_little,
+    finish_blocks: Fletcher2::finish_blocks_quad_stream,
+};
+
+#[cfg(feature = "fletcher2-sse2")]
+const FLETCHER_2_IMPL_CTX_SSE2: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: FLETCHER_2_BLOCK_SIZE,
+    #[cfg(target_endian = "big")]
+    update_blocks_big: Fletcher2::update_blocks_sse2_native,
+    #[cfg(target_endian = "big")]
+    update_blocks_little: Fletcher2::update_blocks_sse2_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_big: Fletcher2::update_blocks_sse2_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_little: Fletcher2::update_blocks_sse2_native,
+    finish_blocks: Fletcher2::finish_blocks_single_stream,
+};
+
+#[cfg(feature = "fletcher2-ssse3")]
+const FLETCHER_2_IMPL_CTX_SSSE3: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: FLETCHER_2_BLOCK_SIZE,
+    #[cfg(target_endian = "big")]
+    update_blocks_big: Fletcher2::update_blocks_sse2_native,
+    #[cfg(target_endian = "big")]
+    update_blocks_little: Fletcher2::update_blocks_ssse3_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_big: Fletcher2::update_blocks_ssse3_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_little: Fletcher2::update_blocks_sse2_native,
+    finish_blocks: Fletcher2::finish_blocks_single_stream,
+};
+
+#[cfg(feature = "fletcher2-avx2")]
+const FLETCHER_2_IMPL_CTX_AVX2: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: 2 * FLETCHER_2_BLOCK_SIZE,
+    #[cfg(target_endian = "big")]
+    update_blocks_big: Fletcher2::update_blocks_avx2_native,
+    #[cfg(target_endian = "big")]
+    update_blocks_little: Fletcher2::update_blocks_avx2_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_big: Fletcher2::update_blocks_avx2_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_little: Fletcher2::update_blocks_avx2_native,
+    finish_blocks: Fletcher2::finish_blocks_dual_stream,
+};
+
+#[cfg(feature = "fletcher2-avx512f")]
+const FLETCHER_2_IMPL_CTX_AVX512F: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: 4 * FLETCHER_2_BLOCK_SIZE,
+    #[cfg(target_endian = "big")]
+    update_blocks_big: Fletcher2::update_blocks_avx512f_native,
+    #[cfg(target_endian = "big")]
+    update_blocks_little: Fletcher2::update_blocks_avx512f_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_big: Fletcher2::update_blocks_avx512f_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_little: Fletcher2::update_blocks_avx512f_native,
+    finish_blocks: Fletcher2::finish_blocks_quad_stream,
+};
+
+#[cfg(feature = "fletcher2-avx512bw")]
+const FLETCHER_2_IMPL_CTX_AVX512BW: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
+    block_size: 4 * FLETCHER_2_BLOCK_SIZE,
+    #[cfg(target_endian = "big")]
+    update_blocks_big: Fletcher2::update_blocks_avx512f_native,
+    #[cfg(target_endian = "big")]
+    update_blocks_little: Fletcher2::update_blocks_avx512bw_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_big: Fletcher2::update_blocks_avx512bw_byteswap,
+    #[cfg(target_endian = "little")]
+    update_blocks_little: Fletcher2::update_blocks_avx512f_native,
+    finish_blocks: Fletcher2::finish_blocks_quad_stream,
+};
 
 /// [`crate::phys::ChecksumType::Fletcher2`] implementation.
 pub struct Fletcher2 {
@@ -211,165 +353,28 @@ pub struct Fletcher2 {
     order: EndianOrder,
 
     /// Implementation context.
-    impl_ctx: Fletcher2ImplementationCtx,
-}
+    impl_ctx: &'static Fletcher2ImplementationCtx,
 
-impl Fletcher2ImplementationCtx {
-    fn new(
-        order: EndianOrder,
-        implementation: Fletcher2Implementation,
-    ) -> Result<Fletcher2ImplementationCtx, ChecksumError> {
-        if !implementation.is_supported() {
-            return Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher2,
-                order,
-                implementation: implementation.to_str(),
-            });
-        }
-
-        match implementation {
-            Fletcher2Implementation::Generic => Ok(Fletcher2ImplementationCtx {
-                block_size: FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    EndianOrder::Big => Fletcher2::update_blocks_generic_big,
-                    EndianOrder::Little => Fletcher2::update_blocks_generic_little,
-                },
-                finish_blocks: Fletcher2::finish_blocks_single_stream,
-            }),
-
-            Fletcher2Implementation::SuperScalar2 => Ok(Fletcher2ImplementationCtx {
-                block_size: 2 * FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    EndianOrder::Big => Fletcher2::update_blocks_superscalar2_big,
-                    EndianOrder::Little => Fletcher2::update_blocks_superscalar2_little,
-                },
-                finish_blocks: Fletcher2::finish_blocks_dual_stream,
-            }),
-
-            Fletcher2Implementation::SuperScalar4 => Ok(Fletcher2ImplementationCtx {
-                block_size: 4 * FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    EndianOrder::Big => Fletcher2::update_blocks_superscalar4_big,
-                    EndianOrder::Little => Fletcher2::update_blocks_superscalar4_little,
-                },
-                finish_blocks: Fletcher2::finish_blocks_quad_stream,
-            }),
-
-            #[cfg(feature = "fletcher2-sse2")]
-            Fletcher2Implementation::SSE2 => Ok(Fletcher2ImplementationCtx {
-                block_size: FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Big => Fletcher2::update_blocks_sse2_native,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Big => Fletcher2::update_blocks_sse2_byteswap,
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Little => Fletcher2::update_blocks_sse2_byteswap,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Little => Fletcher2::update_blocks_sse2_native,
-                },
-                finish_blocks: Fletcher2::finish_blocks_single_stream,
-            }),
-
-            #[cfg(feature = "fletcher2-ssse3")]
-            Fletcher2Implementation::SSSE3 => Ok(Fletcher2ImplementationCtx {
-                block_size: FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Big => Fletcher2::update_blocks_sse2_native,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Big => Fletcher2::update_blocks_ssse3_byteswap,
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Little => Fletcher2::update_blocks_ssse3_byteswap,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Little => Fletcher2::update_blocks_sse2_native,
-                },
-                finish_blocks: Fletcher2::finish_blocks_single_stream,
-            }),
-
-            #[cfg(feature = "fletcher2-avx2")]
-            Fletcher2Implementation::AVX2 => Ok(Fletcher2ImplementationCtx {
-                block_size: 2 * FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx2_native,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx2_byteswap,
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx2_byteswap,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx2_native,
-                },
-                finish_blocks: Fletcher2::finish_blocks_dual_stream,
-            }),
-
-            #[cfg(feature = "fletcher2-avx512f")]
-            Fletcher2Implementation::AVX512F => Ok(Fletcher2ImplementationCtx {
-                block_size: 4 * FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx512f_native,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx512f_byteswap,
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx512f_byteswap,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx512f_native,
-                },
-                finish_blocks: Fletcher2::finish_blocks_quad_stream,
-            }),
-
-            #[cfg(feature = "fletcher2-avx512bw")]
-            Fletcher2Implementation::AVX512BW => Ok(Fletcher2ImplementationCtx {
-                block_size: 4 * FLETCHER_2_BLOCK_SIZE,
-                update_blocks: match order {
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx512f_native,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Big => Fletcher2::update_blocks_avx512bw_byteswap,
-                    #[cfg(target_endian = "big")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx512bw_byteswap,
-                    #[cfg(target_endian = "little")]
-                    EndianOrder::Little => Fletcher2::update_blocks_avx512f_native,
-                },
-                finish_blocks: Fletcher2::finish_blocks_quad_stream,
-            }),
-
-            #[cfg(any(
-                not(feature = "fletcher2-sse2"),
-                not(feature = "fletcher2-ssse3"),
-                not(feature = "fletcher2-avx2"),
-                not(feature = "fletcher2-avx512f"),
-                not(feature = "fletcher2-avx512bw"),
-            ))]
-            _ => Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher2,
-                order,
-                implementation: implementation.to_str(),
-            }),
-        }
-    }
+    /// Current update blocks from impl_ctx depending on order.
+    update_blocks: Fletcher2UpdateBlock,
 }
 
 impl Fletcher2 {
     /** Create a new Fletcher2 instance.
      *
-     * `order` specifies the endianness of the data to be hashed.
-     *
      * # Errors
      *
      * Returns [`ChecksumError`] if the implementation is not supported.
      */
-    pub fn new(
-        order: EndianOrder,
-        implementation: Fletcher2Implementation,
-    ) -> Result<Fletcher2, ChecksumError> {
+    pub fn new(implementation: Fletcher2Implementation) -> Result<Fletcher2, ChecksumError> {
+        let ctx = implementation.get_implementation_ctx()?;
         Ok(Fletcher2 {
             buffer_fill: 0,
             buffer: [0; FLETCHER_2_BLOCK_SIZE * FLETCHER_2_MAX_SIMD_WIDTH],
             state: Default::default(),
-            order: order,
-            impl_ctx: Fletcher2ImplementationCtx::new(order, implementation)?,
+            order: EndianOrder::Little,
+            impl_ctx: ctx,
+            update_blocks: ctx.update_blocks_little,
         })
     }
 
@@ -1282,10 +1287,16 @@ impl Fletcher2 {
 }
 
 impl Checksum for Fletcher2 {
-    fn reset(&mut self) -> Result<(), ChecksumError> {
-        self.buffer = [0; FLETCHER_2_BLOCK_SIZE * FLETCHER_2_MAX_SIMD_WIDTH];
+    fn reset(&mut self, order: EndianOrder) -> Result<(), ChecksumError> {
         self.buffer_fill = 0;
+        self.buffer = [0; FLETCHER_2_BLOCK_SIZE * FLETCHER_2_MAX_SIMD_WIDTH];
         self.state = Default::default();
+
+        self.order = order;
+        self.update_blocks = match self.order {
+            EndianOrder::Big => self.impl_ctx.update_blocks_big,
+            EndianOrder::Little => self.impl_ctx.update_blocks_little,
+        };
 
         Ok(())
     }
@@ -1309,7 +1320,7 @@ impl Checksum for Fletcher2 {
             // If block is full, consume it.
             if self.buffer_fill == self.impl_ctx.block_size {
                 let full_blocks_data = &self.buffer[0..self.buffer_fill];
-                (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
+                (self.update_blocks)(&mut self.state, &full_blocks_data);
                 self.buffer_fill = 0;
             }
         }
@@ -1319,7 +1330,7 @@ impl Checksum for Fletcher2 {
 
         // Update full blocks.
         let full_blocks_data = &data[0..data.len() - remainder];
-        (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
+        (self.update_blocks)(&mut self.state, &full_blocks_data);
 
         // Check if remainder exists, to prevent clobbering fill with 0.
         if remainder > 0 {
@@ -1355,8 +1366,8 @@ impl Checksum for Fletcher2 {
         Ok(result)
     }
 
-    fn hash(&mut self, data: &[u8]) -> Result<[u64; 4], ChecksumError> {
-        self.reset()?;
+    fn hash(&mut self, data: &[u8], order: EndianOrder) -> Result<[u64; 4], ChecksumError> {
+        self.reset(order)?;
         self.update(data)?;
         self.finalize()
     }
@@ -1564,10 +1575,12 @@ mod tests {
 
     fn run_test_vector(
         h: &mut Fletcher2,
+        order: EndianOrder,
         vector: &[u8],
         checksums: &[(usize, [u64; 4])],
     ) -> Result<(), ChecksumError> {
         // Empty checksum is all zeros.
+        h.reset(order)?;
         assert_eq!(h.finalize()?, [0, 0, 0, 0]);
 
         // Test sizes.
@@ -1577,12 +1590,10 @@ mod tests {
 
             if size <= vector.len() {
                 // Single update call.
-                h.reset()?;
-                h.update(&vector[0..size])?;
-                assert_eq!(h.finalize()?, checksum, "size {}", size);
+                assert_eq!(h.hash(&vector[0..size], order)?, checksum, "size {}", size);
 
                 // Partial update.
-                h.reset()?;
+                h.reset(order)?;
                 let mut offset = 0;
 
                 h.update(&vector[0..size / 3])?;
@@ -1597,7 +1608,7 @@ mod tests {
             } else {
                 // Multiple calls.
                 let mut todo = size;
-                h.reset()?;
+                h.reset(order)?;
 
                 while todo > 0 {
                     let can_do = cmp::min(todo, vector.len());
@@ -1615,12 +1626,21 @@ mod tests {
     fn test_required_implementation(
         implementation: Fletcher2Implementation,
     ) -> Result<(), ChecksumError> {
-        let mut h = Fletcher2::new(EndianOrder::Big, implementation)?;
+        let mut h = Fletcher2::new(implementation)?;
 
-        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_BIG_CHECKSUMS)?;
+        run_test_vector(
+            &mut h,
+            EndianOrder::Big,
+            &TEST_VECTOR_A,
+            &TEST_VECTOR_A_BIG_CHECKSUMS,
+        )?;
 
-        let mut h = Fletcher2::new(EndianOrder::Little, implementation)?;
-        run_test_vector(&mut h, &TEST_VECTOR_A, &TEST_VECTOR_A_LITTLE_CHECKSUMS)?;
+        run_test_vector(
+            &mut h,
+            EndianOrder::Little,
+            &TEST_VECTOR_A,
+            &TEST_VECTOR_A_LITTLE_CHECKSUMS,
+        )?;
 
         Ok(())
     }
@@ -1628,29 +1648,17 @@ mod tests {
     fn test_optional_implementation(
         implementation: Fletcher2Implementation,
     ) -> Result<(), ChecksumError> {
-        // Assume the implementation is supported.
-        let mut supported: [bool; 2] = [true, true];
-        let orders: [EndianOrder; 2] = [EndianOrder::Big, EndianOrder::Little];
+        let supported = match Fletcher2::new(implementation) {
+            _e @ Err(ChecksumError::Unsupported {
+                checksum: _,
+                implementation: _,
+            }) => false,
+            _ => true,
+        };
 
-        for (idx, order) in orders.iter().enumerate() {
-            if let Err(
-                _e @ ChecksumError::Unsupported {
-                    checksum: _,
-                    order: _,
-                    implementation: _,
-                },
-            ) = Fletcher2::new(*order, implementation)
-            {
-                supported[idx] = false;
-            }
-        }
-
-        // Check Big and Little are either both support, or both not supported.
-        assert_eq!(supported[0], supported[1]);
-
-        match supported[0] {
-            true => test_required_implementation(implementation),
+        match supported {
             false => Ok(()),
+            true => test_required_implementation(implementation),
         }
     }
 

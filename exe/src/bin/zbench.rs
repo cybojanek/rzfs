@@ -8,18 +8,19 @@ use zfs::checksum::{
     Fletcher2, Fletcher2Implementation, Fletcher4, Fletcher4Implementation, Sha256,
     Sha256Implementation,
 };
-use zfs::phys::{ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
+use zfs::phys::{EndianOrder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
 
 const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
 
 fn benchmark_checksum(
     checksum: &mut dyn Checksum,
+    order: EndianOrder,
     data: &[u8],
     iterations: usize,
     duration_us: u64,
 ) -> Result<u64, ChecksumError> {
     // Warm up.
-    checksum.reset()?;
+    checksum.reset(order)?;
     checksum.update(data)?;
     checksum.finalize()?;
 
@@ -31,7 +32,7 @@ fn benchmark_checksum(
 
     while microseconds < duration_us {
         for _ in 0..iterations {
-            checksum.reset()?;
+            checksum.reset(order)?;
             checksum.update(&data)?;
             checksum.finalize()?;
             total_iterations += 1;
@@ -62,20 +63,20 @@ fn benchmark_fletcher2(
 
     // Loop through each implementation.
     for implementation in Fletcher2Implementation::all() {
+        let mut checksum = Fletcher2::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
         // Loop through native and swap order.
-        for endian in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
+        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
             // Skip if not supported.
             if !implementation.is_supported() {
                 print!(" {:>11}", "n/a");
                 continue;
             }
 
-            let mut checksum = Fletcher2::new(endian, *implementation)?;
             let bytes_per_second =
-                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
+                benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
 
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
@@ -99,20 +100,20 @@ fn benchmark_fletcher4(
 
     // Loop through each implementation.
     for implementation in Fletcher4Implementation::all() {
+        let mut checksum = Fletcher4::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
         // Loop through native and swap order.
-        for endian in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
+        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
             // Skip if not supported.
             if !implementation.is_supported() {
                 print!(" {:>11}", "n/a");
                 continue;
             }
 
-            let mut checksum = Fletcher4::new(endian, *implementation)?;
             let bytes_per_second =
-                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
+                benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
 
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
@@ -136,20 +137,20 @@ fn benchmark_sha256(
 
     // Loop through each implementation.
     for implementation in Sha256Implementation::all() {
+        let mut checksum = Sha256::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
         // Loop through native and swap order.
-        for endian in [ENDIAN_ORDER_NATIVE] {
+        for order in [ENDIAN_ORDER_NATIVE] {
             // Skip if not supported.
             if !implementation.is_supported() {
                 print!(" {:>11}", "n/a");
                 continue;
             }
 
-            let mut checksum = Sha256::new(endian, *implementation)?;
             let bytes_per_second =
-                benchmark_checksum(&mut checksum, data, iterations, duration_us)?;
+                benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
 
             // Display units.
             print!(" {:11}", bytes_per_second / display_units);
