@@ -380,7 +380,7 @@ impl ChecksumTail {
     pub const LENGTH: usize = 8 + ChecksumValue::LENGTH;
 
     /// Magic value for an encoded [`ChecksumTail`].
-    pub const MAGIC: u64 = 0x210da7ab10c7a11;
+    pub const MAGIC: u64 = 0x0210da7ab10c7a11;
 
     /** Decodes a [`ChecksumTail`].
      *
