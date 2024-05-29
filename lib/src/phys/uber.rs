@@ -8,8 +8,8 @@ use std::error;
 use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVerifyError, Sha256};
 use crate::phys::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, Version,
-    VersionError,
+    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, NvPairs,
+    Version, VersionError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +95,9 @@ impl UberBlock {
     /// Byte length of an encoded [`UberBlock`].
     pub const LENGTH: usize = 1024;
 
+    /// Byte offset into a [`Label`] of first [`UberBlock`].
+    pub const LABEL_OFFSET: usize = NvPairs::LABEL_OFFSET + NvPairs::LENGTH;
+
     /// Padding size.
     const PADDING_SIZE: usize = 776;
 
@@ -147,14 +150,16 @@ impl UberBlock {
         sha256: &mut Sha256,
     ) -> Result<Option<UberBlock>, UberBlockDecodeError> {
         ////////////////////////////////
-        // Check if the UberBlock is empty.
-        if UberBlock::bytes_are_empty(bytes, false) {
-            return Ok(None);
-        }
-
-        ////////////////////////////////
         // Verify checksum.
-        label_verify(bytes, offset, sha256)?;
+        if let Err(checksum_err) = label_verify(bytes, offset, sha256) {
+            // Check if the entire UberBlock is empty.
+            if UberBlock::bytes_are_empty(bytes, false) {
+                return Ok(None);
+            }
+
+            // Else, return the error.
+            return Err(UberBlockDecodeError::LabelVerify { err: checksum_err });
+        }
 
         ////////////////////////////////
         // Create decoder.
@@ -166,6 +171,7 @@ impl UberBlock {
                     actual: _,
                 },
             ) => {
+                // Check if the entire UberBlock up to the checksum is empty.
                 if UberBlock::bytes_are_empty(bytes, true) {
                     return Ok(None);
                 }
