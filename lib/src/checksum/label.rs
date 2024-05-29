@@ -135,7 +135,10 @@ pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(),
     if tail.value.words == computed_checksum {
         Ok(())
     } else {
-        Err(LabelVerifyError::Mismatch {})
+        Err(LabelVerifyError::Mismatch {
+            computed: computed_checksum,
+            stored: tail.value.words,
+        })
     }
 }
 
@@ -260,7 +263,12 @@ pub enum LabelVerifyError {
     },
 
     /// Checksum mismatch.
-    Mismatch {},
+    Mismatch {
+        /// Computed checksum.
+        computed: [u64; 4],
+        /// Stored checksum.
+        stored: [u64; 4],
+    },
 }
 
 impl From<ChecksumError> for LabelVerifyError {
@@ -314,7 +322,22 @@ impl fmt::Display for LabelVerifyError {
             LabelVerifyError::InvalidLength { length } => {
                 write!(f, "Label verify error, invalid length: {length}")
             }
-            LabelVerifyError::Mismatch {} => write!(f, "Label verify checksum mismatch"),
+            LabelVerifyError::Mismatch { computed, stored } => write!(
+                f,
+                concat!(
+                    "Label verify checksum mismatch, ",
+                    "computed: 0x{:016x} 0x{:016x} 0x{:016x} 0x{:016x}, ",
+                    "stored: 0x{:016x} 0x{:016x} 0x{:016x} 0x{:016x}"
+                ),
+                computed[0],
+                computed[1],
+                computed[2],
+                computed[3],
+                stored[0],
+                stored[1],
+                stored[2],
+                stored[3],
+            ),
         }
     }
 }
