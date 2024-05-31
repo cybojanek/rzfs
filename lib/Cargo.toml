@@ -10,7 +10,7 @@ license = "GPL-2.0 OR MIT"
 homepage = "https://github.com/cybojanek/rzfs"
 
 [lib]
-name = "zfs"
+name = "rzfs"
 
 [features]
 default = ["std", "fletcher2-accel", "fletcher4-accel", "sha256-accel"]

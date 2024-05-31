@@ -101,7 +101,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -142,7 +142,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::EndianDecoder;
+     * use rzfs::phys::EndianDecoder;
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -170,7 +170,7 @@ impl EndianDecoder<'_> {
      * Magic mismatch
      *
      * ```
-     * use zfs::phys::EndianDecoder;
+     * use rzfs::phys::EndianDecoder;
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -186,7 +186,7 @@ impl EndianDecoder<'_> {
      * Slice too short:
      *
      * ```
-     * use zfs::phys::EndianDecoder;
+     * use rzfs::phys::EndianDecoder;
      *
      * // Not enough bytes for magic.
      * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde];
@@ -246,7 +246,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -277,7 +277,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01];
@@ -302,7 +302,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -334,7 +334,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01];
@@ -361,7 +361,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x00, 0x00, 0x00, 0x01];
@@ -384,7 +384,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -417,7 +417,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -458,7 +458,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -504,7 +504,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -541,7 +541,7 @@ impl EndianDecoder<'_> {
      * Returns [`EndianDecodeError`] if there are not enough bytes to skip.
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -597,7 +597,7 @@ impl EndianDecoder<'_> {
      * bytes are non-zero.
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[
@@ -698,7 +698,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0xf2, 0x34, 0x56, 0x78];
@@ -742,7 +742,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0xf2];
@@ -778,7 +778,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34];
@@ -808,7 +808,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34, 0x56, 0x78];
@@ -838,7 +838,7 @@ impl EndianDecoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianDecoder, EndianOrder};
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
      * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
@@ -992,7 +992,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [0; 8];
@@ -1047,7 +1047,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1080,7 +1080,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1109,7 +1109,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1138,7 +1138,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Some bytes.
      * let data = &mut [0; 32];
@@ -1159,7 +1159,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1186,7 +1186,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1212,7 +1212,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let data = &mut [0; 32];
@@ -1301,7 +1301,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [1; 8];
@@ -1341,7 +1341,7 @@ impl EndianEncoder<'_> {
      * Returns [`EndianEncodeError`] if there are not enough bytes available.
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 1] = [0; 1];
@@ -1375,7 +1375,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 2] = [0; 2];
@@ -1406,7 +1406,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 4] = [0; 4];
@@ -1437,7 +1437,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [0; 8];
@@ -1468,7 +1468,7 @@ impl EndianEncoder<'_> {
      * Basic usage:
      *
      * ```
-     * use zfs::phys::{EndianEncoder, EndianOrder};
+     * use rzfs::phys::{EndianEncoder, EndianOrder};
      *
      * // Destination.
      * let mut data: [u8; 8] = [1; 8];

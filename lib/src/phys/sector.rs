@@ -20,7 +20,7 @@ pub trait IsMultipleOfSectorSize {
      * # Examples
      *
      * ```
-     * use zfs::phys::IsMultipleOfSectorSize;
+     * use rzfs::phys::IsMultipleOfSectorSize;
      *
      * let value: u16 = 512;
      * assert_eq!(value.is_multiple_of_sector_size(), true);
@@ -71,7 +71,7 @@ impl IsMultipleOfSectorSize for usize {
  * # Examples
  *
  * ```
- * use zfs::phys::{is_multiple_of_sector_size, IsMultipleOfSectorSize};
+ * use rzfs::phys::{is_multiple_of_sector_size, IsMultipleOfSectorSize};
  *
  * let value: u16 = 512;
  * assert_eq!(is_multiple_of_sector_size(value), true);

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
+use std::error::Error;
+
 use fuser::Filesystem;
 
-use std::error::Error;
-use zfs::phys;
+use rzfs::phys;
 
 #[derive(Debug)]
 struct RZFSFuse;

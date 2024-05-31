@@ -3,12 +3,13 @@
 use std::env;
 use std::process::ExitCode;
 use std::time::Instant;
-use zfs::checksum::{Checksum, ChecksumError};
-use zfs::checksum::{
+
+use rzfs::checksum::{Checksum, ChecksumError};
+use rzfs::checksum::{
     Fletcher2, Fletcher2Implementation, Fletcher4, Fletcher4Implementation, Sha256,
     Sha256Implementation,
 };
-use zfs::phys::{EndianOrder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
+use rzfs::phys::{EndianOrder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP, SECTOR_SHIFT};
 
 const MICROSECONDS_PER_SECOND: u64 = 1_000_000;
 
