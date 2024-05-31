@@ -10,13 +10,13 @@ license = "GPL-2.0 OR MIT"
 homepage = "https://github.com/cybojanek/rzfs"
 
 [lib]
-name = "zfs_exe"
+name = "rzfs_exe"
 
 [[bin]]
-name = "zdb"
+name = "rzdb"
 
 [[bin]]
-name = "zbench"
+name = "rzbench"
 
 [dependencies]
 rzfs_lib = { "version" = "0.0.0" }
