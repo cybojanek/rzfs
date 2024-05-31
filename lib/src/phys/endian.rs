@@ -1102,6 +1102,35 @@ impl EndianEncoder<'_> {
         self.data.len()
     }
 
+    /** Gets the current offset in bytes.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use zfs::phys::{EndianEncoder, EndianOrder};
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     * let data_length = data.len();
+     *
+     * // Create encoder.
+     * let mut encoder = EndianEncoder::to_bytes(data, EndianOrder::Big);
+     *
+     * assert_eq!(encoder.offset(), 0);
+     *
+     * encoder.put_u64(0x0123456789abcdef).unwrap();
+     * assert_eq!(encoder.offset(), 8);
+     *
+     * encoder.put_u64(0xfedcba9876543210).unwrap();
+     * assert_eq!(encoder.offset(), 16);
+     * ```
+     */
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
     /** Returns the [`EndianOrder`] of the encoder.
      *
      * # Examples
