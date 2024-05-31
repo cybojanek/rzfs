@@ -589,19 +589,23 @@ impl error::Error for NvPairsEncodeError {
  * - Bytes: 262144 (256 KiB)
  *
  * ```text
- * +----------------+--------+
- * | Blank          |   8192 |
- * +----------------+--------+
- * | BootHeader     |   8192 |
- * +----------------+--------+
- * | NvPairs        | 114688 |
- * +----------------+--------+
- * | UberBlock[0]   |   1024 |
- * +----------------+--------+
- * |            ... |    ... |
- * +----------------+--------+
- * | UberBlock[127] |   1024 |
- * +----------------+--------+
+ * +--------------+--------+
+ * | Blank        |   8192 |
+ * +--------------+--------+
+ * | BootHeader   |   8192 |
+ * +--------------+--------+
+ * | NvPairs      | 114688 |
+ * +--------------+--------+
+ * | UberBlock[0] |      X |
+ * +--------------+--------+
+ * | ...          |    ... |
+ * +--------------+--------+
+ * | UberBlock[N] |      X |
+ * +--------------+--------+
+ *
+ * X: Refer to UberBlock documentation.
+ * N: (128 * KiB / X) - 1
+ *    Minus one for 0 offset indexing
  * ```
  *
  * ### Label layout in block device.
@@ -618,14 +622,9 @@ impl Label {
     /// Count of [`Label`] in a vdev.
     pub const COUNT: usize = 4;
 
-    /// Count of [`UberBlock`]
-    pub const UBER_COUNT: usize = 128;
-
     /// Byte length of an encoded [`Label`] (256 KiB).
-    pub const LENGTH: usize = Blank::LENGTH
-        + BootHeader::LENGTH
-        + NvPairs::LENGTH
-        + (Label::UBER_COUNT * UberBlock::LENGTH);
+    pub const LENGTH: usize =
+        Blank::LENGTH + BootHeader::LENGTH + NvPairs::LENGTH + UberBlock::TOTAL_LENGTH;
 
     /** Gets label sector offsets for a virtual device size in sectors.
      *

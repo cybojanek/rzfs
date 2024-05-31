@@ -18,7 +18,17 @@ use crate::phys::{
  *
  * ### Byte layout.
  *
- * - Bytes: 1024
+ * - Bytes: power of two from 1024 to 131072
+ * - ZFS OpenSolaris added `ashift` between V1 and V2, changing the
+ *   [`UberBlock`] size to be the same as `ashift`. However, this
+ *   was not user configurable, and used the logical block size of the media.
+ *   OpenZFS added the the `ashift` attribute to zpool create in a 0.6.0 release
+ *   candidate. Between 0.6.3 and 0.6.4, they realized that setting `ashift` to
+ *   larger values will break at least zdb, and so they limited it to 8192.
+ * - It is not clear if there exist any filesystems out there that actually have
+ *   an [`UberBlock`] larger than 8192. The [`UberBlock`] code itself will work
+ *   with any size, and the caller has to handle figuring out the size based
+ *   on the [`NvPairs`] tuples.
  * - It looks like MMP was added without a version flag.
  *
  * ```text
@@ -43,10 +53,12 @@ use crate::phys::{
  * +------------------+------+---------+------------------------------+
  * | checkpoint txg   |   8 |     5000 | com.delphix:zpool_checkpoint |
  * +------------------+------+---------+------------------------------+
- * | padding          | 776 |          |
+ * | padding          |   X |          |
  * +------------------+------+---------+
  * | checksum tail    |  40 |        1 |
  * +------------------+------+---------+
+ *
+ * X: power of two from 1024 to 131072, minus 248 bytes
  * ```
  *
  * ### order
@@ -92,21 +104,27 @@ pub struct UberBlock {
 }
 
 impl UberBlock {
-    /// Byte length of an encoded [`UberBlock`].
-    pub const LENGTH: usize = 1024;
+    /// Minimum size of an encoded [`UberBlock`] in shift (1024 bytes).
+    pub const ASHIFT_MIN: usize = 10;
 
-    /// Byte offset into a [`Label`] of first [`UberBlock`].
+    /// Maximum size of an encoded [`UberBlock`] in shift (8192 bytes).
+    pub const ASHIFT_MAX: usize = 13;
+
+    /// Total length of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
+    pub const TOTAL_LENGTH: usize = 131072;
+
+    /// Byte offset into a [`crate::phys::Label`] of first [`UberBlock`].
     pub const LABEL_OFFSET: usize = NvPairs::LABEL_OFFSET + NvPairs::LENGTH;
-
-    /// Padding size.
-    const PADDING_SIZE: usize = 776;
 
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;
 
     /** Checks if the bytes match an empty [`UberBlock`] pattern.
+     *
+     * If `exclude_checksum` is [true], then the [`ChecksumTail`] of `bytes`
+     * is excluded from checking if they are zero.
      */
-    fn bytes_are_empty(bytes: &[u8; UberBlock::LENGTH], exclude_checksum: bool) -> bool {
+    fn bytes_are_empty(bytes: &[u8], exclude_checksum: bool) -> bool {
         // NOTE: It looks like some ZFS implementations write an empty
         //       UberBlock as all zero, except for the version.
         //       Others, write out all zero, except for the version, and
@@ -118,17 +136,17 @@ impl UberBlock {
             if magic_is_zero {
                 // Skip version.
                 if let Ok(_e) = decoder.skip(8) {
-                    // If the rest is zero.
-                    let rest_size = UberBlock::LENGTH
-                        - 16
-                        - (if exclude_checksum {
-                            ChecksumTail::LENGTH
-                        } else {
-                            0
-                        });
-                    if let Ok(rest_is_zero) = decoder.is_zero_skip(rest_size) {
-                        if rest_is_zero {
-                            return true;
+                    // Exclude checksum.
+                    let excluded_length = if exclude_checksum {
+                        ChecksumTail::LENGTH
+                    } else {
+                        0
+                    };
+
+                    if let Some(rest_size) = decoder.len().checked_sub(excluded_length) {
+                        // If the rest is zero.
+                        if let Ok(rest_is_zero) = decoder.is_zero_skip(rest_size) {
+                            return rest_is_zero;
                         }
                     }
                 }
@@ -145,14 +163,14 @@ impl UberBlock {
      * Returns [`UberBlockDecodeError`] on error.
      */
     pub fn from_bytes(
-        bytes: &[u8; UberBlock::LENGTH],
+        bytes: &[u8],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<Option<UberBlock>, UberBlockDecodeError> {
         ////////////////////////////////
         // Verify checksum.
         if let Err(checksum_err) = label_verify(bytes, offset, sha256) {
-            // Check if the entire UberBlock is empty.
+            // Check if the UberBlock is empty (including checksum).
             if UberBlock::bytes_are_empty(bytes, false) {
                 return Ok(None);
             }
@@ -171,7 +189,7 @@ impl UberBlock {
                     actual: _,
                 },
             ) => {
-                // Check if the entire UberBlock up to the checksum is empty.
+                // Check if the UberBlock is empty (excluding checksum).
                 if UberBlock::bytes_are_empty(bytes, true) {
                     return Ok(None);
                 }
@@ -215,7 +233,19 @@ impl UberBlock {
         ////////////////////////////////
         // Check that the rest of the uber block (up to the checksum at the
         // tail) is all zeroes.
-        decoder.skip_zero_padding(UberBlock::PADDING_SIZE)?;
+        let rest_size = match decoder.len().checked_sub(ChecksumTail::LENGTH) {
+            Some(v) => v,
+            None => {
+                return Err(UberBlockDecodeError::Endian {
+                    err: EndianDecodeError::EndOfInput {
+                        offset: decoder.offset(),
+                        length: decoder.capacity(),
+                        count: ChecksumTail::LENGTH,
+                    },
+                })
+            }
+        };
+        decoder.skip_zero_padding(rest_size)?;
 
         ////////////////////////////////
         // Success.
@@ -240,7 +270,7 @@ impl UberBlock {
      */
     pub fn to_bytes(
         &self,
-        bytes: &mut [u8; UberBlock::LENGTH],
+        bytes: &mut [u8],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<(), UberBlockEncodeError> {
@@ -282,7 +312,20 @@ impl UberBlock {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(UberBlock::PADDING_SIZE)?;
+        let rest_size = match encoder.available().checked_sub(ChecksumTail::LENGTH) {
+            Some(v) => v,
+            None => {
+                return Err(UberBlockEncodeError::Endian {
+                    err: EndianEncodeError::EndOfOutput {
+                        offset: encoder.offset(),
+                        length: encoder.capacity(),
+                        count: ChecksumTail::LENGTH,
+                    },
+                })
+            }
+        };
+
+        encoder.put_zero_padding(rest_size)?;
 
         ////////////////////////////////
         // Compute checksum.
