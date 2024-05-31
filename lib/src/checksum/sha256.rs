@@ -318,7 +318,6 @@ impl Sha256ImplementationCtx {
             ))]
             _ => Err(ChecksumError::Unsupported {
                 checksum: ChecksumType::Sha256,
-                order,
                 implementation: implementation.to_str(),
             }),
         }
