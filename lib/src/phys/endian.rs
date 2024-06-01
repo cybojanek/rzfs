@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
+/*! An Endian decoder and encoder.
+ *
+ * Decodes and encodes numbers in big or little endian.
+ */
 use core::cell::Cell;
 use core::fmt;
 use core::fmt::Display;
@@ -231,7 +235,7 @@ impl EndianDecoder<'_> {
         } else {
             Err(EndianDecodeError::EndOfInput {
                 offset: self.offset.get(),
-                length: self.data.len(),
+                capacity: self.capacity(),
                 count,
             })
         }
@@ -387,9 +391,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -420,9 +422,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -461,9 +461,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -485,7 +483,7 @@ impl EndianDecoder<'_> {
         if offset > self.data.len() {
             return Err(EndianDecodeError::SeekPastEnd {
                 offset,
-                length: self.data.len(),
+                capacity: self.capacity(),
             });
         }
 
@@ -507,9 +505,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -544,9 +540,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x00, 0x00, 0x56, 0x78, 0x00, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x00, 0x00, 0x56, 0x78, 0x00, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -600,9 +594,7 @@ impl EndianDecoder<'_> {
      * use rzfs::phys::{EndianDecoder, EndianOrder};
      *
      * // Some bytes (big endian).
-     * let data = &[
-     *     0x00, 0x00, 0x56, 0x78, 0x00, 0xbc, 0xde, 0xf0,
-     * ];
+     * let data = &[0x00, 0x00, 0x56, 0x78, 0x00, 0xbc, 0xde, 0xf0];
      *
      * // Create decoder.
      * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
@@ -860,16 +852,15 @@ impl EndianDecoder<'_> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`EndianDecoder`] error.
- */
+/// [`EndianDecoder`] error.
 #[derive(Debug)]
 pub enum EndianDecodeError {
     /// End of input data.
     EndOfInput {
         /// Byte offset of data.
         offset: usize,
-        /// Total length of data.
-        length: usize,
+        /// Total capacity of data.
+        capacity: usize,
         /// Number of bytes needed.
         count: usize,
     },
@@ -897,8 +888,8 @@ pub enum EndianDecodeError {
     SeekPastEnd {
         /// Requested offset.
         offset: usize,
-        /// Total length of data.
-        length: usize,
+        /// Total capacity of data.
+        capacity: usize,
     },
 }
 
@@ -907,12 +898,12 @@ impl fmt::Display for EndianDecodeError {
         match self {
             EndianDecodeError::EndOfInput {
                 offset,
-                length,
+                capacity,
                 count,
             } => {
                 write!(
                     f,
-                    "Endian end of input at offset:{offset} length:{length} need:{count}"
+                    "Endian end of input at offset:{offset} capacity:{capacity} count:{count}"
                 )
             }
             EndianDecodeError::InvalidMagic { expected, actual } => write!(
@@ -922,10 +913,16 @@ impl fmt::Display for EndianDecodeError {
             ),
             EndianDecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
             EndianDecodeError::RewindPastStart { offset, count } => {
-                write!(f, "Endian rewind at offset:{offset} count:{count}")
+                write!(
+                    f,
+                    "Endian rewind past start at offset:{offset} count:{count}"
+                )
             }
-            EndianDecodeError::SeekPastEnd { offset, length } => {
-                write!(f, "Endian seek to offset:{offset} length:{length}")
+            EndianDecodeError::SeekPastEnd { offset, capacity } => {
+                write!(
+                    f,
+                    "Endian seek past end to offset:{offset} capacity:{capacity}"
+                )
             }
         }
     }
@@ -1034,7 +1031,7 @@ impl EndianEncoder<'_> {
         } else {
             Err(EndianEncodeError::EndOfOutput {
                 offset: self.offset,
-                length: self.data.len(),
+                capacity: self.capacity(),
                 count,
             })
         }
@@ -1509,8 +1506,8 @@ pub enum EndianEncodeError {
     EndOfOutput {
         /// Byte offset of data.
         offset: usize,
-        /// Total length of data.
-        length: usize,
+        /// Total capacity of data.
+        capacity: usize,
         /// Number of bytes needed.
         count: usize,
     },
@@ -1521,12 +1518,12 @@ impl fmt::Display for EndianEncodeError {
         match self {
             EndianEncodeError::EndOfOutput {
                 offset,
-                length,
+                capacity,
                 count,
             } => {
                 write!(
                     f,
-                    "Endian end of output at offset:{offset}, length:{length} count:{count}"
+                    "Endian end of output at offset:{offset}, capacity:{capacity} count:{count}"
                 )
             }
         }
