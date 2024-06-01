@@ -49,3 +49,6 @@ pub use uber::{
 
 pub(crate) mod version;
 pub use version::{Version, VersionError};
+
+pub(crate) mod xdr;
+pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
