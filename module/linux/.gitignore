@@ -6,3 +6,12 @@
 built-in.a
 Module.symvers
 modules.order
+arch
+arch.rs
+checksum
+checksum.rs
+lib.rs
+phys
+phys.rs
+userspace
+userspace.rs
