@@ -239,7 +239,7 @@ impl UberBlock {
                 return Err(UberBlockDecodeError::Endian {
                     err: EndianDecodeError::EndOfInput {
                         offset: decoder.offset(),
-                        length: decoder.capacity(),
+                        capacity: decoder.capacity(),
                         count: ChecksumTail::LENGTH,
                     },
                 })
@@ -318,7 +318,7 @@ impl UberBlock {
                 return Err(UberBlockEncodeError::Endian {
                     err: EndianEncodeError::EndOfOutput {
                         offset: encoder.offset(),
-                        length: encoder.capacity(),
+                        capacity: encoder.capacity(),
                         count: ChecksumTail::LENGTH,
                     },
                 })
@@ -411,7 +411,7 @@ impl fmt::Display for UberBlockDecodeError {
                 write!(f, "UberBlock decode error, block pointer: [{err}]")
             }
             UberBlockDecodeError::EmptyBlockPointer {} => {
-                write!(f, "UberBlock decode error, empty block[ pointer]")
+                write!(f, "UberBlock decode error, empty block pointer]")
             }
             UberBlockDecodeError::Endian { err } => {
                 write!(f, "UberBlock decode error, endian: [{err}]")
