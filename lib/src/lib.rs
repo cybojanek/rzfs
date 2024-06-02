@@ -17,3 +17,7 @@ pub mod checksum;
 
 /// On disk physical structure encoding and decoding.
 pub mod phys;
+
+/// Userspace components.
+#[cfg(feature = "userspace")]
+pub mod userspace;
