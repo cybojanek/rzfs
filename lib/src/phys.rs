@@ -38,6 +38,12 @@ pub use label::{
     LabelSectorsError, NvPairs, NvPairsDecodeError, NvPairsEncodeError,
 };
 
+pub(crate) mod nv;
+pub use nv::{
+    NvDataType, NvDataValue, NvDecodeError, NvDecodedDataValue, NvDecodedPair, NvDecoder,
+    NvEncoding, NvEndianOrder, NvList, NvPair, NvUnique,
+};
+
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
