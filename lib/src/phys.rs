@@ -25,7 +25,7 @@ pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
 pub(crate) mod endian;
 pub use endian::{
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder,
-    ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP,
+    GetFromEndianDecoder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP,
 };
 
 pub(crate) mod feature;

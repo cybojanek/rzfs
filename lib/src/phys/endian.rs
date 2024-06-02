@@ -848,6 +848,77 @@ impl EndianDecoder<'_> {
     pub fn get_u64(&self) -> Result<u64, EndianDecodeError> {
         Ok((self.decoder.get_u64)(self.get_8_bytes()?))
     }
+
+    /** Decodes a value using the [`GetFromEndianDecoder`] trait for F.
+     *
+     * # Errors
+     *
+     * Returns [`EndianDecodeError`] in case of decoding errors. In case of error,
+     * offset remains unchanged.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
+     *
+     * // Some bytes (big endian).
+     * let data = &[
+     *     0x7f,                                           // u8
+     *     0x7f, 0xff,                                     // u16
+     *     0xf2, 0x34, 0x56, 0x78,                         // u32
+     *     0xf2, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, // u64
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
+     *
+     * // Decode values.
+     * let c: u8 = decoder.get().unwrap();
+     * let e: u16 = decoder.get().unwrap();
+     * let g: u32 = decoder.get().unwrap();
+     * let i: u64 = decoder.get().unwrap();
+     *
+     * assert_eq!(c, 127);
+     * assert_eq!(e, 32767);
+     * assert_eq!(g, 0xf2345678);
+     * assert_eq!(i, 0xf23456789abcdef0);
+     *
+     * assert!(decoder.is_empty());
+     * ```
+     */
+    pub fn get<F: GetFromEndianDecoder>(&self) -> Result<F, EndianDecodeError> {
+        GetFromEndianDecoder::get_from_decoder(self)
+    }
+}
+
+/// [`GetFromEndianDecoder`] is a trait that gets from the [`EndianDecoder`] to the type.
+pub trait GetFromEndianDecoder: Sized {
+    /// Get the value from the decoder.
+    fn get_from_decoder(decoder: &EndianDecoder<'_>) -> Result<Self, EndianDecodeError>;
+}
+
+impl GetFromEndianDecoder for u8 {
+    fn get_from_decoder(decoder: &EndianDecoder<'_>) -> Result<u8, EndianDecodeError> {
+        decoder.get_u8()
+    }
+}
+
+impl GetFromEndianDecoder for u16 {
+    fn get_from_decoder(decoder: &EndianDecoder<'_>) -> Result<u16, EndianDecodeError> {
+        decoder.get_u16()
+    }
+}
+
+impl GetFromEndianDecoder for u32 {
+    fn get_from_decoder(decoder: &EndianDecoder<'_>) -> Result<u32, EndianDecodeError> {
+        decoder.get_u32()
+    }
+}
+
+impl GetFromEndianDecoder for u64 {
+    fn get_from_decoder(decoder: &EndianDecoder<'_>) -> Result<u64, EndianDecodeError> {
+        decoder.get_u64()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
