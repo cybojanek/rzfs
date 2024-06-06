@@ -15,6 +15,9 @@ pub(crate) mod arch;
 /// Checksum calculation.
 pub mod checksum;
 
+/// Compression.
+pub mod compression;
+
 /// On disk physical structure encoding and decoding.
 pub mod phys;
 
