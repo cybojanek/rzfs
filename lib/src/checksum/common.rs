@@ -9,7 +9,7 @@ use std::error;
 /// [`Checksum`] error.
 #[derive(Debug)]
 pub enum ChecksumError {
-    /// Unsupported [`ChecksumType`] and [`EndianOrder`] combination.
+    /// Unsupported [`ChecksumType`].
     Unsupported {
         /// Unsupported value.
         checksum: ChecksumType,

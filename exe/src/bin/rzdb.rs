@@ -213,8 +213,8 @@ fn dump() -> Result<(), Box<dyn Error>> {
     // Read boot block.
     let boot_block_bytes = &mut vec![0; phys::BootBlock::LENGTH];
     block_device.read(
-        phys::BootBlock::VDEV_OFFSET >> phys::SECTOR_SHIFT,
         boot_block_bytes,
+        phys::BootBlock::VDEV_OFFSET >> phys::SECTOR_SHIFT,
     )?;
 
     // Causes stack overflow in debug release.
@@ -243,7 +243,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         ////////////////////////////////
         // Read label.
         let label_bytes = &mut vec![0; phys::Label::LENGTH];
-        block_device.read(sector, label_bytes)?;
+        block_device.read(label_bytes, sector)?;
 
         let label_byte_offset_into_vdev = sector << phys::SECTOR_SHIFT;
 

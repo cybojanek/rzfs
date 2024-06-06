@@ -211,15 +211,6 @@ impl BlockPointer {
             None => Ok(BlockPointer::empty_to_encoder(encoder)?),
         }
     }
-
-    /// Gets the [`EndianOrder`] encoding of the pointer data.
-    pub fn endian(&self) -> EndianOrder {
-        match self {
-            BlockPointer::Embedded(ptr) => ptr.endian,
-            BlockPointer::Encrypted(ptr) => ptr.endian,
-            BlockPointer::Regular(ptr) => ptr.endian,
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -294,7 +285,7 @@ pub struct BlockPointerEmbedded {
     pub embedded_type: BlockPointerEmbeddedType,
 
     /// Endian encoding of payload.
-    pub endian: EndianOrder,
+    pub order: EndianOrder,
 
     /// ???
     pub level: u8,
@@ -458,8 +449,8 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode endian.
-        let endian = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
-        let endian = match endian {
+        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
         };
@@ -512,7 +503,7 @@ impl BlockPointerEmbedded {
             compression,
             dmu,
             embedded_type,
-            endian,
+            order,
             level,
             logical_birth_txg,
             logical_size,
@@ -567,7 +558,7 @@ impl BlockPointerEmbedded {
             | u64::from(embedded_type) << CHECKSUM_SHIFT
             | u64::from(dmu) << DMU_SHIFT
             | level << LEVEL_SHIFT
-            | match self.endian {
+            | match self.order {
                 EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
                 EndianOrder::Big => 0,
             };
@@ -696,7 +687,7 @@ pub struct BlockPointerEncrypted {
     pub dvas: [Option<Dva>; 2],
 
     /// Endian of payload.
-    pub endian: EndianOrder,
+    pub order: EndianOrder,
 
     /// ???
     pub fill_count: u32,
@@ -776,8 +767,8 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode endian.
-        let endian = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
-        let endian = match endian {
+        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
         };
@@ -840,7 +831,7 @@ impl BlockPointerEncrypted {
             dedup,
             dmu,
             dvas,
-            endian,
+            order,
             fill_count,
             level,
             iv_1,
@@ -911,7 +902,7 @@ impl BlockPointerEncrypted {
             | level << LEVEL_SHIFT
             | ENCRYPTED_FLAG_MASK
             | if self.dedup { DEDUP_FLAG_MASK } else { 0 }
-            | match self.endian {
+            | match self.order {
                 EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
                 EndianOrder::Big => 0,
             };
@@ -1042,7 +1033,7 @@ pub struct BlockPointerRegular {
     pub dvas: [Option<Dva>; 3],
 
     /// Endian of payload.
-    pub endian: EndianOrder,
+    pub order: EndianOrder,
 
     /// ???
     pub fill_count: u64,
@@ -1109,8 +1100,8 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode endian.
-        let endian = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
-        let endian = match endian {
+        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
         };
@@ -1167,7 +1158,7 @@ impl BlockPointerRegular {
             dedup,
             dmu,
             dvas,
-            endian,
+            order,
             fill_count,
             level,
             logical_birth_txg,
@@ -1232,7 +1223,7 @@ impl BlockPointerRegular {
             | u64::from(dmu) << DMU_SHIFT
             | level << LEVEL_SHIFT
             | if self.dedup { DEDUP_FLAG_MASK } else { 0 }
-            | match self.endian {
+            | match self.order {
                 EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
                 EndianOrder::Big => 0,
             };
