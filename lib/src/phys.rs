@@ -47,8 +47,8 @@ pub use nv::{
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
-pub(crate) mod uber;
-pub use uber::{
+pub(crate) mod uberblock;
+pub use uberblock::{
     UberBlock, UberBlockDecodeError, UberBlockEncodeError, UberBlockMmp, UberBlockMmpDecodeError,
     UberBlockMmpEncodeError,
 };

@@ -60,7 +60,7 @@ impl BlockDevice {
      *
      * Returns [`BlockDeviceReadError`] in case of error.
      */
-    pub fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), BlockDeviceReadError> {
+    pub fn read(&self, data: &mut [u8], sector: u64) -> Result<(), BlockDeviceReadError> {
         let size = data.len();
 
         ////////////////////////////////
