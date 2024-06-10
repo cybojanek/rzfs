@@ -16,6 +16,12 @@ pub use checksum::{
 pub(crate) mod compression;
 pub use compression::{CompressionType, CompressionTypeError};
 
+pub(crate) mod dnode;
+pub use dnode::{
+    Dnode, DnodeDecodeError, DnodeEncodeError, DnodeTail, DnodeTailSpill, DnodeTailThree,
+    DnodeTailTwo, DnodeTailZero,
+};
+
 pub(crate) mod dmu;
 pub use dmu::{DmuType, DmuTypeError};
 

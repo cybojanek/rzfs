@@ -10,6 +10,8 @@ use std::error;
 
 /** Data Management Unit type.
  *
+ * The [`DmuType`] defines what type of data is stored in the [`crate::phys::Dnode`].
+ *
  * ```text
  * +-----------------------------+---------+---------------------+
  * | Dmu Type                    | Version | Object Type         |
