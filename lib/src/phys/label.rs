@@ -25,18 +25,18 @@ use crate::phys::{is_multiple_of_sector_size, ChecksumTail, EndianOrder, UberBlo
  */
 pub struct Blank {
     /// Payload.
-    pub payload: [u8; Blank::PAYLOAD_LENGTH],
+    pub payload: [u8; Blank::PAYLOAD_SIZE],
 }
 
 impl Blank {
-    /// Byte length of an encoded [`Blank`].
-    pub const LENGTH: usize = 8 * 1024;
+    /// Byte size of an encoded [`Blank`].
+    pub const SIZE: usize = 8 * 1024;
 
     /// Byte offset into a [`Label`].
     pub const LABEL_OFFSET: usize = 0;
 
-    /// Byte length of the blank payload (8152).
-    pub const PAYLOAD_LENGTH: usize = Blank::LENGTH - ChecksumTail::LENGTH;
+    /// Byte size of the blank payload (8152).
+    pub const PAYLOAD_SIZE: usize = Blank::SIZE - ChecksumTail::SIZE;
 
     /** Decodes a [`Blank`].
      *
@@ -44,9 +44,9 @@ impl Blank {
      *
      * Returns [`BlankDecodeError`] on error.
      */
-    pub fn from_bytes(bytes: &[u8; Blank::LENGTH]) -> Result<Blank, BlankDecodeError> {
+    pub fn from_bytes(bytes: &[u8; Blank::SIZE]) -> Result<Blank, BlankDecodeError> {
         Ok(Blank {
-            payload: bytes[0..Blank::PAYLOAD_LENGTH].try_into().unwrap(),
+            payload: bytes[0..Blank::PAYLOAD_SIZE].try_into().unwrap(),
         })
     }
 
@@ -56,7 +56,7 @@ impl Blank {
      *
      * Returns [`BlankEncodeError`] in case of encoding error.
      */
-    pub fn to_bytes(&self, bytes: &mut [u8; Blank::LENGTH]) -> Result<(), BlankEncodeError> {
+    pub fn to_bytes(&self, bytes: &mut [u8; Blank::SIZE]) -> Result<(), BlankEncodeError> {
         bytes.copy_from_slice(&self.payload);
         Ok(())
     }
@@ -115,18 +115,18 @@ impl error::Error for BlankEncodeError {
  */
 pub struct BootHeader {
     /// Payload.
-    pub payload: [u8; BootHeader::PAYLOAD_LENGTH],
+    pub payload: [u8; BootHeader::PAYLOAD_SIZE],
 }
 
 impl BootHeader {
-    /// Byte length of an encoded [`BootHeader`].
-    pub const LENGTH: usize = 8 * 1024;
+    /// Byte size of an encoded [`BootHeader`].
+    pub const SIZE: usize = 8 * 1024;
 
     /// Byte offset into a [`Label`].
-    pub const LABEL_OFFSET: usize = Blank::LENGTH;
+    pub const LABEL_OFFSET: usize = Blank::SIZE;
 
-    /// Byte length of the blank payload (8152).
-    pub const PAYLOAD_LENGTH: usize = BootHeader::LENGTH - ChecksumTail::LENGTH;
+    /// Byte size of the blank payload (8152).
+    pub const PAYLOAD_SIZE: usize = BootHeader::SIZE - ChecksumTail::SIZE;
 
     /** Decodes a [`BootHeader`].
      *
@@ -139,7 +139,7 @@ impl BootHeader {
      * Returns [`BootHeaderDecodeError`] on error.
      */
     pub fn from_bytes(
-        bytes: &[u8; BootHeader::LENGTH],
+        bytes: &[u8; BootHeader::SIZE],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<BootHeader, BootHeaderDecodeError> {
@@ -148,7 +148,7 @@ impl BootHeader {
 
         // Copy payload.
         Ok(BootHeader {
-            payload: bytes[0..BootHeader::PAYLOAD_LENGTH].try_into().unwrap(),
+            payload: bytes[0..BootHeader::PAYLOAD_SIZE].try_into().unwrap(),
         })
     }
 
@@ -165,13 +165,13 @@ impl BootHeader {
      */
     pub fn to_bytes(
         &self,
-        bytes: &mut [u8; BootHeader::LENGTH],
+        bytes: &mut [u8; BootHeader::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
     ) -> Result<(), BootHeaderEncodeError> {
         // Copy payload.
-        bytes[0..BootHeader::LENGTH].copy_from_slice(&self.payload);
+        bytes[0..BootHeader::SIZE].copy_from_slice(&self.payload);
 
         // Compute checksum.
         label_checksum(bytes, offset, sha256, order)?;
@@ -193,7 +193,7 @@ impl BootHeader {
      */
     pub fn checksum(
         &self,
-        bytes: &mut [u8; BootHeader::LENGTH],
+        bytes: &mut [u8; BootHeader::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
@@ -213,7 +213,7 @@ impl BootHeader {
      * Returns [`LabelVerifyError`] on error.
      */
     pub fn verify(
-        bytes: &[u8; BootHeader::LENGTH],
+        bytes: &[u8; BootHeader::SIZE],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<(), LabelVerifyError> {
@@ -309,18 +309,18 @@ impl error::Error for BootHeaderEncodeError {
  */
 pub struct BootBlock {
     /// Payload.
-    pub payload: [u8; BootBlock::PAYLOAD_LENGTH],
+    pub payload: [u8; BootBlock::PAYLOAD_SIZE],
 }
 
 impl BootBlock {
-    /// Byte length of an encoded [`BootBlock`].
-    pub const LENGTH: usize = 3584 * 1024;
+    /// Byte size of an encoded [`BootBlock`].
+    pub const SIZE: usize = 3584 * 1024;
 
     /// Byte offset into a virtual block device.
-    pub const VDEV_OFFSET: u64 = (2 * Label::LENGTH) as u64;
+    pub const VDEV_OFFSET: u64 = (2 * Label::SIZE) as u64;
 
-    /// Byte length of the payload (3670016).
-    pub const PAYLOAD_LENGTH: usize = BootBlock::LENGTH - ChecksumTail::LENGTH;
+    /// Byte size of the payload (3670016).
+    pub const PAYLOAD_SIZE: usize = BootBlock::SIZE - ChecksumTail::SIZE;
 
     /** Decodes a [`BootBlock`].
      *
@@ -328,9 +328,9 @@ impl BootBlock {
      *
      * Returns [`BootBlockDecodeError`] on error.
      */
-    pub fn from_bytes(bytes: &[u8; BootBlock::LENGTH]) -> Result<BootBlock, BootBlockDecodeError> {
+    pub fn from_bytes(bytes: &[u8; BootBlock::SIZE]) -> Result<BootBlock, BootBlockDecodeError> {
         Ok(BootBlock {
-            payload: bytes[0..BootBlock::PAYLOAD_LENGTH].try_into().unwrap(),
+            payload: bytes[0..BootBlock::PAYLOAD_SIZE].try_into().unwrap(),
         })
     }
 
@@ -340,10 +340,7 @@ impl BootBlock {
      *
      * Returns [`BootBlockEncodeError`] in case of encoding error.
      */
-    pub fn to_bytes(
-        &self,
-        bytes: &mut [u8; BootBlock::LENGTH],
-    ) -> Result<(), BootBlockEncodeError> {
+    pub fn to_bytes(&self, bytes: &mut [u8; BootBlock::SIZE]) -> Result<(), BootBlockEncodeError> {
         bytes.copy_from_slice(&self.payload);
         Ok(())
     }
@@ -402,18 +399,18 @@ impl error::Error for BootBlockEncodeError {
  */
 pub struct NvPairs {
     /// Payload.
-    pub payload: [u8; NvPairs::PAYLOAD_LENGTH],
+    pub payload: [u8; NvPairs::PAYLOAD_SIZE],
 }
 
 impl NvPairs {
-    /// Byte length of an encoded [`NvPairs`].
-    pub const LENGTH: usize = 112 * 1024;
+    /// Byte size of an encoded [`NvPairs`].
+    pub const SIZE: usize = 112 * 1024;
 
     /// Byte offset into a [`Label`].
-    pub const LABEL_OFFSET: usize = BootHeader::LABEL_OFFSET + BootHeader::LENGTH;
+    pub const LABEL_OFFSET: usize = BootHeader::LABEL_OFFSET + BootHeader::SIZE;
 
-    /// Byte length of the blank payload (8152).
-    pub const PAYLOAD_LENGTH: usize = NvPairs::LENGTH - ChecksumTail::LENGTH;
+    /// Byte size of the blank payload (8152).
+    pub const PAYLOAD_SIZE: usize = NvPairs::SIZE - ChecksumTail::SIZE;
 
     /** Decodes a [`NvPairs`].
      *
@@ -426,7 +423,7 @@ impl NvPairs {
      * Returns [`NvPairsDecodeError`] on error.
      */
     pub fn from_bytes(
-        bytes: &[u8; NvPairs::LENGTH],
+        bytes: &[u8; NvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<NvPairs, NvPairsDecodeError> {
@@ -435,7 +432,7 @@ impl NvPairs {
 
         // Copy payload.
         Ok(NvPairs {
-            payload: bytes[0..NvPairs::PAYLOAD_LENGTH].try_into().unwrap(),
+            payload: bytes[0..NvPairs::PAYLOAD_SIZE].try_into().unwrap(),
         })
     }
 
@@ -452,13 +449,13 @@ impl NvPairs {
      */
     pub fn to_bytes(
         &self,
-        bytes: &mut [u8; NvPairs::LENGTH],
+        bytes: &mut [u8; NvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
     ) -> Result<(), NvPairsEncodeError> {
         // Copy payload.
-        bytes[0..NvPairs::LENGTH].copy_from_slice(&self.payload);
+        bytes[0..NvPairs::SIZE].copy_from_slice(&self.payload);
 
         // Compute checksum.
         label_checksum(bytes, offset, sha256, order)?;
@@ -480,7 +477,7 @@ impl NvPairs {
      */
     pub fn checksum(
         &self,
-        bytes: &mut [u8; NvPairs::LENGTH],
+        bytes: &mut [u8; NvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
@@ -500,7 +497,7 @@ impl NvPairs {
      * Returns [`LabelVerifyError`] on error.
      */
     pub fn verify(
-        bytes: &[u8; NvPairs::LENGTH],
+        bytes: &[u8; NvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<(), LabelVerifyError> {
@@ -622,9 +619,8 @@ impl Label {
     /// Count of [`Label`] in a vdev.
     pub const COUNT: usize = 4;
 
-    /// Byte length of an encoded [`Label`] (256 KiB).
-    pub const LENGTH: usize =
-        Blank::LENGTH + BootHeader::LENGTH + NvPairs::LENGTH + UberBlock::TOTAL_LENGTH;
+    /// Byte size of an encoded [`Label`] (256 KiB).
+    pub const SIZE: usize = Blank::SIZE + BootHeader::SIZE + NvPairs::SIZE + UberBlock::TOTAL_SIZE;
 
     /** Gets label sector offsets for a virtual device size in sectors.
      *
@@ -633,9 +629,9 @@ impl Label {
      * Returns [`LabelSectorsError`] if vdev_sectors is too small.
      */
     pub fn sectors(vdev_sectors: u64) -> Result<[u64; 4], LabelSectorsError> {
-        debug_assert!(is_multiple_of_sector_size(Label::LENGTH));
+        debug_assert!(is_multiple_of_sector_size(Label::SIZE));
 
-        let size_sectors: u64 = (Label::LENGTH >> SECTOR_SHIFT) as u64;
+        let size_sectors: u64 = (Label::SIZE >> SECTOR_SHIFT) as u64;
 
         // Check if vdev is too small.
         if vdev_sectors < size_sectors * 4 {

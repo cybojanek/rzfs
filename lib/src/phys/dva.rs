@@ -6,7 +6,8 @@ use core::fmt;
 use std::error;
 
 use crate::phys::{
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, SECTOR_SHIFT,
+    BootBlock, EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, Label,
+    SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -156,7 +157,7 @@ pub struct Dva {
 
 impl Dva {
     /// Byte length of an encoded [`Dva`].
-    pub const LENGTH: usize = 16;
+    pub const SIZE: usize = 16;
 
     /// Minimum number of allocated sectors.
     pub const ALLOCATED_MIN: u32 = 1;
@@ -164,11 +165,10 @@ impl Dva {
     /// Maximimum number of allocated sectors.
     pub const ALLOCATED_MAX: u32 = 0x00ffffff + 1;
 
-    /// Minimum offset.
-    pub const OFFSET_MIN: u64 = 4194304 >> SECTOR_SHIFT;
-    // pub const OFFSET_MIN: u64 = ((2 * Label::LENGTH + BootBlock::LENGTH) as u64) >> SECTOR_SHIFT;
+    /// Minimum offset in sectors.
+    pub const OFFSET_MIN: u64 = ((2 * Label::SIZE + BootBlock::SIZE) as u64) >> SECTOR_SHIFT;
 
-    /// Maximum offset.
+    /// Maximum offset in sectors.
     pub const OFFSET_MAX: u64 = Dva::OFFSET_MIN + OFFSET_MASK_LOW;
 
     /// Maximum vdev.
@@ -265,7 +265,7 @@ impl Dva {
      * Returns [`DvaEncodeError`] in case of encoding error.
      */
     pub fn empty_to_encoder(encoder: &mut EndianEncoder<'_>) -> Result<(), DvaEncodeError> {
-        Ok(encoder.put_zero_padding(Dva::LENGTH)?)
+        Ok(encoder.put_zero_padding(Dva::SIZE)?)
     }
 
     /** Encode an `[Option<Dva>`].
