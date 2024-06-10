@@ -290,19 +290,12 @@ fn dump() -> Result<(), Box<dyn Error>> {
         ////////////////////////////////
         // Get the ashift value for the vdev_tree.
         let vdev_tree = nv_decoder.get_nv_list("vdev_tree")?.unwrap();
-        let version = nv_decoder.get_u64("version")?.unwrap();
+        let version = phys::Version::try_from(nv_decoder.get_u64("version")?.unwrap())?;
         let ashift = vdev_tree.get_u64("ashift")?.unwrap();
 
         ////////////////////////////////
         // Read UberBlocks.
-        let mut uberblock_size = 1 << ashift;
-        if uberblock_size < 1024 {
-            uberblock_size = 1024;
-        }
-        if version == 5000 && uberblock_size > 8192 {
-            uberblock_size = 8192;
-        }
-        // for i in 0..phys::Label::UBER_COUNT {
+        let uberblock_size = 1 << phys::UberBlock::get_shift_from_version_ashift(version, ashift);
         for i in 0..phys::UberBlock::TOTAL_LENGTH / uberblock_size {
             let uber_label_offset = phys::UberBlock::LABEL_OFFSET + i * uberblock_size;
             let uber_bytes = &label_bytes[uber_label_offset..uber_label_offset + uberblock_size];

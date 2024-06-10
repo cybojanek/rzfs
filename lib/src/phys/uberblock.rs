@@ -104,12 +104,6 @@ pub struct UberBlock {
 }
 
 impl UberBlock {
-    /// Minimum size of an encoded [`UberBlock`] in shift (1024 bytes).
-    pub const ASHIFT_MIN: usize = 10;
-
-    /// Maximum size of an encoded [`UberBlock`] in shift (8192 bytes).
-    pub const ASHIFT_MAX: usize = 13;
-
     /// Total length of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
     pub const TOTAL_LENGTH: usize = 131072;
 
@@ -118,6 +112,56 @@ impl UberBlock {
 
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;
+
+    /** Gets the shift of an [`UberBlock`], depending on the `version` and
+     * `ashift` values.
+     *
+     * The byte size is `1 << shift`.
+     */
+    pub fn get_shift_from_version_ashift(version: Version, ashift: u64) -> u32 {
+        // Minimum shift is 10 (for 1024 bytes).
+        let min_shift = 10;
+
+        // Maximum shift depends on version.
+        let max_shift = match version {
+            // Maximum and minimum for V1 are the same.
+            Version::V1 => 10,
+            // Maximum is 17, because that is the size of the entire UberBlock
+            // region in the label.
+            Version::V2
+            | Version::V3
+            | Version::V4
+            | Version::V5
+            | Version::V6
+            | Version::V7
+            | Version::V8
+            | Version::V9
+            | Version::V10
+            | Version::V11
+            | Version::V12
+            | Version::V13
+            | Version::V14
+            | Version::V15
+            | Version::V16
+            | Version::V17
+            | Version::V18
+            | Version::V19
+            | Version::V20
+            | Version::V21
+            | Version::V22
+            | Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V27
+            | Version::V28 => 17,
+            // Maximum is 13.
+            Version::V5000 => 13,
+        };
+
+        // Clamp the value.
+        ashift.clamp(min_shift, max_shift) as u32
+    }
 
     /** Checks if the bytes match an empty [`UberBlock`] pattern.
      *
