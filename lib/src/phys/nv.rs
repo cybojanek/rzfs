@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+
 /*! Name Value decoder and encoder.
  *
  * A Name Value list is a sequence of Name Value [`NvPair`].
@@ -644,7 +646,7 @@ pub struct NvDecoder<'a> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A decode of an array of [`NvPair`] entries.
+/// A decoder of an array of [`NvPair`] entries.
 #[derive(Debug)]
 pub struct NvArrayDecoder<'a, T> {
     /// The decoder for this array.
