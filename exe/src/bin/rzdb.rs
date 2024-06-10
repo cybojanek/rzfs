@@ -211,7 +211,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
     ////////////////////////////////////
     // Read boot block.
-    let boot_block_bytes = &mut vec![0; phys::BootBlock::LENGTH];
+    let boot_block_bytes = &mut vec![0; phys::BootBlock::SIZE];
     block_device.read(
         boot_block_bytes,
         phys::BootBlock::VDEV_OFFSET >> phys::SECTOR_SHIFT,
@@ -219,7 +219,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
     // Causes stack overflow in debug release.
     // let boot_block = phys::BootBlock::from_bytes(
-    //     boot_block_bytes[0..phys::BootBlock::LENGTH]
+    //     boot_block_bytes[0..phys::BootBlock::SIZE]
     //         .try_into()
     //         .unwrap(),
     // )?;
@@ -242,7 +242,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
         ////////////////////////////////
         // Read label.
-        let label_bytes = &mut vec![0; phys::Label::LENGTH];
+        let label_bytes = &mut vec![0; phys::Label::SIZE];
         block_device.read(label_bytes, sector)?;
 
         let label_byte_offset_into_vdev = sector << phys::SECTOR_SHIFT;
@@ -250,7 +250,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         ////////////////////////////////
         // Read blank.
         let blank = phys::Blank::from_bytes(
-            label_bytes[phys::Blank::LABEL_OFFSET..phys::Blank::LABEL_OFFSET + phys::Blank::LENGTH]
+            label_bytes[phys::Blank::LABEL_OFFSET..phys::Blank::LABEL_OFFSET + phys::Blank::SIZE]
                 .try_into()
                 .unwrap(),
         )?;
@@ -262,7 +262,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         // Read boot header.
         let boot_header = phys::BootHeader::from_bytes(
             label_bytes[phys::BootHeader::LABEL_OFFSET
-                ..phys::BootHeader::LABEL_OFFSET + phys::BootHeader::LENGTH]
+                ..phys::BootHeader::LABEL_OFFSET + phys::BootHeader::SIZE]
                 .try_into()
                 .unwrap(),
             label_byte_offset_into_vdev + (phys::BootHeader::LABEL_OFFSET as u64),
@@ -277,7 +277,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         // Read NV pairs.
         let nv_pairs = phys::NvPairs::from_bytes(
             label_bytes
-                [phys::NvPairs::LABEL_OFFSET..phys::NvPairs::LABEL_OFFSET + phys::NvPairs::LENGTH]
+                [phys::NvPairs::LABEL_OFFSET..phys::NvPairs::LABEL_OFFSET + phys::NvPairs::SIZE]
                 .try_into()
                 .unwrap(),
             label_byte_offset_into_vdev + (phys::NvPairs::LABEL_OFFSET as u64),
@@ -296,7 +296,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         ////////////////////////////////
         // Read UberBlocks.
         let uberblock_size = 1 << phys::UberBlock::get_shift_from_version_ashift(version, ashift);
-        for i in 0..phys::UberBlock::TOTAL_LENGTH / uberblock_size {
+        for i in 0..phys::UberBlock::TOTAL_SIZE / uberblock_size {
             let uber_label_offset = phys::UberBlock::LABEL_OFFSET + i * uberblock_size;
             let uber_bytes = &label_bytes[uber_label_offset..uber_label_offset + uberblock_size];
 

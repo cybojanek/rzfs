@@ -104,11 +104,11 @@ pub struct UberBlock {
 }
 
 impl UberBlock {
-    /// Total length of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
-    pub const TOTAL_LENGTH: usize = 131072;
+    /// Total byte size of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
+    pub const TOTAL_SIZE: usize = 131072;
 
     /// Byte offset into a [`crate::phys::Label`] of first [`UberBlock`].
-    pub const LABEL_OFFSET: usize = NvPairs::LABEL_OFFSET + NvPairs::LENGTH;
+    pub const LABEL_OFFSET: usize = NvPairs::LABEL_OFFSET + NvPairs::SIZE;
 
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;
@@ -182,7 +182,7 @@ impl UberBlock {
                 if let Ok(_e) = decoder.skip(8) {
                     // Exclude checksum.
                     let excluded_length = if exclude_checksum {
-                        ChecksumTail::LENGTH
+                        ChecksumTail::SIZE
                     } else {
                         0
                     };
@@ -277,14 +277,14 @@ impl UberBlock {
         ////////////////////////////////
         // Check that the rest of the uber block (up to the checksum at the
         // tail) is all zeroes.
-        let rest_size = match decoder.len().checked_sub(ChecksumTail::LENGTH) {
+        let rest_size = match decoder.len().checked_sub(ChecksumTail::SIZE) {
             Some(v) => v,
             None => {
                 return Err(UberBlockDecodeError::Endian {
                     err: EndianDecodeError::EndOfInput {
                         offset: decoder.offset(),
                         capacity: decoder.capacity(),
-                        count: ChecksumTail::LENGTH,
+                        count: ChecksumTail::SIZE,
                     },
                 })
             }
@@ -346,7 +346,7 @@ impl UberBlock {
         match &self.mmp {
             Some(mmp) => mmp.to_encoder(&mut encoder)?,
             None => {
-                encoder.put_zero_padding(UberBlockMmp::LENGTH)?;
+                encoder.put_zero_padding(UberBlockMmp::SIZE)?;
             }
         }
 
@@ -356,14 +356,14 @@ impl UberBlock {
 
         ////////////////////////////////
         // Encode padding.
-        let rest_size = match encoder.available().checked_sub(ChecksumTail::LENGTH) {
+        let rest_size = match encoder.available().checked_sub(ChecksumTail::SIZE) {
             Some(v) => v,
             None => {
                 return Err(UberBlockEncodeError::Endian {
                     err: EndianEncodeError::EndOfOutput {
                         offset: encoder.offset(),
                         capacity: encoder.capacity(),
-                        count: ChecksumTail::LENGTH,
+                        count: ChecksumTail::SIZE,
                     },
                 })
             }
@@ -680,8 +680,8 @@ const MMP_CONFIG_SEQUENCE_SHIFT: u64 = 32;
 const MMP_CONFIG_FAIL_INTERVALS_SHIFT: u64 = 48;
 
 impl UberBlockMmp {
-    /// Byte length of an encoded [`UberBlockMmp`].
-    pub const LENGTH: usize = 24;
+    /// Byte size of an encoded [`UberBlockMmp`].
+    pub const SIZE: usize = 24;
 
     /// Magic value for an encoded [`UberBlockMmp`].
     pub const MAGIC: u64 = 0x00000000a11cea11;

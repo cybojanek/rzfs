@@ -111,8 +111,8 @@ pub enum BlockPointer {
 }
 
 impl BlockPointer {
-    /// Byte length of an encoded [`BlockPointer`] (128).
-    pub const LENGTH: usize = (3 * Dva::LENGTH) + 48 + ChecksumValue::LENGTH;
+    /// Byte size of an encoded [`BlockPointer`] (128).
+    pub const SIZE: usize = (3 * Dva::SIZE) + 48 + ChecksumValue::SIZE;
 
     /// Maximimum number of logical sectors (16 bits + 1).
     pub const LOGICAL_SECTORS_MAX: u32 = 0xffff + 1;
@@ -132,14 +132,14 @@ impl BlockPointer {
     ) -> Result<Option<BlockPointer>, BlockPointerDecodeError> {
         ////////////////////////////////
         // Check for an empty BlockPointer.
-        if decoder.is_zero_skip(BlockPointer::LENGTH)? {
+        if decoder.is_zero_skip(BlockPointer::SIZE)? {
             return Ok(None);
         }
 
         ////////////////////////////////
         // Peek at flags, and rewind position back to DVA.
         let offset = decoder.offset();
-        decoder.skip(3 * Dva::LENGTH)?;
+        decoder.skip(3 * Dva::SIZE)?;
         let flags = decoder.get_u64()?;
         decoder.seek(offset)?;
 
@@ -193,7 +193,7 @@ impl BlockPointer {
     pub fn empty_to_encoder(
         encoder: &mut EndianEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
-        Ok(encoder.put_zero_padding(BlockPointer::LENGTH)?)
+        Ok(encoder.put_zero_padding(BlockPointer::SIZE)?)
     }
 
     /** Encodes an `[Option<BlockPointer>`].

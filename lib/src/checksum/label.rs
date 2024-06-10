@@ -43,7 +43,7 @@ use crate::phys::{
 fn offset_tail(
     offset: u64,
     order: EndianOrder,
-) -> Result<[u8; ChecksumTail::LENGTH], ChecksumTailEncodeError> {
+) -> Result<[u8; ChecksumTail::SIZE], ChecksumTailEncodeError> {
     // Encode tail with offset.
     let offset_tail = ChecksumTail {
         order: order,
@@ -52,7 +52,7 @@ fn offset_tail(
         },
     };
 
-    let mut offset_tail_bytes = [0; ChecksumTail::LENGTH];
+    let mut offset_tail_bytes = [0; ChecksumTail::SIZE];
     offset_tail.to_bytes(&mut offset_tail_bytes)?;
 
     Ok(offset_tail_bytes)
@@ -77,7 +77,7 @@ pub fn label_checksum(
 ) -> Result<(), LabelChecksumError> {
     // Check length.
     let length = data.len();
-    if length < ChecksumTail::LENGTH {
+    if length < ChecksumTail::SIZE {
         return Err(LabelChecksumError::InvalidLength { length: length });
     }
 
@@ -86,7 +86,7 @@ pub fn label_checksum(
 
     // Compute checksum.
     sha256.reset(order)?;
-    sha256.update(&data[0..length - ChecksumTail::LENGTH])?;
+    sha256.update(&data[0..length - ChecksumTail::SIZE])?;
     sha256.update(&offset_tail_bytes)?;
     let checksum = sha256.finalize()?;
 
@@ -95,7 +95,7 @@ pub fn label_checksum(
         order: order,
         value: ChecksumValue { words: checksum },
     };
-    let tail_bytes = &mut data[length - ChecksumTail::LENGTH..length];
+    let tail_bytes = &mut data[length - ChecksumTail::SIZE..length];
     tail.to_bytes(tail_bytes.try_into().unwrap())?;
 
     Ok(())
@@ -114,12 +114,12 @@ pub fn label_checksum(
 pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(), LabelVerifyError> {
     // Check length.
     let length = data.len();
-    if length < ChecksumTail::LENGTH {
+    if length < ChecksumTail::SIZE {
         return Err(LabelVerifyError::InvalidLength { length: length });
     }
 
     // Decode ChecksumTail.
-    let tail = &data[length - ChecksumTail::LENGTH..length];
+    let tail = &data[length - ChecksumTail::SIZE..length];
     let tail = ChecksumTail::from_bytes(tail.try_into().unwrap())?;
 
     // Encode tail with offset.
@@ -127,7 +127,7 @@ pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(),
 
     // Compute checksum.
     sha256.reset(tail.order)?;
-    sha256.update(&data[0..length - ChecksumTail::LENGTH])?;
+    sha256.update(&data[0..length - ChecksumTail::SIZE])?;
     sha256.update(&offset_tail_bytes)?;
     let computed_checksum = sha256.finalize()?;
 

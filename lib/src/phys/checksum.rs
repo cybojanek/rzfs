@@ -228,8 +228,8 @@ pub struct ChecksumValue {
 }
 
 impl ChecksumValue {
-    /// Byte length of an encoded [`ChecksumValue`].
-    pub const LENGTH: usize = 32;
+    /// Byte size of an encoded [`ChecksumValue`].
+    pub const SIZE: usize = 32;
 
     /** Decodes a [`ChecksumValue`].
      *
@@ -376,8 +376,8 @@ pub struct ChecksumTail {
 }
 
 impl ChecksumTail {
-    /// Byte length of an encoded [`ChecksumTail`] (40).
-    pub const LENGTH: usize = 8 + ChecksumValue::LENGTH;
+    /// Byte size of an encoded [`ChecksumTail`] (40).
+    pub const SIZE: usize = 8 + ChecksumValue::SIZE;
 
     /// Magic value for an encoded [`ChecksumTail`].
     pub const MAGIC: u64 = 0x0210da7ab10c7a11;
@@ -389,7 +389,7 @@ impl ChecksumTail {
      * Returns [`ChecksumTailDecodeError`] in case of decoding error.
      */
     pub fn from_bytes(
-        bytes: &[u8; ChecksumTail::LENGTH],
+        bytes: &[u8; ChecksumTail::SIZE],
     ) -> Result<ChecksumTail, ChecksumTailDecodeError> {
         let decoder = EndianDecoder::from_u64_magic(bytes, ChecksumTail::MAGIC)?;
 
@@ -407,7 +407,7 @@ impl ChecksumTail {
      */
     pub fn to_bytes(
         &self,
-        bytes: &mut [u8; ChecksumTail::LENGTH],
+        bytes: &mut [u8; ChecksumTail::SIZE],
     ) -> Result<(), ChecksumTailEncodeError> {
         let mut encoder = EndianEncoder::to_bytes(bytes, self.order);
 
