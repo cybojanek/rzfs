@@ -34,7 +34,7 @@ fn benchmark_checksum(
     while microseconds < duration_us {
         for _ in 0..iterations {
             checksum.reset(order)?;
-            checksum.update(&data)?;
+            checksum.update(data)?;
             checksum.finalize()?;
             total_iterations += 1;
         }
@@ -82,7 +82,7 @@ fn benchmark_fletcher2(
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
         }
-        println!("");
+        println!();
     }
 
     Ok(())
@@ -119,7 +119,7 @@ fn benchmark_fletcher4(
             // Display units.
             print!(" {:11}", bytes_per_second / display_units)
         }
-        println!("");
+        println!();
     }
 
     Ok(())
@@ -159,7 +159,7 @@ fn benchmark_sha256(
 
         print!(" {:>11}", "n/a");
 
-        println!("");
+        println!();
     }
 
     Ok(())
@@ -198,8 +198,8 @@ fn main() -> ExitCode {
     let data = &mut data[offset..size + offset];
 
     // Fill data buffer.
-    for i in 0..data.len() {
-        data[i] = i as u8;
+    for (i, x) in data.iter_mut().enumerate() {
+        *x = i as u8;
     }
 
     if args[1] == "fletcher2" {

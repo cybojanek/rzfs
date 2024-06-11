@@ -96,6 +96,12 @@ pub struct LzjbEncoder {
     table: [u16; TABLE_LENGTH],
 }
 
+impl Default for LzjbEncoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LzjbEncoder {
     /// Create a new LZJB compression encoder.
     pub fn new() -> LzjbEncoder {
@@ -128,7 +134,7 @@ impl LzjbEncoder {
         let mut copy_map_idx = 0;
 
         while src_idx < src.len() {
-            copy_mask = copy_mask << 1;
+            copy_mask <<= 1;
 
             if copy_mask == COPY_MASK_NEXT {
                 copy_mask = 1;
@@ -215,7 +221,7 @@ impl Compression for LzjbEncoder {
 
         while src_idx < src.len() {
             // Shift copy mask to use next bit.
-            copy_mask = copy_mask << 1;
+            copy_mask <<= 1;
 
             // If no bits are available, get the next copy map index.
             if copy_mask == COPY_MASK_NEXT {
@@ -379,7 +385,7 @@ impl Decompression for LzjbDecoder {
 
         while dst_idx < dst.len() {
             // Shift copy mask to use next bit.
-            copy_mask = copy_mask << 1;
+            copy_mask <<= 1;
 
             // If all 8 bits are used, get the next copy map.
             if copy_mask == COPY_MASK_NEXT {
@@ -426,7 +432,11 @@ impl Decompression for LzjbDecoder {
                 // Safely compute the copy index.
                 let mut cpy_idx = match dst_idx.checked_sub(offset) {
                     Some(v) => v,
-                    None => return Err(DecompressionError::InvalidInput { offset: offset }),
+                    None => {
+                        return Err(DecompressionError::InvalidInput {
+                            offset: src_idx - 2,
+                        })
+                    }
                 };
 
                 // Clamp the length to the number of bytes to output.

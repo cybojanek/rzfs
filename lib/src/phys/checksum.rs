@@ -161,7 +161,7 @@ impl TryFrom<u8> for ChecksumType {
             12 => Ok(ChecksumType::Skein),
             13 => Ok(ChecksumType::Edonr),
             14 => Ok(ChecksumType::Blake3),
-            _ => Err(ChecksumTypeError::Unknown { value: checksum }),
+            _ => Err(ChecksumTypeError::Unknown { checksum }),
         }
     }
 }
@@ -173,16 +173,16 @@ impl TryFrom<u8> for ChecksumType {
 pub enum ChecksumTypeError {
     /// Unknown [`ChecksumType`].
     Unknown {
-        /// Unknown value.
-        value: u8,
+        /// Unknown checksum.
+        checksum: u8,
     },
 }
 
 impl fmt::Display for ChecksumTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTypeError::Unknown { value } => {
-                write!(f, "ChecksumType unknown: {value}")
+            ChecksumTypeError::Unknown { checksum } => {
+                write!(f, "ChecksumType unknown: {checksum}")
             }
         }
     }
@@ -280,8 +280,8 @@ pub enum ChecksumValueDecodeError {
 }
 
 impl From<EndianDecodeError> for ChecksumValueDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        ChecksumValueDecodeError::Endian { err: value }
+    fn from(err: EndianDecodeError) -> Self {
+        ChecksumValueDecodeError::Endian { err }
     }
 }
 
@@ -315,8 +315,8 @@ pub enum ChecksumValueEncodeError {
 }
 
 impl From<EndianEncodeError> for ChecksumValueEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        ChecksumValueEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        ChecksumValueEncodeError::Endian { err }
     }
 }
 
@@ -486,14 +486,14 @@ pub enum ChecksumTailEncodeError {
 }
 
 impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {
-    fn from(value: ChecksumValueEncodeError) -> Self {
-        ChecksumTailEncodeError::ChecksumValue { err: value }
+    fn from(err: ChecksumValueEncodeError) -> Self {
+        ChecksumTailEncodeError::ChecksumValue { err }
     }
 }
 
 impl From<EndianEncodeError> for ChecksumTailEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        ChecksumTailEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        ChecksumTailEncodeError::Endian { err }
     }
 }
 

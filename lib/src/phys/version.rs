@@ -195,7 +195,7 @@ impl TryFrom<u64> for Version {
             27 => Ok(Version::V27),
             28 => Ok(Version::V28),
             5000 => Ok(Version::V5000),
-            _ => Err(VersionError::Unknown { value: version }),
+            _ => Err(VersionError::Unknown { version }),
         }
     }
 }
@@ -207,16 +207,16 @@ impl TryFrom<u64> for Version {
 pub enum VersionError {
     /// Unknown [`Version`].
     Unknown {
-        /// Unknown value.
-        value: u64,
+        /// Unknown version.
+        version: u64,
     },
 }
 
 impl fmt::Display for VersionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VersionError::Unknown { value } => {
-                write!(f, "Version unknown: {value}")
+            VersionError::Unknown { version } => {
+                write!(f, "Version unknown: {version}")
             }
         }
     }

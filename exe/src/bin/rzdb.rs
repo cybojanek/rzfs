@@ -34,7 +34,7 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
         print!("{}", nv_pair.name);
 
         match nv_pair.value {
-            phys::NvDecodedDataValue::Boolean() => println!(""),
+            phys::NvDecodedDataValue::Boolean() => println!(),
             phys::NvDecodedDataValue::Byte(v) => println!(": {v}"),
             phys::NvDecodedDataValue::Int16(v) => println!(": {v}"),
             phys::NvDecodedDataValue::Uint16(v) => println!(": {v}"),
@@ -140,11 +140,11 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
             }
             phys::NvDecodedDataValue::HrTime(v) => println!(": {v} ns"),
             phys::NvDecodedDataValue::NvList(v) => {
-                println!("");
+                println!();
                 dump_nv_list(&v, depth + 1)?;
             }
             phys::NvDecodedDataValue::NvListArray(v) => {
-                println!("");
+                println!();
                 for _idx in 0..v.capacity() {
                     dump_nv_list(&v.get()?, depth + 1)?;
                 }
@@ -223,10 +223,10 @@ fn dump() -> Result<(), Box<dyn Error>> {
     //         .try_into()
     //         .unwrap(),
     // )?;
-    // if !is_array_empty(&boot_block.payload) {
+    // if !is_array_empty(boot_block.payload) {
     //     println!("BootBlock is not empty");
     // }
-    if !is_array_empty(&boot_block_bytes) {
+    if !is_array_empty(boot_block_bytes) {
         println!("BootBlock is not empty");
     }
 
@@ -237,7 +237,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
     ////////////////////////////////////
     // Parse each label.
     for (label_idx, sector) in label_sectors.into_iter().enumerate() {
-        println!("");
+        println!();
         println!("Label {label_idx}");
 
         ////////////////////////////////
@@ -301,7 +301,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
             let uber_bytes = &label_bytes[uber_label_offset..uber_label_offset + uberblock_size];
 
             let uber_res = phys::UberBlock::from_bytes(
-                uber_bytes.try_into().unwrap(),
+                uber_bytes,
                 label_byte_offset_into_vdev + (uber_label_offset as u64),
                 &mut sha256,
             );
@@ -315,7 +315,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
                 Err(e) => return Err(Box::new(e)),
             };
 
-            if !uber_opt.is_none() {
+            if uber_opt.is_some() {
                 println!("UberBlock {i} Ok");
             }
         }

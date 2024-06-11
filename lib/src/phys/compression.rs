@@ -151,7 +151,7 @@ impl TryFrom<u8> for CompressionType {
             14 => Ok(CompressionType::Zle),
             15 => Ok(CompressionType::Lz4),
             16 => Ok(CompressionType::Zstd),
-            _ => Err(CompressionTypeError::Unknown { value: compression }),
+            _ => Err(CompressionTypeError::Unknown { compression }),
         }
     }
 }
@@ -163,16 +163,16 @@ impl TryFrom<u8> for CompressionType {
 pub enum CompressionTypeError {
     /// Unknown [`CompressionType`].
     Unknown {
-        /// Unknown value.
-        value: u8,
+        /// Unknown compression.
+        compression: u8,
     },
 }
 
 impl fmt::Display for CompressionTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CompressionTypeError::Unknown { value } => {
-                write!(f, "CompressionType unknown: {value}")
+            CompressionTypeError::Unknown { compression } => {
+                write!(f, "CompressionType unknown: {compression}")
             }
         }
     }

@@ -392,10 +392,7 @@ fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<(), NvDe
         // Boolean has no value.
         NvDataType::Boolean => match count {
             0 => Ok(()),
-            _ => Err(NvDecodeError::InvalidCount {
-                data_type: data_type,
-                count: count,
-            }),
+            _ => Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
         // Non arrays have only one.
@@ -414,10 +411,7 @@ fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<(), NvDe
         | NvDataType::Uint8
         | NvDataType::Double => match count {
             1 => Ok(()),
-            _ => Err(NvDecodeError::InvalidCount {
-                data_type: data_type,
-                count: count,
-            }),
+            _ => Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
         // Arrays have from 0 to N values.
@@ -676,10 +670,7 @@ impl<T> NvArrayDecoder<'_, T> {
 
     /// Returns number of elements still to be decoded.
     pub fn len(&self) -> usize {
-        match self.count.checked_sub(self.index.get()) {
-            Some(v) => v,
-            None => 0,
-        }
+        self.count.saturating_sub(self.index.get())
     }
 
     /// Resets the decoder to the start of the data.
@@ -708,7 +699,7 @@ impl<'a> NvArrayDecoder<'a, &str> {
                     self.index.set(index + 1);
                     Ok(v)
                 }
-                Err(e) => Err(NvDecodeError::Xdr { err: e }),
+                Err(err) => Err(NvDecodeError::Xdr { err }),
             }
         } else {
             Err(NvDecodeError::EndOfArray {})
@@ -734,7 +725,7 @@ impl<T: GetFromXdrDecoder> NvArrayDecoder<'_, T> {
                     self.index.set(index + 1);
                     Ok(v)
                 }
-                Err(e) => Err(NvDecodeError::Xdr { err: e }),
+                Err(err) => Err(NvDecodeError::Xdr { err }),
             }
         } else {
             Err(NvDecodeError::EndOfArray {})
@@ -807,7 +798,7 @@ pub struct NvDecodedPair<'a> {
     pub value: NvDecodedDataValue<'a>,
 }
 
-impl<'a> NvDecodedPair<'_> {
+impl NvDecodedPair<'_> {
     /// Gets the data type of the decoded pair.
     pub fn data_type(&self) -> NvDataType {
         match self.value {
@@ -1130,7 +1121,7 @@ impl NvDecoder<'_> {
         // NvList version.
         let version = decoder.get_u32()?;
         if version != 0 {
-            return Err(NvDecodeError::InvalidVersion { version: version });
+            return Err(NvDecodeError::InvalidVersion { version });
         }
 
         // NvList flags.
@@ -1139,7 +1130,7 @@ impl NvDecoder<'_> {
 
         // Check for unknown flags.
         if unique_flags != flags {
-            return Err(NvDecodeError::InvalidFlags { flags: flags });
+            return Err(NvDecodeError::InvalidFlags { flags });
         }
 
         // Decode unique flags.
@@ -1196,7 +1187,7 @@ impl NvDecoder<'_> {
             None => {
                 // Consumed too many bytes.
                 return Err(NvDecodeError::InvalidEncodedSize {
-                    encoded_size: encoded_size,
+                    encoded_size,
                     used: bytes_used,
                 });
             }
@@ -1326,7 +1317,7 @@ impl NvDecoder<'_> {
             None => {
                 // Consumed too many bytes.
                 return Err(NvDecodeError::InvalidEncodedSize {
-                    encoded_size: encoded_size,
+                    encoded_size,
                     used: bytes_used,
                 });
             }
@@ -1335,15 +1326,12 @@ impl NvDecoder<'_> {
         // Some bytes left.
         if bytes_rem > 0 {
             return Err(NvDecodeError::InvalidEncodedSize {
-                encoded_size: encoded_size,
+                encoded_size,
                 used: bytes_used,
             });
         }
 
-        Ok(Some(NvDecodedPair {
-            name: name,
-            value: value,
-        }))
+        Ok(Some(NvDecodedPair { name, value }))
     }
 
     /// Reset the decoder to the start of the data.
@@ -1360,10 +1348,7 @@ impl NvDecoder<'_> {
      * Returns [`None`] if the pair is not found.
      * Resets the decoder prior to searching.
      */
-    pub fn find<'a, 'b>(
-        &'a self,
-        name: &'b str,
-    ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
+    pub fn find<'a>(&'a self, name: &str) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
         // Reset decoder to start.
         self.reset();
 
@@ -1416,9 +1401,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_bool_array<'a, 'b>(
+    pub fn get_bool_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, bool>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1509,9 +1494,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i8_array<'a, 'b>(
+    pub fn get_i8_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, i8>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1544,9 +1529,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i16_array<'a, 'b>(
+    pub fn get_i16_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, i16>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1579,9 +1564,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i32_array<'a, 'b>(
+    pub fn get_i32_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, i32>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1614,9 +1599,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i64_array<'a, 'b>(
+    pub fn get_i64_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, i64>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1655,9 +1640,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_nv_list_array<'a, 'b>(
+    pub fn get_nv_list_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, NvDecoder<'a>>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1709,9 +1694,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u8_array<'a, 'b>(
+    pub fn get_u8_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, u8>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1744,9 +1729,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u16_array<'a, 'b>(
+    pub fn get_u16_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, u16>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1779,9 +1764,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u32_array<'a, 'b>(
+    pub fn get_u32_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, u32>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1814,9 +1799,9 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u64_array<'a, 'b>(
+    pub fn get_u64_array<'a>(
         &'a self,
-        name: &'b str,
+        name: &str,
     ) -> Result<Option<NvArrayDecoder<'a, u64>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
@@ -1932,8 +1917,8 @@ pub enum NvDecodeError {
 }
 
 impl From<XdrDecodeError> for NvDecodeError {
-    fn from(value: XdrDecodeError) -> Self {
-        NvDecodeError::Xdr { err: value }
+    fn from(err: XdrDecodeError) -> Self {
+        NvDecodeError::Xdr { err }
     }
 }
 

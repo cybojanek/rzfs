@@ -316,7 +316,7 @@ impl TryFrom<u8> for DmuType {
             51 => Ok(DmuType::DeadListHeader),
             52 => Ok(DmuType::DslClones),
             53 => Ok(DmuType::BpObjectSubObject),
-            _ => Err(DmuTypeError::Unknown { value: dmu }),
+            _ => Err(DmuTypeError::Unknown { dmu }),
         }
     }
 }
@@ -328,16 +328,16 @@ impl TryFrom<u8> for DmuType {
 pub enum DmuTypeError {
     /// Unknown [`DmuType`].
     Unknown {
-        /// Unknown value.
-        value: u8,
+        /// Unknown dmu.
+        dmu: u8,
     },
 }
 
 impl fmt::Display for DmuTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DmuTypeError::Unknown { value } => {
-                write!(f, "DmuType unknown: {value}")
+            DmuTypeError::Unknown { dmu } => {
+                write!(f, "DmuType unknown: {dmu}")
             }
         }
     }

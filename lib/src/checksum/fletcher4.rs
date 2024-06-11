@@ -220,9 +220,7 @@ impl Fletcher4Implementation {
 
 impl Display for Fletcher4Implementation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            _ => write!(f, "{}", self.to_str()),
-        }
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -1531,7 +1529,7 @@ impl Checksum for Fletcher4 {
             // If block is full, consume it.
             if self.buffer_fill == self.impl_ctx.block_size {
                 let full_blocks_data = &self.buffer[0..self.buffer_fill];
-                (self.update_blocks)(&mut self.state, &full_blocks_data);
+                (self.update_blocks)(&mut self.state, full_blocks_data);
                 self.buffer_fill = 0;
             }
         }
@@ -1541,7 +1539,7 @@ impl Checksum for Fletcher4 {
 
         // Update full blocks.
         let full_blocks_data = &data[0..data.len() - remainder];
-        (self.update_blocks)(&mut self.state, &full_blocks_data);
+        (self.update_blocks)(&mut self.state, full_blocks_data);
 
         // Check if remainder exists, to prevent clobbering fill with 0.
         if remainder > 0 {

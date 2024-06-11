@@ -37,9 +37,7 @@ impl fmt::Display for CompressionError {
 #[cfg(feature = "std")]
 impl error::Error for CompressionError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            _ => None,
-        }
+        None
     }
 }
 
@@ -114,9 +112,7 @@ impl fmt::Display for DecompressionError {
 #[cfg(feature = "std")]
 impl error::Error for DecompressionError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            _ => None,
-        }
+        None
     }
 }
 
