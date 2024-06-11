@@ -316,8 +316,8 @@ pub enum DvaDecodeError {
 }
 
 impl From<EndianDecodeError> for DvaDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        DvaDecodeError::Endian { err: value }
+    fn from(err: EndianDecodeError) -> Self {
+        DvaDecodeError::Endian { err }
     }
 }
 
@@ -381,8 +381,8 @@ pub enum DvaEncodeError {
 }
 
 impl From<EndianEncodeError> for DvaEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        DvaEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        DvaEncodeError::Endian { err }
     }
 }
 

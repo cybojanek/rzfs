@@ -46,7 +46,7 @@ fn offset_tail(
 ) -> Result<[u8; ChecksumTail::SIZE], ChecksumTailEncodeError> {
     // Encode tail with offset.
     let offset_tail = ChecksumTail {
-        order: order,
+        order,
         value: ChecksumValue {
             words: [offset, 0, 0, 0],
         },
@@ -78,7 +78,7 @@ pub fn label_checksum(
     // Check length.
     let length = data.len();
     if length < ChecksumTail::SIZE {
-        return Err(LabelChecksumError::InvalidLength { length: length });
+        return Err(LabelChecksumError::InvalidLength { length });
     }
 
     // Encode tail with offset.
@@ -92,7 +92,7 @@ pub fn label_checksum(
 
     // Encode tail with checksum.
     let tail = ChecksumTail {
-        order: order,
+        order,
         value: ChecksumValue { words: checksum },
     };
     let tail_bytes = &mut data[length - ChecksumTail::SIZE..length];
@@ -115,7 +115,7 @@ pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(),
     // Check length.
     let length = data.len();
     if length < ChecksumTail::SIZE {
-        return Err(LabelVerifyError::InvalidLength { length: length });
+        return Err(LabelVerifyError::InvalidLength { length });
     }
 
     // Decode ChecksumTail.

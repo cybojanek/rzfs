@@ -7,10 +7,28 @@ use core::cmp;
 use core::fmt;
 use core::fmt::Display;
 
-#[cfg(all(target_arch = "x86", any(feature = "sha256-ssse3")))]
+#[cfg(all(
+    target_arch = "x86",
+    any(
+        feature = "sha256-ssse3",
+        feature = "sha256-bmi",
+        feature = "sha256-avx",
+        feature = "sha256-avx2",
+        feature = "sha256-sha"
+    )
+))]
 use core::arch::x86 as arch;
 
-#[cfg(all(target_arch = "x86_64", any(feature = "sha256-ssse3")))]
+#[cfg(all(
+    target_arch = "x86_64",
+    any(
+        feature = "sha256-ssse3",
+        feature = "sha256-bmi",
+        feature = "sha256-avx",
+        feature = "sha256-avx2",
+        feature = "sha256-sha"
+    )
+))]
 use core::arch::x86_64 as arch;
 
 #[cfg(all(
@@ -33,7 +51,7 @@ use crate::arch::x86_any::is_avx_supported;
 
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
-    any(feature = "sha256-avx2"),
+    feature = "sha256-avx2",
 ))]
 use crate::arch::x86_any::is_avx2_supported;
 
@@ -96,7 +114,7 @@ pub enum Sha256Implementation {
 struct Sha256Constants {
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64"),
-        any(feature = "sha256-avx2"),
+        feature = "sha256-avx2",
     ))]
     k2: [u32; 128],
     k: [u32; 64],
@@ -119,7 +137,7 @@ const SHA_256_CONSTANTS: Sha256Constants = Sha256Constants {
     // 256 bit k values, duplicated for 128 bit lanes of AVX2
     #[cfg(all(
         any(target_arch = "x86", target_arch = "x86_64"),
-        any(feature = "sha256-avx2"),
+        feature = "sha256-avx2",
     ))]
     k2: [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x428a2f98, 0x71374491, 0xb5c0fbcf,
@@ -237,9 +255,7 @@ impl Sha256Implementation {
 
 impl Display for Sha256Implementation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            _ => write!(f, "{}", self.to_str()),
-        }
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -351,7 +367,7 @@ macro_rules! round_ssse3_or_avx {
         let temp1 = $h.wrapping_add(s1);
         let temp1 = temp1.wrapping_add(ch);
         let temp1 = temp1.wrapping_add($wk[$round]);
-        $round = $round + 1;
+        $round += 1;
 
         // Caller swaps variables.
         $d = $d.wrapping_add(temp1);
@@ -708,9 +724,9 @@ impl Sha256 {
                 {
                     // Use Intel optimization.
                     s1 = $e.rotate_right(14);
-                    s1 = $e ^ s1;
+                    s1 ^= $e;
                     s1 = s1.rotate_right(5);
-                    s1 = $e ^ s1;
+                    s1 ^= $e;
                     s1 = s1.rotate_right(6);
                 }
                 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -742,9 +758,9 @@ impl Sha256 {
                 {
                     // Use Intel optimization.
                     s0 = $a.rotate_right(9);
-                    s0 = $a ^ s0;
+                    s0 ^= $a;
                     s0 = s0.rotate_right(11);
-                    s0 = $a ^ s0;
+                    s0 ^= $a;
                     s0 = s0.rotate_right(2);
                 }
                 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -787,9 +803,9 @@ impl Sha256 {
                 {
                     // Use Intel optimization.
                     s1 = $e.rotate_right(14);
-                    s1 = $e ^ s1;
+                    s1 ^= $e;
                     s1 = s1.rotate_right(5);
-                    s1 = $e ^ s1;
+                    s1 ^= $e;
                     s1 = s1.rotate_right(6);
                 }
                 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -844,9 +860,9 @@ impl Sha256 {
                 {
                     // Use Intel optimization.
                     s0 = $a.rotate_right(9);
-                    s0 = $a ^ s0;
+                    s0 ^= $a;
                     s0 = s0.rotate_right(11);
-                    s0 = $a ^ s0;
+                    s0 ^= $a;
                     s0 = s0.rotate_right(2);
                 }
                 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -1993,7 +2009,7 @@ impl Sha256 {
 
                 // Gracefully handle the last block.
                 let remainder = iter.remainder();
-                if remainder.len() > 0 {
+                if !remainder.is_empty() {
                     Sha256::update_blocks_avx(state, remainder);
                 }
             }
@@ -2195,7 +2211,8 @@ impl Sha256 {
                     // Rounds 16 to 52.
                     let mut rounds = 16;
 
-                    let mut w_12_16 = w_12_16;
+                    // NOTE: w_12_16 already defined as mutable above.
+                    // let mut w_12_16 = w_12_16;
                     let mut w_16_20 = w_16_20;
                     let mut x_04_08 = x_04_08;
                     let mut x_08_12 = x_08_12;
@@ -2363,7 +2380,7 @@ impl Checksum for Sha256 {
             if self.buffer_fill == SHA_256_BLOCK_SIZE {
                 let full_blocks_data = &self.buffer[0..self.buffer_fill];
                 self.bytes_processed += SHA_256_BLOCK_SIZE as u64;
-                (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
+                (self.impl_ctx.update_blocks)(&mut self.state, full_blocks_data);
                 self.buffer_fill = 0;
             }
         }
@@ -2374,7 +2391,7 @@ impl Checksum for Sha256 {
         // Update full blocks.
         let full_blocks_data = &data[0..data.len() - remainder];
         self.bytes_processed += full_blocks_data.len() as u64;
-        (self.impl_ctx.update_blocks)(&mut self.state, &full_blocks_data);
+        (self.impl_ctx.update_blocks)(&mut self.state, full_blocks_data);
 
         // Check if remainder exists, to prevent clobbering fill with 0.
         if remainder > 0 {
@@ -2400,7 +2417,7 @@ impl Checksum for Sha256 {
             self.buffer_fill = 0;
 
             let data = &self.buffer[0..SHA_256_BLOCK_SIZE];
-            (self.impl_ctx.update_blocks)(&mut self.state, &data);
+            (self.impl_ctx.update_blocks)(&mut self.state, data);
         }
 
         // Set the 1 bit.
@@ -2419,7 +2436,7 @@ impl Checksum for Sha256 {
 
         // Process last block.
         let data = &self.buffer[0..SHA_256_BLOCK_SIZE];
-        (self.impl_ctx.update_blocks)(&mut self.state, &data);
+        (self.impl_ctx.update_blocks)(&mut self.state, data);
 
         // Encode result to u64.
         Ok([

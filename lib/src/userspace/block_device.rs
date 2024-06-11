@@ -29,27 +29,27 @@ impl BlockDevice {
     pub fn open(path: &str) -> Result<BlockDevice, BlockDeviceOpenError> {
         ////////////////////////////////////
         // Open file.
-        let file = match fs::OpenOptions::new().read(true).open(&path) {
+        let file = match fs::OpenOptions::new().read(true).open(path) {
             Ok(v) => v,
-            Err(e) => return Err(BlockDeviceOpenError::OpenError { err: e }),
+            Err(err) => return Err(BlockDeviceOpenError::OpenError { err }),
         };
 
         ////////////////////////////////////
         // Get file size.
         let metadata = match file.metadata() {
             Ok(v) => v,
-            Err(e) => return Err(BlockDeviceOpenError::MetadataError { err: e }),
+            Err(err) => return Err(BlockDeviceOpenError::MetadataError { err }),
         };
 
         let size = metadata.len();
         if !is_multiple_of_sector_size(size) {
-            return Err(BlockDeviceOpenError::InvalidSize { size: size });
+            return Err(BlockDeviceOpenError::InvalidSize { size });
         }
 
         ////////////////////////////////////
         // Success.
         Ok(BlockDevice {
-            file: file,
+            file,
             sectors: size >> SECTOR_SHIFT,
         })
     }
@@ -66,43 +66,27 @@ impl BlockDevice {
         ////////////////////////////////
         // Check destination data is a multiple of sector.
         if !is_multiple_of_sector_size(size) {
-            return Err(BlockDeviceReadError::InvalidRead {
-                sector: sector,
-                size: size,
-            });
+            return Err(BlockDeviceReadError::InvalidRead { sector, size });
         }
 
         ////////////////////////////////
         // Compute number of sectors.
         let sector_count = match u64::try_from(size >> SECTOR_SHIFT) {
             Ok(v) => v,
-            Err(_) => {
-                return Err(BlockDeviceReadError::InvalidRead {
-                    sector: sector,
-                    size: size,
-                })
-            }
+            Err(_) => return Err(BlockDeviceReadError::InvalidRead { sector, size }),
         };
 
         ////////////////////////////////
         // Check bounds.
         if sector > self.sectors || self.sectors - sector < sector_count {
-            return Err(BlockDeviceReadError::InvalidRead {
-                sector: sector,
-                size: size,
-            });
+            return Err(BlockDeviceReadError::InvalidRead { sector, size });
         }
 
         ////////////////////////////////
         // Compute offset in bytes for read_at.
         let offset = match sector.checked_shl(SECTOR_SHIFT) {
             Some(v) => v,
-            None => {
-                return Err(BlockDeviceReadError::InvalidRead {
-                    sector: sector,
-                    size: size,
-                })
-            }
+            None => return Err(BlockDeviceReadError::InvalidRead { sector, size }),
         };
 
         ////////////////////////////////
@@ -110,16 +94,10 @@ impl BlockDevice {
         let mut offset = offset;
         let mut data: &mut [u8] = data;
 
-        while data.len() > 0 {
+        while !data.is_empty() {
             let read = match self.file.read_at(data, offset) {
                 Ok(v) => v,
-                Err(e) => {
-                    return Err(BlockDeviceReadError::IoError {
-                        err: e,
-                        sector: sector,
-                        size: size,
-                    })
-                }
+                Err(err) => return Err(BlockDeviceReadError::IoError { err, sector, size }),
             };
 
             let len = data.len();

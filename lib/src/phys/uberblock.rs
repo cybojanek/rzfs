@@ -213,14 +213,14 @@ impl UberBlock {
     ) -> Result<Option<UberBlock>, UberBlockDecodeError> {
         ////////////////////////////////
         // Verify checksum.
-        if let Err(checksum_err) = label_verify(bytes, offset, sha256) {
+        if let Err(err) = label_verify(bytes, offset, sha256) {
             // Check if the UberBlock is empty (including checksum).
             if UberBlock::bytes_are_empty(bytes, false) {
                 return Ok(None);
             }
 
             // Else, return the error.
-            return Err(UberBlockDecodeError::LabelVerify { err: checksum_err });
+            return Err(UberBlockDecodeError::LabelVerify { err });
         }
 
         ////////////////////////////////
@@ -228,7 +228,7 @@ impl UberBlock {
         let decoder = match EndianDecoder::from_u64_magic(bytes, UberBlock::MAGIC) {
             Ok(v) => v,
             Err(
-                e @ EndianDecodeError::InvalidMagic {
+                err @ EndianDecodeError::InvalidMagic {
                     expected: _,
                     actual: _,
                 },
@@ -239,10 +239,10 @@ impl UberBlock {
                 }
 
                 // Else, re-raise error.
-                return Err(UberBlockDecodeError::Endian { err: e });
+                return Err(UberBlockDecodeError::Endian { err });
             }
             // Else, re-raise error.
-            Err(e) => return Err(UberBlockDecodeError::Endian { err: e }),
+            Err(err) => return Err(UberBlockDecodeError::Endian { err }),
         };
 
         ////////////////////////////////
@@ -419,32 +419,32 @@ pub enum UberBlockDecodeError {
 }
 
 impl From<LabelVerifyError> for UberBlockDecodeError {
-    fn from(value: LabelVerifyError) -> Self {
-        UberBlockDecodeError::LabelVerify { err: value }
+    fn from(err: LabelVerifyError) -> Self {
+        UberBlockDecodeError::LabelVerify { err }
     }
 }
 
 impl From<BlockPointerDecodeError> for UberBlockDecodeError {
-    fn from(value: BlockPointerDecodeError) -> Self {
-        UberBlockDecodeError::BlockPointer { err: value }
+    fn from(err: BlockPointerDecodeError) -> Self {
+        UberBlockDecodeError::BlockPointer { err }
     }
 }
 
 impl From<EndianDecodeError> for UberBlockDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        UberBlockDecodeError::Endian { err: value }
+    fn from(err: EndianDecodeError) -> Self {
+        UberBlockDecodeError::Endian { err }
     }
 }
 
 impl From<UberBlockMmpDecodeError> for UberBlockDecodeError {
-    fn from(value: UberBlockMmpDecodeError) -> Self {
-        UberBlockDecodeError::UberBlockMmp { err: value }
+    fn from(err: UberBlockMmpDecodeError) -> Self {
+        UberBlockDecodeError::UberBlockMmp { err }
     }
 }
 
 impl From<VersionError> for UberBlockDecodeError {
-    fn from(value: VersionError) -> Self {
-        UberBlockDecodeError::Version { err: value }
+    fn from(err: VersionError) -> Self {
+        UberBlockDecodeError::Version { err }
     }
 }
 
@@ -516,26 +516,26 @@ pub enum UberBlockEncodeError {
 }
 
 impl From<LabelChecksumError> for UberBlockEncodeError {
-    fn from(value: LabelChecksumError) -> Self {
-        UberBlockEncodeError::LabelChecksum { err: value }
+    fn from(err: LabelChecksumError) -> Self {
+        UberBlockEncodeError::LabelChecksum { err }
     }
 }
 
 impl From<BlockPointerEncodeError> for UberBlockEncodeError {
-    fn from(value: BlockPointerEncodeError) -> Self {
-        UberBlockEncodeError::BlockPointer { err: value }
+    fn from(err: BlockPointerEncodeError) -> Self {
+        UberBlockEncodeError::BlockPointer { err }
     }
 }
 
 impl From<EndianEncodeError> for UberBlockEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        UberBlockEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        UberBlockEncodeError::Endian { err }
     }
 }
 
 impl From<UberBlockMmpEncodeError> for UberBlockEncodeError {
-    fn from(value: UberBlockMmpEncodeError) -> Self {
-        UberBlockEncodeError::UberBlockMmp { err: value }
+    fn from(err: UberBlockMmpEncodeError) -> Self {
+        UberBlockEncodeError::UberBlockMmp { err }
     }
 }
 
@@ -862,8 +862,8 @@ pub enum UberBlockMmpDecodeError {
 }
 
 impl From<EndianDecodeError> for UberBlockMmpDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        UberBlockMmpDecodeError::Endian { err: value }
+    fn from(err: EndianDecodeError) -> Self {
+        UberBlockMmpDecodeError::Endian { err }
     }
 }
 
@@ -923,8 +923,8 @@ pub enum UberBlockMmpEncodeError {
 }
 
 impl From<EndianEncodeError> for UberBlockMmpEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        UberBlockMmpEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        UberBlockMmpEncodeError::Endian { err }
     }
 }
 

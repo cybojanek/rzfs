@@ -76,7 +76,7 @@ impl XdrDecoder<'_> {
      */
     pub fn from_bytes(data: &[u8]) -> XdrDecoder<'_> {
         XdrDecoder {
-            data: data,
+            data,
             offset: Cell::new(0),
         }
     }
@@ -94,7 +94,7 @@ impl XdrDecoder<'_> {
             Err(XdrDecodeError::EndOfInput {
                 offset: self.offset.get(),
                 capacity: self.capacity(),
-                count: count,
+                count,
             })
         }
     }
@@ -287,10 +287,7 @@ impl XdrDecoder<'_> {
 
         let offset = self.offset.get();
         if count > offset {
-            return Err(XdrDecodeError::RewindPastStart {
-                offset: offset,
-                count: count,
-            });
+            return Err(XdrDecodeError::RewindPastStart { offset, count });
         }
         self.offset.set(offset - count);
 
@@ -559,10 +556,7 @@ impl XdrDecoder<'_> {
             1 => Ok(true),
             _ => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::InvalidBoolean {
-                    offset: offset,
-                    value: value,
-                })
+                Err(XdrDecodeError::InvalidBoolean { offset, value })
             }
         }
     }
@@ -690,13 +684,9 @@ impl XdrDecoder<'_> {
 
         match i8::try_from(value) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::I8Conversion {
-                    offset: offset,
-                    value: value,
-                    err: e,
-                })
+                Err(XdrDecodeError::I8Conversion { offset, value, err })
             }
         }
     }
@@ -747,13 +737,9 @@ impl XdrDecoder<'_> {
 
         match i16::try_from(value) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::I16Conversion {
-                    offset: offset,
-                    value: value,
-                    err: e,
-                })
+                Err(XdrDecodeError::I16Conversion { offset, value, err })
             }
         }
     }
@@ -881,13 +867,9 @@ impl XdrDecoder<'_> {
 
         match u8::try_from(value) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::U8Conversion {
-                    offset: offset,
-                    value: value,
-                    err: e,
-                })
+                Err(XdrDecodeError::U8Conversion { offset, value, err })
             }
         }
     }
@@ -936,13 +918,9 @@ impl XdrDecoder<'_> {
 
         match u16::try_from(value) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::U16Conversion {
-                    offset: offset,
-                    value: value,
-                    err: e,
-                })
+                Err(XdrDecodeError::U16Conversion { offset, value, err })
             }
         }
     }
@@ -1053,13 +1031,9 @@ impl XdrDecoder<'_> {
 
         match usize::try_from(value) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
-                Err(XdrDecodeError::UsizeConversion {
-                    offset: offset,
-                    value: value,
-                    err: e,
-                })
+                Err(XdrDecodeError::UsizeConversion { offset, value, err })
             }
         }
     }
@@ -1128,12 +1102,12 @@ impl XdrDecoder<'_> {
 
         match core::str::from_utf8(data) {
             Ok(v) => Ok(v),
-            Err(e) => {
+            Err(err) => {
                 self.offset.set(offset);
                 Err(XdrDecodeError::InvalidStr {
-                    offset: offset,
-                    length: length,
-                    err: e,
+                    offset,
+                    length,
+                    err,
                 })
             }
         }

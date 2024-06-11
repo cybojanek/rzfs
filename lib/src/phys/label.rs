@@ -233,8 +233,8 @@ pub enum BootHeaderDecodeError {
 }
 
 impl From<LabelVerifyError> for BootHeaderDecodeError {
-    fn from(value: LabelVerifyError) -> Self {
-        BootHeaderDecodeError::Label { err: value }
+    fn from(err: LabelVerifyError) -> Self {
+        BootHeaderDecodeError::Label { err }
     }
 }
 
@@ -268,8 +268,8 @@ pub enum BootHeaderEncodeError {
 }
 
 impl From<LabelChecksumError> for BootHeaderEncodeError {
-    fn from(value: LabelChecksumError) -> Self {
-        BootHeaderEncodeError::Label { err: value }
+    fn from(err: LabelChecksumError) -> Self {
+        BootHeaderEncodeError::Label { err }
     }
 }
 
@@ -517,8 +517,8 @@ pub enum NvPairsDecodeError {
 }
 
 impl From<LabelVerifyError> for NvPairsDecodeError {
-    fn from(value: LabelVerifyError) -> Self {
-        NvPairsDecodeError::Label { err: value }
+    fn from(err: LabelVerifyError) -> Self {
+        NvPairsDecodeError::Label { err }
     }
 }
 
@@ -552,8 +552,8 @@ pub enum NvPairsEncodeError {
 }
 
 impl From<LabelChecksumError> for NvPairsEncodeError {
-    fn from(value: LabelChecksumError) -> Self {
-        NvPairsEncodeError::Label { err: value }
+    fn from(err: LabelChecksumError) -> Self {
+        NvPairsEncodeError::Label { err }
     }
 }
 

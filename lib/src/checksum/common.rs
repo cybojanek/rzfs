@@ -34,9 +34,7 @@ impl fmt::Display for ChecksumError {
 #[cfg(feature = "std")]
 impl error::Error for ChecksumError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            _ => None,
-        }
+        None
     }
 }
 

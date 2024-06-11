@@ -1334,44 +1334,44 @@ pub enum BlockPointerDecodeError {
 }
 
 impl From<BlockPointerEmbeddedTypeError> for BlockPointerDecodeError {
-    fn from(value: BlockPointerEmbeddedTypeError) -> Self {
-        BlockPointerDecodeError::BlockPointerEmbeddedType { err: value }
+    fn from(err: BlockPointerEmbeddedTypeError) -> Self {
+        BlockPointerDecodeError::BlockPointerEmbeddedType { err }
     }
 }
 
 impl From<ChecksumTypeError> for BlockPointerDecodeError {
-    fn from(value: ChecksumTypeError) -> Self {
-        BlockPointerDecodeError::ChecksumType { err: value }
+    fn from(err: ChecksumTypeError) -> Self {
+        BlockPointerDecodeError::ChecksumType { err }
     }
 }
 
 impl From<ChecksumValueDecodeError> for BlockPointerDecodeError {
-    fn from(value: ChecksumValueDecodeError) -> Self {
-        BlockPointerDecodeError::ChecksumValue { err: value }
+    fn from(err: ChecksumValueDecodeError) -> Self {
+        BlockPointerDecodeError::ChecksumValue { err }
     }
 }
 
 impl From<CompressionTypeError> for BlockPointerDecodeError {
-    fn from(value: CompressionTypeError) -> Self {
-        BlockPointerDecodeError::CompressionType { err: value }
+    fn from(err: CompressionTypeError) -> Self {
+        BlockPointerDecodeError::CompressionType { err }
     }
 }
 
 impl From<DmuTypeError> for BlockPointerDecodeError {
-    fn from(value: DmuTypeError) -> Self {
-        BlockPointerDecodeError::DmuType { err: value }
+    fn from(err: DmuTypeError) -> Self {
+        BlockPointerDecodeError::DmuType { err }
     }
 }
 
 impl From<DvaDecodeError> for BlockPointerDecodeError {
-    fn from(value: DvaDecodeError) -> Self {
-        BlockPointerDecodeError::Dva { err: value }
+    fn from(err: DvaDecodeError) -> Self {
+        BlockPointerDecodeError::Dva { err }
     }
 }
 
 impl From<EndianDecodeError> for BlockPointerDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        BlockPointerDecodeError::Endian { err: value }
+    fn from(err: EndianDecodeError) -> Self {
+        BlockPointerDecodeError::Endian { err }
     }
 }
 
@@ -1504,20 +1504,20 @@ pub enum BlockPointerEncodeError {
 }
 
 impl From<ChecksumValueEncodeError> for BlockPointerEncodeError {
-    fn from(value: ChecksumValueEncodeError) -> Self {
-        BlockPointerEncodeError::ChecksumValue { err: value }
+    fn from(err: ChecksumValueEncodeError) -> Self {
+        BlockPointerEncodeError::ChecksumValue { err }
     }
 }
 
 impl From<DvaEncodeError> for BlockPointerEncodeError {
-    fn from(value: DvaEncodeError) -> Self {
-        BlockPointerEncodeError::Dva { err: value }
+    fn from(err: DvaEncodeError) -> Self {
+        BlockPointerEncodeError::Dva { err }
     }
 }
 
 impl From<EndianEncodeError> for BlockPointerEncodeError {
-    fn from(value: EndianEncodeError) -> Self {
-        BlockPointerEncodeError::Endian { err: value }
+    fn from(err: EndianEncodeError) -> Self {
+        BlockPointerEncodeError::Endian { err }
     }
 }
 
