@@ -64,3 +64,6 @@ pub use version::{Version, VersionError};
 
 pub(crate) mod xdr;
 pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
+
+pub(crate) mod zil;
+pub use zil::{ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError};
