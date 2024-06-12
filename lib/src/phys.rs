@@ -50,6 +50,12 @@ pub use nv::{
     NvEncoding, NvEndianOrder, NvList, NvPair, NvUnique,
 };
 
+pub(crate) mod object_set;
+pub use object_set::{
+    ObjectSet, ObjectSetDecodeError, ObjectSetEncodeError, ObjectSetExtension, ObjectSetType,
+    ObjectSetTypeError,
+};
+
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
