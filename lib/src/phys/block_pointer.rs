@@ -211,6 +211,15 @@ impl BlockPointer {
             None => Ok(BlockPointer::empty_to_encoder(encoder)?),
         }
     }
+
+    /// Gets the [`EndianOrder`] of the [`BlockPointer`].
+    pub fn order(&self) -> EndianOrder {
+        match self {
+            BlockPointer::Embedded(ptr) => ptr.order,
+            BlockPointer::Encrypted(ptr) => ptr.order,
+            BlockPointer::Regular(ptr) => ptr.order,
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
