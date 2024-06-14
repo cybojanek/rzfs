@@ -160,9 +160,9 @@ impl LzjbEncoder {
                 ^ src[src_idx + 1].wrapping_sub(13)
                 ^ src[src_idx + 2];
 
-            let cpy_idx_modulo = &mut self.table[hash as usize];
+            let cpy_idx_modulo = &mut self.table[usize::from(hash)];
 
-            let old_offset = (src_idx - (*cpy_idx_modulo as usize)) & (OFFSET_MASK as usize);
+            let old_offset = (src_idx - (*cpy_idx_modulo as usize)) & usize::from(OFFSET_MASK);
             *cpy_idx_modulo = src_idx as u16;
 
             let cpy_idx = src_idx - old_offset;
@@ -310,7 +310,7 @@ impl Compression for LzjbEncoder {
             // The subtraction is safe, because the value of cpy_idx_modulo must
             // be <= src_idx, since the table starts off filled with zeros, and
             // is filled in by src_idx values below.
-            let old_offset = (src_idx - (*cpy_idx_modulo as usize)) & (OFFSET_MASK as usize);
+            let old_offset = (src_idx - (*cpy_idx_modulo as usize)) & usize::from(OFFSET_MASK);
             *cpy_idx_modulo = src_idx as u16;
 
             // Compute the copy index.
