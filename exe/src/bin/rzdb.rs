@@ -41,7 +41,7 @@ fn _writes_bytes_to_file(path: &str, data: &[u8]) -> Result<(), io::Error> {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Reads `sectors` from a [`phys::Dva`].
-fn read_dva(
+fn dva_read(
     blk: &userspace::BlockDevice,
     dva: &phys::Dva,
     sectors: u32,
@@ -57,11 +57,11 @@ fn read_dva(
     };
 
     if dva.is_gang {
-        todo!("implement");
+        todo!("implement gang");
     }
 
     if dva.vdev != 0 {
-        todo!("implement");
+        todo!("implement vdev != 0");
     }
 
     let mut data = vec![0; size];
@@ -73,14 +73,14 @@ fn read_dva(
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Reads an embedded block pointer.
-fn read_block_pointer_embedded(
+fn block_pointer_embedded_read(
     _ptr: &phys::BlockPointerEmbedded,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     todo!();
 }
 
 /// Reads a regular block pointer.
-fn read_block_pointer_regular(
+fn block_pointer_regular_read(
     blk: &userspace::BlockDevice,
     ptr: &phys::BlockPointerRegular,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -94,7 +94,7 @@ fn read_block_pointer_regular(
         };
 
         // Read physical bytes.
-        let phys_bytes = read_dva(blk, dva, ptr.physical_sectors)?;
+        let phys_bytes = dva_read(blk, dva, ptr.physical_sectors)?;
 
         // Verify checksum.
         let computed_checksum = match ptr.checksum_type {
@@ -172,14 +172,14 @@ fn read_block_pointer_regular(
 }
 
 /// Reads the [`phys::BlockPointer`].
-fn read_block_pointer(
+fn block_pointer_read(
     blk: &userspace::BlockDevice,
     ptr: &phys::BlockPointer,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     match ptr {
-        phys::BlockPointer::Embedded(emb) => read_block_pointer_embedded(emb),
+        phys::BlockPointer::Embedded(emb) => block_pointer_embedded_read(emb),
         phys::BlockPointer::Encrypted(_) => todo!("Implement encrypted"),
-        phys::BlockPointer::Regular(reg) => read_block_pointer_regular(blk, reg),
+        phys::BlockPointer::Regular(reg) => block_pointer_regular_read(blk, reg),
     }
 }
 
@@ -188,7 +188,7 @@ fn read_block_pointer(
 type DnodeReadResult = Result<Option<(phys::EndianOrder, Vec<u8>)>, Box<dyn Error>>;
 
 /// Reads the [`phys::Dnode`]. Returns [None] if empty.
-fn read_dnode_block(
+fn dnode_read_block(
     blk: &userspace::BlockDevice,
     dnode: &phys::Dnode,
     block_id: u64,
@@ -198,23 +198,80 @@ fn read_dnode_block(
         return Ok(None);
     }
 
-    if dnode.levels == 1 {
-        // If its just one level, and the block id is within the array of
-        // pointers, then read the pointer.
-        if let Ok(idx) = usize::try_from(block_id) {
-            if let Some(Some(ptr)) = dnode.pointers().get(idx) {
-                return Ok(Some((ptr.order(), read_block_pointer(blk, ptr)?)));
-            }
-        }
-    } else {
-        todo!("Implement");
+    // Number of block pointers per indirect block.
+    let block_pointers_per_block = 1u64.checked_shl(dnode.indirect_block_shift.into()).unwrap()
+        / (phys::BlockPointer::SIZE as u64);
+
+    let levels = usize::from(dnode.levels);
+    let mut block_ids: [u64; 8] = [0; 8];
+    let mut block_pointer_idxs: [usize; 8] = [0; 8];
+
+    if levels > block_ids.len() {
+        todo!("Error too many levels");
     }
 
-    Ok(None)
+    // Level 0 block is the requested block id.
+    block_ids[0] = block_id;
+
+    // Compute the block ids and block pointers for the intermediate levels.
+    for level in 1..levels {
+        let block_id = block_ids[level - 1];
+        block_ids[level] = block_id / block_pointers_per_block;
+        block_pointer_idxs[level] =
+            ((block_id % block_pointers_per_block) as usize) * phys::BlockPointer::SIZE;
+    }
+
+    // Read the top most block pointer.
+    let ptr = match usize::try_from(block_ids[levels - 1]) {
+        Ok(idx) => {
+            if let Some(Some(ptr)) = dnode.pointers().get(idx) {
+                ptr
+            } else {
+                // Block id is too large for dnode.pointers(), or empty.
+                // That means the block is not allocated, so return None.
+                return Ok(None);
+            }
+        }
+        Err(_) => {
+            // Block id is too large for usize - return None, because this
+            // block is not allocated.
+            return Ok(None);
+        }
+    };
+
+    // Block order and bytes.
+    let mut order = ptr.order();
+    let mut block_bytes = block_pointer_read(blk, ptr)?;
+
+    // Read intermediate block pointers.
+    let mut level = levels - 1;
+
+    while level > 0 {
+        // Decode the block as an intermediate block.
+        let decoder = phys::EndianDecoder::from_bytes(&block_bytes, order);
+
+        // Seek to index of block pointer.
+        decoder.seek(block_pointer_idxs[level])?;
+
+        // Decode block pointer.
+        let ptr = match phys::BlockPointer::from_decoder(&decoder)? {
+            Some(ptr) => ptr,
+            None => return Ok(None),
+        };
+
+        // Read data for next block.
+        order = ptr.order();
+        block_bytes = block_pointer_read(blk, &ptr)?;
+
+        // Decrement level.
+        level -= 1;
+    }
+
+    Ok(Some((order, block_bytes)))
 }
 
 /// Reads the [`phys::Dnode`] object. Returns [None] if empty.
-fn read_dnode_object(
+fn dnode_read_object(
     blk: &userspace::BlockDevice,
     dnode: &phys::Dnode,
     object_id: u64,
@@ -236,7 +293,7 @@ fn read_dnode_object(
     let idx_in_block = (object_id as usize) % objects_per_block;
 
     // Read the block.
-    if let Some((endian, block)) = read_dnode_block(blk, dnode, block_id)? {
+    if let Some((endian, block)) = dnode_read_block(blk, dnode, block_id)? {
         // Read the object in the block.
         let mut data = vec![0; object_size];
 
@@ -248,6 +305,27 @@ fn read_dnode_object(
     }
 
     Ok(None)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Reads the [`phys::Dnode`] object for a [`phys::DmuType::Dnode`]. Returns [None] if empty.
+fn dnode_read_dnode(
+    blk: &userspace::BlockDevice,
+    dnode: &phys::Dnode,
+    object_id: u64,
+) -> Result<Option<phys::Dnode>, Box<dyn Error>> {
+    match dnode.dmu {
+        phys::DmuType::Dnode => (),
+        _ => todo!("todo error {}", dnode.dmu),
+    };
+    match dnode_read_object(blk, dnode, object_id, phys::Dnode::SIZE)? {
+        Some((endian, dnode_bytes)) => {
+            let decoder = phys::EndianDecoder::from_bytes(&dnode_bytes, endian);
+            Ok(phys::Dnode::from_decoder(&decoder)?)
+        }
+        None => Ok(None),
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -278,17 +356,13 @@ fn dump_root(
 
     ////////////////////////////////////
     // Read Meta ObjectSet.
-    let meta_object_set_bytes = read_block_pointer(blk, &uberblock.ptr)?;
+    let meta_object_set_bytes = block_pointer_read(blk, &uberblock.ptr)?;
     let decoder = phys::EndianDecoder::from_bytes(&meta_object_set_bytes, uberblock.ptr.order());
     let meta_object_set = phys::ObjectSet::from_decoder(&decoder)?;
 
     ////////////////////////////////////
     // Read ObjectDirectory at fixed object id 1.
-    let (endian, obj_dir_bytes) =
-        read_dnode_object(blk, &meta_object_set.dnode, 1, phys::Dnode::SIZE)?.unwrap();
-    let decoder = phys::EndianDecoder::from_bytes(&obj_dir_bytes, endian);
-    let root_obj_dir_dnode = phys::Dnode::from_decoder(&decoder)?.unwrap();
-
+    let root_obj_dir_dnode = dnode_read_dnode(blk, &meta_object_set.dnode, 1)?.unwrap();
     println!("root_object_dir_node: {:?}", root_obj_dir_dnode);
 
     Ok(())
