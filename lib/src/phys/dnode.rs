@@ -98,13 +98,28 @@ pub struct Dnode {
     /// The object type referenced.
     pub dmu: DmuType,
 
-    /// Shift of indirect blocks.
+    /// Byte size of an indirect block in log base 2.
     pub indirect_block_shift: u8,
 
-    /// Number of levels of indirection.
+    /** Number of [`BlockPointer`] levels to data.
+     *
+     * A level of `1` means that the [`BlockPointer`] in [`DnodeTail`] point
+     * to data blocks of logical size `data_block_size_sectors`.
+     *
+     * A level of `2` means that the [`BlockPointer`] in [`DnodeTail] point
+     * to intermediate blocks of logical size [`indirect_block_shift`]. The
+     * contents of one of these blocks is an array of packed [`BlockPointer`],
+     * which point to data blocks of logical size `data_block_size_sectors`.
+     *
+     * A level of `3` or more indicates additional levels of indirection.
+     */
     pub levels: u8,
 
-    /// The maximum block id referenced.
+    /** The maximum block id referenced.
+     *
+     * The value is inclusive, meaning that if `max_block_id` is `1`, there
+     * are two blocks, block `0` and block `1`.
+     */
     pub max_block_id: u64,
 
     /// Data at the end of this [`Dnode`].

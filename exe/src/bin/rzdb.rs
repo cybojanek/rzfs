@@ -285,7 +285,7 @@ fn dump_root(
     ////////////////////////////////////
     // Read ObjectDirectory at fixed object id 1.
     let (endian, obj_dir_bytes) =
-        read_dnode_object(blk, &meta_object_set.os_meta, 1, phys::Dnode::SIZE)?.unwrap();
+        read_dnode_object(blk, &meta_object_set.dnode, 1, phys::Dnode::SIZE)?.unwrap();
     let decoder = phys::EndianDecoder::from_bytes(&obj_dir_bytes, endian);
     let root_obj_dir_dnode = phys::Dnode::from_decoder(&decoder)?.unwrap();
 
