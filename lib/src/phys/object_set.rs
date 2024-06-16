@@ -130,7 +130,7 @@ const FLAG_ALL: u64 = FLAG_USER_ACCOUNTING_COMPLETE
  * +--------------+------+---------+------------------------------+
  * | Field        | Size | Version | Feature                      |
  * +--------------+------+---------+------------------------------+
- * | os_meta      |  512 |       1 |
+ * | dnode        |  512 |       1 |
  * +--------------+------+---------+
  * | zil_header   |  192 |       1 |
  * +--------------+------+---------+
@@ -155,13 +155,13 @@ const FLAG_ALL: u64 = FLAG_USER_ACCOUNTING_COMPLETE
  */
 #[derive(Debug)]
 pub struct ObjectSet {
-    /// ???
-    pub os_meta: Dnode,
+    /// [`Dnode`] of [`crate::phys::DmuType::Dnode`].
+    pub dnode: Dnode,
 
     /// ???
     pub zil_header: ZilHeader,
 
-    /// ???
+    /// Type of [`ObjectSet`].
     pub os_type: ObjectSetType,
 
     /// ???
@@ -235,7 +235,7 @@ impl ObjectSet {
     pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<ObjectSet, ObjectSetDecodeError> {
         ////////////////////////////////
         // Decode object set dnode.
-        let os_meta = match Dnode::from_decoder(decoder)? {
+        let dnode = match Dnode::from_decoder(decoder)? {
             Some(dnode) => dnode,
             None => return Err(ObjectSetDecodeError::EmptyDnode {}),
         };
@@ -300,7 +300,7 @@ impl ObjectSet {
         ////////////////////////////////
         // Success.
         Ok(ObjectSet {
-            os_meta,
+            dnode,
             zil_header,
             os_type,
 
@@ -324,7 +324,7 @@ impl ObjectSet {
     pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), ObjectSetEncodeError> {
         ////////////////////////////////
         // Encode object set dnode.
-        self.os_meta.to_encoder(encoder)?;
+        self.dnode.to_encoder(encoder)?;
 
         ////////////////////////////////
         // Encode ZIL header.
