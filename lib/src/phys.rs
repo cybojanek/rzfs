@@ -73,6 +73,19 @@ pub use uberblock::{
 pub(crate) mod xdr;
 pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
 
+pub(crate) mod zap;
+pub use zap::{
+    ZapCaseNormalization, ZapCaseNormalizationError, ZapHeader, ZapHeaderDecodeError,
+    ZapHeaderEncodeError, ZapLeafChunk, ZapLeafChunkData, ZapLeafChunkDecodeError,
+    ZapLeafChunkEncodeError, ZapLeafChunkEntry, ZapLeafChunkFree, ZapLeafHeader,
+    ZapLeafHeaderDecodeError, ZapLeafHeaderEncodeError, ZapMegaHeader, ZapMegaHeaderDecodeError,
+    ZapMegaHeaderEncodeError, ZapMegaPointerTable, ZapMegaPointerTableDecodeError,
+    ZapMegaPointerTableEncodeError, ZapMicroEntry, ZapMicroEntryDecodeError,
+    ZapMicroEntryEncodeError, ZapMicroEntryRef, ZapMicroHeader, ZapMicroHeaderDecodeError,
+    ZapMicroHeaderEncodeError, ZapMicroIterator, ZapMicroIteratorError, ZapUnicodeNormalization,
+    ZapUnicodeNormalizationError,
+};
+
 pub(crate) mod zil;
 pub use zil::{ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError};
 
