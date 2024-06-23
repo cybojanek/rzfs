@@ -23,7 +23,7 @@ pub use dnode::{
 };
 
 pub(crate) mod dmu;
-pub use dmu::{DmuType, DmuTypeError};
+pub use dmu::{DmuGenericObjectType, DmuType, DmuTypeError};
 
 pub(crate) mod dva;
 pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
