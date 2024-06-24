@@ -32,21 +32,21 @@ use crate::phys::{
  * - It looks like MMP was added without a version flag.
  *
  * ```text
- * +------------------+------+---------+------------------------------+
- * | Field            | Size | Version | Feature                      |
- * +------------------+------+---------+------------------------------+
- * | magic            |   8  |       1 |                              |
- * | version          |   8  |       1 |                              |
- * | txg              |   8  |       1 |                              |
- * | guid sum         |   8  |       1 |                              |
- * | timestamp        |   8  |       1 |                              |
- * | block pointer    | 128  |       1 |                              |
- * | software version |   8  |      26 |                              |
- * | mmp              |  24  |    5000 |                              |
- * | checkpoint txg   |   8  |    5000 | com.delphix:zpool_checkpoint |
- * | padding          |   X  |         |                              |
- * | checksum tail    |  40  |       1 |                              |
- * +------------------+------+---------+------------------------------+
+ * +------------------+------+-------------+------------------------------+
+ * | Field            | Size | SPA Version | Feature                      |
+ * +------------------+------+-------------+------------------------------+
+ * | magic            |   8  |           1 |                              |
+ * | version          |   8  |           1 |                              |
+ * | txg              |   8  |           1 |                              |
+ * | guid sum         |   8  |           1 |                              |
+ * | timestamp        |   8  |           1 |                              |
+ * | block pointer    | 128  |           1 |                              |
+ * | software version |   8  |          26 |                              |
+ * | mmp              |  24  |        5000 |                              |
+ * | checkpoint txg   |   8  |        5000 | com.delphix:zpool_checkpoint |
+ * | padding          |   X  |             |                              |
+ * | checksum tail    |  40  |           1 |                              |
+ * +------------------+------+-------------+------------------------------+
  *
  * X: power of two from 1024 to 131072, minus 248 bytes
  * ```

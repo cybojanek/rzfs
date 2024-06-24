@@ -8,7 +8,7 @@ use std::error;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** SPA Version.
+/** Storage Pool Allocator (SPA) Version.
  *
  * Historically, it was incremented when the format of data on disk changed.
  * [`SpaVersion::V28`] is the last open source version. V29+ are proprietary and

@@ -8,7 +8,7 @@ use std::error;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** ZPL Version.
+/** ZFS Posix Layer (ZPL) Version.
  */
 #[derive(Clone, Copy, Debug)]
 pub enum ZplVersion {
