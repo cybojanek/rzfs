@@ -59,7 +59,6 @@ const OFFSET_MASK_LOW: u64 = 0x7fffffffffffffff;
  * | Field    | Size |
  * +----------+------+
  * | flags    |    8 |
- * +----------+------+
  * | offset   |    8 |
  * +----------+------+
  * ```
