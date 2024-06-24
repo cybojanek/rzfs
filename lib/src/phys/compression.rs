@@ -11,19 +11,19 @@ use std::error;
 /** Compression type.
  *
  * ```text
- * +-------------+---------+---------------------------+
- * | Compression | Version | Feature                   |
- * +-------------+---------+---------------------------+
- * | Inherit     |       1 |                           |
- * | On          |       1 |                           |
- * | Off         |       1 |                           |
- * | Lzjb        |       1 |                           |
- * | Empty       |       4 |                           |
- * | Gzip        |       5 |                           |
- * | Zle         |       6 |                           |
- * | Lz4         |    5000 | org.illumos:lz4_compress  |
- * | Zstd        |    5000 | org.freebsd:zstd_compress |
- * +-------------+---------+---------------------------+
+ * +-------------+-------------+---------------------------+
+ * | Compression | SPA Version | Feature                   |
+ * +-------------+-------------+---------------------------+
+ * | Inherit     |           1 |                           |
+ * | On          |           1 |                           |
+ * | Off         |           1 |                           |
+ * | Lzjb        |           1 |                           |
+ * | Empty       |           4 |                           |
+ * | Gzip        |           5 |                           |
+ * | Zle         |           6 |                           |
+ * | Lz4         |        5000 | org.illumos:lz4_compress  |
+ * | Zstd        |        5000 | org.freebsd:zstd_compress |
+ * +-------------+-------------+---------------------------+
  * ```
  */
 #[derive(Clone, Copy, Debug)]

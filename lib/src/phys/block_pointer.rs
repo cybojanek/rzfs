@@ -226,7 +226,7 @@ impl BlockPointer {
 
 /** Embedded block pointer.
  *
- * - Version 5000, com.delphix:embedded_data
+ * - SPA Version 5000, feature com.delphix:embedded_data
  *
  * ```text
  * +-------------------+------+
@@ -592,7 +592,7 @@ impl BlockPointerEmbedded {
 
 /** Encrypted block pointer.
  *
- * - Version 5000, com.datto:encryption
+ * - SPA Version 5000, feature com.datto:encryption
  *
  * ```text
  * +--------------------+------+
@@ -938,7 +938,7 @@ impl BlockPointerEncrypted {
 
 /** Regular block pointer.
  *
- * - Version 21, dedup
+ * - SPA Version 21, dedup
  *
  * ```text
  * +--------------------+------+

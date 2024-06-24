@@ -38,26 +38,26 @@ const DNODE_FLAG_ALL: u8 = DNODE_FLAG_USED_BYTES
  * - Bytes: 512
  *
  * ```text
- * +-------------------------+------+---------+----------------------+
- * | Field                   | Size | Version | Feature              |
- * +-------------------------+------+---------+----------------------+
- * | dmu                     |    1 |       1 |                      |
- * | indirect block shift    |    1 |       1 |                      |
- * | levels                  |    1 |       1 |                      |
- * | block pointers count    |    1 |       1 |                      |
- * | bonus type              |    1 |       1 |                      |
- * | checksum                |    1 |       1 |                      |
- * | compression             |    1 |       1 |                      |
- * | flags                   |    1 |       3 |                      |
- * | data block size sectors |    2 |       1 |                      |
- * | bonus_len               |    2 |       1 |                      |
- * | extra_slots             |    1 |    5000 | com.datto:encryption |
- * | padding                 |    3 |         |                      |
- * | max block id            |    8 |       1 |                      |
- * | used                    |    8 |       1 |                      |
- * | padding                 |    3 |         |                      |
- * | tail                    |  448 |       1 |                      |
- * +-------------------------+------+---------+----------------------+
+ * +-------------------------+------+-------------+----------------------+
+ * | Field                   | Size | SPA Version | Feature              |
+ * +-------------------------+------+-------------+----------------------+
+ * | dmu                     |    1 |           1 |                      |
+ * | indirect block shift    |    1 |           1 |                      |
+ * | levels                  |    1 |           1 |                      |
+ * | block pointers count    |    1 |           1 |                      |
+ * | bonus type              |    1 |           1 |                      |
+ * | checksum                |    1 |           1 |                      |
+ * | compression             |    1 |           1 |                      |
+ * | flags                   |    1 |           3 |                      |
+ * | data block size sectors |    2 |           1 |                      |
+ * | bonus_len               |    2 |           1 |                      |
+ * | extra_slots             |    1 |        5000 | com.datto:encryption |
+ * | padding                 |    3 |             |                      |
+ * | max block id            |    8 |           1 |                      |
+ * | used                    |    8 |           1 |                      |
+ * | padding                 |    3 |             |                      |
+ * | tail                    |  448 |           1 |                      |
+ * +-------------------------+------+-------------+----------------------+
  * ```
  */
 #[derive(Debug)]

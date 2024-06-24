@@ -22,25 +22,25 @@ use crate::phys::{
  *   not the same as Sha512 truncated to 256 bits.
  *
  * ```text
- * +------------+---------+--------------------+
- * | Checksum   | Version | Feature            |
- * +------------+---------+--------------------+
- * | Inherit    |       1 |                    |
- * | On         |       1 |                    |
- * | Off        |       1 |                    |
- * | Label      |       1 |                    |
- * | GangHeader |       1 |                    |
- * | Zilog      |       1 |                    |
- * | Fletcher2  |       1 |                    |
- * | Fletcher4  |       1 |                    |
- * | Sha256     |       1 |                    |
- * | Zilog2     |      26 |                    |
- * | NoParity   |    5000 |                    |
- * | Sha512_256 |    5000 | org.illumos:sha512 |
- * | Skein      |    5000 | org.illumos:skein  |
- * | Edonr      |    5000 | org.illumos:edonr  |
- * | Blake3     |    5000 | org.openzfs:blake3 |
- * +------------+---------+--------------------+
+ * +------------+-------------+--------------------+
+ * | Checksum   | SPA Version | Feature            |
+ * +------------+-------------+--------------------+
+ * | Inherit    |           1 |                    |
+ * | On         |           1 |                    |
+ * | Off        |           1 |                    |
+ * | Label      |           1 |                    |
+ * | GangHeader |           1 |                    |
+ * | Zilog      |           1 |                    |
+ * | Fletcher2  |           1 |                    |
+ * | Fletcher4  |           1 |                    |
+ * | Sha256     |           1 |                    |
+ * | Zilog2     |          26 |                    |
+ * | NoParity   |        5000 |                    |
+ * | Sha512_256 |        5000 | org.illumos:sha512 |
+ * | Skein      |        5000 | org.illumos:skein  |
+ * | Edonr      |        5000 | org.illumos:edonr  |
+ * | Blake3     |        5000 | org.openzfs:blake3 |
+ * +------------+-------------+--------------------+
  * ```
  */
 #[derive(Clone, Copy, Debug)]
