@@ -59,14 +59,14 @@ pub use object_set::{
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
+pub(crate) mod spa_version;
+pub use spa_version::{SpaVersion, SpaVersionError};
+
 pub(crate) mod uberblock;
 pub use uberblock::{
     UberBlock, UberBlockDecodeError, UberBlockEncodeError, UberBlockMmp, UberBlockMmpDecodeError,
     UberBlockMmpEncodeError,
 };
-
-pub(crate) mod version;
-pub use version::{Version, VersionError};
 
 pub(crate) mod xdr;
 pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
