@@ -59,8 +59,8 @@ pub use object_set::{
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
-pub(crate) mod spa_version;
-pub use spa_version::{SpaVersion, SpaVersionError};
+pub(crate) mod spa;
+pub use spa::{SpaVersion, SpaVersionError};
 
 pub(crate) mod uberblock;
 pub use uberblock::{
