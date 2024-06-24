@@ -568,7 +568,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         ////////////////////////////////
         // Get the ashift value for the vdev_tree.
         let vdev_tree = nv_decoder.get_nv_list("vdev_tree")?.unwrap();
-        let version = phys::Version::try_from(nv_decoder.get_u64("version")?.unwrap())?;
+        let spa_version = phys::SpaVersion::try_from(nv_decoder.get_u64("version")?.unwrap())?;
         let ashift = vdev_tree.get_u64("ashift")?.unwrap();
         let label_txg = nv_decoder.get_u64("txg")?.unwrap();
 
@@ -576,7 +576,8 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
         ////////////////////////////////
         // Read UberBlocks.
-        let uberblock_size = 1 << phys::UberBlock::get_shift_from_version_ashift(version, ashift);
+        let uberblock_size =
+            1 << phys::UberBlock::get_shift_from_version_ashift(spa_version, ashift);
         for i in 0..phys::UberBlock::TOTAL_SIZE / uberblock_size {
             let uber_label_offset = phys::UberBlock::LABEL_OFFSET + i * uberblock_size;
             let uber_bytes = &label_bytes[uber_label_offset..uber_label_offset + uberblock_size];

@@ -9,7 +9,7 @@ use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVer
 use crate::phys::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, NvPairs,
-    Version, VersionError,
+    SpaVersion, SpaVersionError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -77,8 +77,8 @@ pub struct UberBlock {
     /// [`BlockPointer`] to root ObjectSet.
     pub ptr: BlockPointer,
 
-    /// Maximum [`Version`] supported by software that wrote out this txg.
-    pub software_version: Option<Version>,
+    /// Maximum [`SpaVersion`] supported by software that wrote out this txg.
+    pub software_version: Option<SpaVersion>,
 
     /** UTC timestamp of this [`UberBlock`] being written out.
      *
@@ -90,7 +90,7 @@ pub struct UberBlock {
     pub txg: u64,
 
     /// Format of on disk data.
-    pub version: Version,
+    pub version: SpaVersion,
 }
 
 impl UberBlock {
@@ -108,45 +108,45 @@ impl UberBlock {
      *
      * The byte size is `1 << shift`.
      */
-    pub fn get_shift_from_version_ashift(version: Version, ashift: u64) -> u32 {
+    pub fn get_shift_from_version_ashift(version: SpaVersion, ashift: u64) -> u32 {
         // Minimum shift is 10 (for 1024 bytes).
         let min_shift = 10;
 
         // Maximum shift depends on version.
         let max_shift = match version {
             // Maximum and minimum for V1 are the same.
-            Version::V1 => 10,
+            SpaVersion::V1 => 10,
             // Maximum is 17, because that is the size of the entire UberBlock
             // region in the label.
-            Version::V2
-            | Version::V3
-            | Version::V4
-            | Version::V5
-            | Version::V6
-            | Version::V7
-            | Version::V8
-            | Version::V9
-            | Version::V10
-            | Version::V11
-            | Version::V12
-            | Version::V13
-            | Version::V14
-            | Version::V15
-            | Version::V16
-            | Version::V17
-            | Version::V18
-            | Version::V19
-            | Version::V20
-            | Version::V21
-            | Version::V22
-            | Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V27
-            | Version::V28 => 17,
+            SpaVersion::V2
+            | SpaVersion::V3
+            | SpaVersion::V4
+            | SpaVersion::V5
+            | SpaVersion::V6
+            | SpaVersion::V7
+            | SpaVersion::V8
+            | SpaVersion::V9
+            | SpaVersion::V10
+            | SpaVersion::V11
+            | SpaVersion::V12
+            | SpaVersion::V13
+            | SpaVersion::V14
+            | SpaVersion::V15
+            | SpaVersion::V16
+            | SpaVersion::V17
+            | SpaVersion::V18
+            | SpaVersion::V19
+            | SpaVersion::V20
+            | SpaVersion::V21
+            | SpaVersion::V22
+            | SpaVersion::V23
+            | SpaVersion::V24
+            | SpaVersion::V25
+            | SpaVersion::V26
+            | SpaVersion::V27
+            | SpaVersion::V28 => 17,
             // Maximum is 13.
-            Version::V5000 => 13,
+            SpaVersion::V5000 => 13,
         };
 
         // Clamp the value.
@@ -237,7 +237,7 @@ impl UberBlock {
 
         ////////////////////////////////
         // Decode fields.
-        let version = Version::try_from(decoder.get_u64()?)?;
+        let version = SpaVersion::try_from(decoder.get_u64()?)?;
         let txg = decoder.get_u64()?;
         let guid_sum = decoder.get_u64()?;
         let timestamp = decoder.get_u64()?;
@@ -253,7 +253,7 @@ impl UberBlock {
         // Decode software version.
         let software_version = match decoder.get_u64()? {
             0 => None,
-            v => Some(Version::try_from(v)?),
+            v => Some(SpaVersion::try_from(v)?),
         };
 
         ////////////////////////////////
@@ -395,10 +395,10 @@ pub enum UberBlockDecodeError {
         err: LabelVerifyError,
     },
 
-    /// [`Version`] decode error.
-    Version {
+    /// [`SpaVersion`] decode error.
+    SpaVersion {
         /// Error.
-        err: VersionError,
+        err: SpaVersionError,
     },
 
     /// [`UberBlockMmp`] decode error.
@@ -426,15 +426,15 @@ impl From<EndianDecodeError> for UberBlockDecodeError {
     }
 }
 
-impl From<UberBlockMmpDecodeError> for UberBlockDecodeError {
-    fn from(err: UberBlockMmpDecodeError) -> Self {
-        UberBlockDecodeError::UberBlockMmp { err }
+impl From<SpaVersionError> for UberBlockDecodeError {
+    fn from(err: SpaVersionError) -> Self {
+        UberBlockDecodeError::SpaVersion { err }
     }
 }
 
-impl From<VersionError> for UberBlockDecodeError {
-    fn from(err: VersionError) -> Self {
-        UberBlockDecodeError::Version { err }
+impl From<UberBlockMmpDecodeError> for UberBlockDecodeError {
+    fn from(err: UberBlockMmpDecodeError) -> Self {
+        UberBlockDecodeError::UberBlockMmp { err }
     }
 }
 
@@ -453,11 +453,11 @@ impl fmt::Display for UberBlockDecodeError {
             UberBlockDecodeError::LabelVerify { err } => {
                 write!(f, "UberBlock decode error, label verify: [{err}]")
             }
+            UberBlockDecodeError::SpaVersion { err } => {
+                write!(f, "UberBlock decode error, version: [{err}]")
+            }
             UberBlockDecodeError::UberBlockMmp { err } => {
                 write!(f, "UberBlock decode error, MMP: [{err}]")
-            }
-            UberBlockDecodeError::Version { err } => {
-                write!(f, "UberBlock decode error, version: [{err}]")
             }
         }
     }
@@ -471,8 +471,8 @@ impl error::Error for UberBlockDecodeError {
             UberBlockDecodeError::EmptyBlockPointer {} => None,
             UberBlockDecodeError::Endian { err } => Some(err),
             UberBlockDecodeError::LabelVerify { err } => Some(err),
+            UberBlockDecodeError::SpaVersion { err } => Some(err),
             UberBlockDecodeError::UberBlockMmp { err } => Some(err),
-            UberBlockDecodeError::Version { err } => Some(err),
         }
     }
 }
