@@ -73,3 +73,6 @@ pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
 
 pub(crate) mod zil;
 pub use zil::{ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError};
+
+pub(crate) mod zpl;
+pub use zpl::{ZplVersion, ZplVersionError};
