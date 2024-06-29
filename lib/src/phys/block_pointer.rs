@@ -124,8 +124,7 @@ impl BlockPointer {
      *
      * # Errors
      *
-     * Returns [`BlockPointerDecodeError`] if there are not enough bytes,
-     * or block pointer is malformed.
+     * Returns [`BlockPointerDecodeError`] on error.
      */
     pub fn from_decoder(
         decoder: &EndianDecoder<'_>,
@@ -171,7 +170,7 @@ impl BlockPointer {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
@@ -188,7 +187,7 @@ impl BlockPointer {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn empty_to_encoder(
         encoder: &mut EndianEncoder<'_>,
@@ -200,7 +199,7 @@ impl BlockPointer {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn option_to_encoder(
         ptr: &Option<BlockPointer>,
@@ -352,16 +351,14 @@ impl TryFrom<u8> for BlockPointerEmbeddedType {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEmbeddedTypeError`] in case of an invalid [`BlockPointerEmbeddedType`].
+     * Returns [`BlockPointerEmbeddedTypeError`] in case of an unknown [`BlockPointerEmbeddedType`].
      */
     fn try_from(embedded_type: u8) -> Result<Self, Self::Error> {
         match embedded_type {
             0 => Ok(BlockPointerEmbeddedType::Data),
             1 => Ok(BlockPointerEmbeddedType::Reserved),
             2 => Ok(BlockPointerEmbeddedType::Redacted),
-            _ => Err(BlockPointerEmbeddedTypeError::Unknown {
-                value: embedded_type,
-            }),
+            _ => Err(BlockPointerEmbeddedTypeError::Unknown { embedded_type }),
         }
     }
 }
@@ -371,16 +368,16 @@ impl TryFrom<u8> for BlockPointerEmbeddedType {
 pub enum BlockPointerEmbeddedTypeError {
     /// Unknown [`BlockPointerEmbeddedType`].
     Unknown {
-        /// Unknown value.
-        value: u8,
+        /// Unknown embedded type.
+        embedded_type: u8,
     },
 }
 
 impl fmt::Display for BlockPointerEmbeddedTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerEmbeddedTypeError::Unknown { value } => {
-                write!(f, "BlockPointerEmbeddedType unknown: {value}")
+            BlockPointerEmbeddedTypeError::Unknown { embedded_type } => {
+                write!(f, "Unknown BlockPointerEmbeddedType {embedded_type}")
             }
         }
     }
@@ -416,7 +413,8 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode embedded payload (part 1).
-        payload[0..48].copy_from_slice(decoder.get_bytes(48)?);
+        let part_1 = &mut payload[0..48];
+        part_1.copy_from_slice(decoder.get_bytes(part_1.len())?);
 
         ////////////////////////////////
         // Decode flags.
@@ -424,7 +422,8 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode embedded payload (part 2).
-        payload[48..72].copy_from_slice(decoder.get_bytes(24)?);
+        let part_2 = &mut payload[48..72];
+        part_2.copy_from_slice(decoder.get_bytes(part_2.len())?);
 
         ////////////////////////////////
         // Decode logical birth transaction group.
@@ -432,7 +431,8 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode embedded payload (part 3).
-        payload[72..112].copy_from_slice(decoder.get_bytes(40)?);
+        let part_3 = &mut payload[72..112];
+        part_3.copy_from_slice(decoder.get_bytes(part_3.len())?);
 
         ////////////////////////////////
         // Decode encrypted and embedded.
@@ -521,7 +521,7 @@ impl BlockPointerEmbedded {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
@@ -720,6 +720,9 @@ pub struct BlockPointerEncrypted {
 }
 
 impl BlockPointerEncrypted {
+    /// Padding byte size.
+    const PADDING_SIZE: usize = 16;
+
     /** Decodes a [`BlockPointer`].
      *
      * # Errors
@@ -794,7 +797,7 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(16)?;
+        decoder.skip_zero_padding(BlockPointerEncrypted::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode TXGs.
@@ -842,7 +845,7 @@ impl BlockPointerEncrypted {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
@@ -904,7 +907,7 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(16)?;
+        encoder.put_zero_padding(BlockPointerEncrypted::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode TXGs.
@@ -1046,6 +1049,9 @@ pub struct BlockPointerRegular {
 }
 
 impl BlockPointerRegular {
+    /// Padding byte size.
+    const PADDING_SIZE: usize = 16;
+
     /** Decodes a [`BlockPointerRegular`].
      *
      * # Errors
@@ -1119,7 +1125,7 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(16)?;
+        decoder.skip_zero_padding(BlockPointerRegular::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode TXGs.
@@ -1157,7 +1163,7 @@ impl BlockPointerRegular {
      *
      * # Errors
      *
-     * Returns [`BlockPointerEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
@@ -1217,7 +1223,7 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(16)?;
+        encoder.put_zero_padding(BlockPointerRegular::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode TXGs.
@@ -1305,12 +1311,6 @@ pub enum BlockPointerDecodeError {
         length: usize,
     },
 
-    /// Invalid embedded type.
-    InvalidEmbeddedType {
-        /// Invalid embedded type value.
-        embedded_type: u8,
-    },
-
     /// Logical size is too large to fit in a [`usize`].
     LogicalSizeTooLarge {
         /// Invalid logical size value.
@@ -1364,25 +1364,25 @@ impl fmt::Display for BlockPointerDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BlockPointerDecodeError::BlockPointerEmbeddedType { err } => {
-                write!(f, "BlockPointer decode error, embedded type: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::ChecksumType { err } => {
-                write!(f, "BlockPointer decode error, checksum type: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::ChecksumValue { err } => {
-                write!(f, "BlockPointer decode error, checksum value: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::CompressionType { err } => {
-                write!(f, "BlockPointer decode error, compression type: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::DmuType { err } => {
-                write!(f, "BlockPointer decode error, DMU type: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::Dva { err } => {
-                write!(f, "BlockPointer decode error, DVA: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::Endian { err } => {
-                write!(f, "BlockPointer decode error, endian: [{err}]")
+                write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::InvalidBlockPointerType {
                 embedded,
@@ -1390,28 +1390,22 @@ impl fmt::Display for BlockPointerDecodeError {
             } => {
                 write!(
                     f,
-                    "BlockPointer decode error, invalid embedded: {embedded}, encrypted: {encrypted}"
+                    "BlockPointer decode error, invalid embedded {embedded} encrypted {encrypted}"
                 )
             }
             BlockPointerDecodeError::InvalidDedupValue { dedup } => {
-                write!(f, "BlockPointer decode error, invalid dedup value: {dedup}")
+                write!(f, "BlockPointer decode error, invalid dedup value {dedup}")
             }
             BlockPointerDecodeError::InvalidEmbeddedLength { length } => {
                 write!(
                     f,
-                    "BlockPointer decode error, invalid embdedded length: {length}"
-                )
-            }
-            BlockPointerDecodeError::InvalidEmbeddedType { embedded_type } => {
-                write!(
-                    f,
-                    "BlockPointer decode error, invalid embdedded type: {embedded_type}"
+                    "BlockPointer decode error, invalid embdedded length {length}"
                 )
             }
             BlockPointerDecodeError::LogicalSizeTooLarge { logical_size } => {
                 write!(
                     f,
-                    "BlockPointer decode error, logical size too bit for usize: {logical_size}"
+                    "BlockPointer decode error, logical size too big for usize {logical_size}"
                 )
             }
         }
@@ -1510,39 +1504,39 @@ impl fmt::Display for BlockPointerEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BlockPointerEncodeError::ChecksumValue { err } => {
-                write!(f, "BlockPointer encode error, checksum value: [{err}]")
+                write!(f, "BlockPointer encode error | {err}")
             }
             BlockPointerEncodeError::Dva { err } => {
-                write!(f, "BlockPointer encode error, DVA: [{err}]")
+                write!(f, "BlockPointer encode error | {err}")
             }
             BlockPointerEncodeError::Endian { err } => {
-                write!(f, "BlockPointer encode error, endian: [{err}]")
+                write!(f, "BlockPointer encode error | {err}")
             }
             BlockPointerEncodeError::InvalidEmbeddedLength { length } => {
                 write!(
                     f,
-                    "BlockPointer encode error, invalid embdedded length: {length}"
+                    "BlockPointer encode error, invalid embdedded length {length}"
                 )
             }
             BlockPointerEncodeError::InvalidLevel { level } => {
-                write!(f, "BlockPointer encode error, invalid level: {level}")
+                write!(f, "BlockPointer encode error, invalid level {level}")
             }
             BlockPointerEncodeError::InvalidLogicalSectors { sectors } => {
                 write!(
                     f,
-                    "BlockPointer encode error, invalid logical sectors: {sectors}"
+                    "BlockPointer encode error, invalid logical sectors {sectors}"
                 )
             }
             BlockPointerEncodeError::InvalidLogicalSize { logical_size } => {
                 write!(
                     f,
-                    "BlockPointer encode error, invalid logical size: {logical_size}"
+                    "BlockPointer encode error, invalid logical size {logical_size}"
                 )
             }
             BlockPointerEncodeError::InvalidPhysicalSectors { sectors } => {
                 write!(
                     f,
-                    "BlockPointer encode error, invalid physical sectors: {sectors}"
+                    "BlockPointer encode error, invalid physical sectors {sectors}"
                 )
             }
         }

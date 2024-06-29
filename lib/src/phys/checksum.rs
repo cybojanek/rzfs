@@ -128,7 +128,7 @@ impl TryFrom<u8> for ChecksumType {
      *
      * # Errors
      *
-     * Returns [`ChecksumTypeError`] in case of an invalid [`ChecksumType`].
+     * Returns [`ChecksumTypeError`] in case of an unknown [`ChecksumType`].
      */
     fn try_from(checksum: u8) -> Result<Self, Self::Error> {
         match checksum {
@@ -168,7 +168,7 @@ impl fmt::Display for ChecksumTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumTypeError::Unknown { checksum } => {
-                write!(f, "ChecksumType unknown: {checksum}")
+                write!(f, "Unknown ChecksumType {checksum}")
             }
         }
     }
@@ -272,7 +272,7 @@ impl fmt::Display for ChecksumValueDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumValueDecodeError::Endian { err } => {
-                write!(f, "ChecksumValue decode error, endian: [{err}]")
+                write!(f, "ChecksumValue decode error | {err}")
             }
         }
     }
@@ -307,7 +307,7 @@ impl fmt::Display for ChecksumValueEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumValueEncodeError::Endian { err } => {
-                write!(f, "ChecksumValue encode error, endian: [{err}]")
+                write!(f, "ChecksumValue encode error | {err}")
             }
         }
     }
@@ -432,10 +432,10 @@ impl fmt::Display for ChecksumTailDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumTailDecodeError::Endian { err } => {
-                write!(f, "ChecksumTail decode error, endian: [{err}]")
+                write!(f, "ChecksumTail decode error | {err}")
             }
             ChecksumTailDecodeError::ChecksumValue { err } => {
-                write!(f, "ChecksumTail decode error, value: [{err}]")
+                write!(f, "ChecksumTail decode error | {err}")
             }
         }
     }
@@ -483,10 +483,10 @@ impl fmt::Display for ChecksumTailEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChecksumTailEncodeError::ChecksumValue { err } => {
-                write!(f, "ChecksumTail encode error, value: [{err}]")
+                write!(f, "ChecksumTail encode error | {err}")
             }
             ChecksumTailEncodeError::Endian { err } => {
-                write!(f, "ChecksumTail encode error, endian: [{err}]")
+                write!(f, "ChecksumTail encode error | {err}")
             }
         }
     }

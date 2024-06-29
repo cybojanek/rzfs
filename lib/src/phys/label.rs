@@ -242,7 +242,7 @@ impl fmt::Display for BootHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BootHeaderDecodeError::Label { err } => {
-                write!(f, "BootHeader decode error, checksum: [{err}]")
+                write!(f, "BootHeader decode error | {err}")
             }
         }
     }
@@ -277,7 +277,7 @@ impl fmt::Display for BootHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BootHeaderEncodeError::Label { err } => {
-                write!(f, "BootHeader encode error, checksum: [{err}]")
+                write!(f, "BootHeader encode error | {err}")
             }
         }
     }
@@ -526,7 +526,7 @@ impl fmt::Display for NvPairsDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NvPairsDecodeError::Label { err } => {
-                write!(f, "NvPairs decode error, checksum: [{err}]")
+                write!(f, "NvPairs decode error | {err}")
             }
         }
     }
@@ -561,7 +561,7 @@ impl fmt::Display for NvPairsEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NvPairsEncodeError::Label { err } => {
-                write!(f, "NvPairs encode error, checksum: [{err}]")
+                write!(f, "NvPairs encode error | {err}")
             }
         }
     }
@@ -663,7 +663,7 @@ impl fmt::Display for LabelSectorsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LabelSectorsError::TooSmall { sectors } => {
-                write!(f, "Not enough sectors for Label::sectors: {sectors}")
+                write!(f, "Not enough sectors for Label {sectors}")
             }
         }
     }

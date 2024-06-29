@@ -57,6 +57,9 @@ impl ZilHeader {
     /// Byte size of an encoded [`ZilHeader`] (192).
     pub const SIZE: usize = BlockPointer::SIZE + 64;
 
+    /// Padding byte size.
+    const PADDING_SIZE: usize = 24;
+
     /** Decodes a [`ZilHeader`].
      *
      * # Errors
@@ -73,7 +76,7 @@ impl ZilHeader {
             claim_lr_seq: decoder.get_u64()?,
         };
 
-        decoder.skip_zero_padding(24)?;
+        decoder.skip_zero_padding(ZilHeader::PADDING_SIZE)?;
 
         Ok(zil_header)
     }
@@ -94,7 +97,7 @@ impl ZilHeader {
         encoder.put_u64(self.claim_blk_seq)?;
         encoder.put_u64(self.flags)?;
         encoder.put_u64(self.claim_lr_seq)?;
-        encoder.put_zero_padding(24)?;
+        encoder.put_zero_padding(ZilHeader::PADDING_SIZE)?;
 
         Ok(())
     }
@@ -134,10 +137,10 @@ impl fmt::Display for ZilHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ZilHeaderDecodeError::BlockPointer { err } => {
-                write!(f, "ZIL header decode error, block pointer: [{err}]")
+                write!(f, "ZilHeader decode error | {err}")
             }
             ZilHeaderDecodeError::Endian { err } => {
-                write!(f, "ZIL header decode error, endian: [{err}]")
+                write!(f, "ZilHeader decode error | {err}")
             }
         }
     }
@@ -187,10 +190,10 @@ impl fmt::Display for ZilHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ZilHeaderEncodeError::BlockPointer { err } => {
-                write!(f, "ZIL header encode error, block pointer: [{err}]")
+                write!(f, "ZilHeader encode error | {err}")
             }
             ZilHeaderEncodeError::Endian { err } => {
-                write!(f, "ZIL header encode error, endian: [{err}]")
+                write!(f, "ZilHeader encode error | {err}")
             }
         }
     }

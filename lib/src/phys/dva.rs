@@ -12,7 +12,7 @@ use crate::phys::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Shift for paddinf field.
+/// Shift for padding field.
 const PADDING_SHIFT: usize = 56;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -219,7 +219,7 @@ impl Dva {
      *
      * # Errors
      *
-     * Returns [`DvaEncodeError`] if there is not enough space, or input is invalid.
+     * Returns [`DvaEncodeError`] on error.
      */
     pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), DvaEncodeError> {
         ////////////////////////////////
@@ -324,16 +324,16 @@ impl fmt::Display for DvaDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DvaDecodeError::Endian { err } => {
-                write!(f, "DVA decode error, endian: [{err}]")
+                write!(f, "DVA decode error | {err}")
             }
             DvaDecodeError::InvalidOffset { offset } => {
-                write!(f, "DVA decode error, invalid offset: {offset}")
+                write!(f, "DVA decode error, invalid offset {offset}")
             }
             DvaDecodeError::NonZeroGrid { grid } => {
-                write!(f, "DVA decode error, non-zero grid: {grid}")
+                write!(f, "DVA decode error, non-zero grid {grid}")
             }
             DvaDecodeError::NonZeroPadding { padding } => {
-                write!(f, "DVA decode error, non-zero padding: {padding}")
+                write!(f, "DVA decode error, non-zero padding {padding}")
             }
         }
     }
@@ -389,16 +389,16 @@ impl fmt::Display for DvaEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DvaEncodeError::Endian { err } => {
-                write!(f, "DVA encode error, endian: [{err}]")
+                write!(f, "DVA encode error | {err}")
             }
             DvaEncodeError::InvalidAllocated { allocated } => {
-                write!(f, "DVA encode error, invalid allocated: {allocated}")
+                write!(f, "DVA encode error, invalid allocated {allocated}")
             }
             DvaEncodeError::InvalidOffset { offset } => {
-                write!(f, "DVA encode error, invalid offset: {offset}")
+                write!(f, "DVA encode error, invalid offset {offset}")
             }
             DvaEncodeError::InvalidVdev { vdev } => {
-                write!(f, "DVA encode error, invalid vdev: {vdev}")
+                write!(f, "DVA encode error, invalid vdev {vdev}")
             }
         }
     }
