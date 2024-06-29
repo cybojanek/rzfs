@@ -304,6 +304,12 @@ impl Dnode {
     /// Byte size of an encoded [`Dnode`].
     pub const SIZE: usize = 512;
 
+    /// Padding A byte size.
+    const PADDING_SIZE_A: usize = 3;
+
+    /// Padding B byte size.
+    const PADDING_SIZE_B: usize = 32;
+
     /** Decodes a [`Dnode`]. Returns [`None`] if [`Dnode`] is empty.
      *
      * # Errors
@@ -374,7 +380,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(3)?;
+        decoder.skip_zero_padding(Dnode::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Decode max block id.
@@ -391,7 +397,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(32)?;
+        decoder.skip_zero_padding(Dnode::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Decode tail.
@@ -565,7 +571,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(3)?;
+        encoder.put_zero_padding(Dnode::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Encode max block id.
@@ -580,7 +586,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(32)?;
+        encoder.put_zero_padding(Dnode::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Encode tail.
@@ -758,33 +764,33 @@ impl fmt::Display for DnodeDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DnodeDecodeError::BlockPointer { err } => {
-                write!(f, "Dnode decode error, block pointer: [{err}]")
+                write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::BlockPointerCount { count } => {
-                write!(f, "Dnode decode error, block pointer count:{count}")
+                write!(f, "Dnode decode error, block pointer count {count}")
             }
             DnodeDecodeError::BonusLength { length } => {
-                write!(f, "Dnode decode error, invalid bonus length:{length}")
+                write!(f, "Dnode decode error, invalid bonus length {length}")
             }
             DnodeDecodeError::ChecksumType { err } => {
-                write!(f, "Dnode decode error, checksum type: [{err}]")
+                write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::CompressionType { err } => {
-                write!(f, "Dnode decode error, compression type: [{err}]")
+                write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::DmuType { err } => {
-                write!(f, "Dnode decode error, DMU type: [{err}]")
+                write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::Endian { err } => {
-                write!(f, "Dnode decode error, endian: [{err}]")
+                write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::Flags { flags } => {
-                write!(f, "Dnode decode error, invalid flags:{flags}")
+                write!(f, "Dnode decode error, invalid flags {flags:#02x}")
             }
             DnodeDecodeError::SpillBlockPointerCount { count } => {
                 write!(
                     f,
-                    "Dnode decode error, invalid spill block pointer count:{count}"
+                    "Dnode decode error, invalid spill block pointer count {count}"
                 )
             }
         }
@@ -845,13 +851,13 @@ impl fmt::Display for DnodeEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DnodeEncodeError::BlockPointer { err } => {
-                write!(f, "Dnode encode error, block pointer: [{err}]")
+                write!(f, "Dnode encode error | {err}")
             }
             DnodeEncodeError::Endian { err } => {
-                write!(f, "Dnode encode error, endian: [{err}]")
+                write!(f, "Dnode encode error | {err}")
             }
             DnodeEncodeError::BonusLength { length } => {
-                write!(f, "Dnode encode error, invalid bonus length:{length}")
+                write!(f, "Dnode encode error, invalid bonus length {length}")
             }
         }
     }

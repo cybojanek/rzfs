@@ -61,7 +61,7 @@ impl TryFrom<u64> for ObjectSetType {
      *
      * # Errors
      *
-     * Returns [`ObjectSetTypeError`] in case of an invalid [`ObjectSetType`].
+     * Returns [`ObjectSetTypeError`] in case of an unknown [`ObjectSetType`].
      */
     fn try_from(os_type: u64) -> Result<Self, Self::Error> {
         match os_type {
@@ -90,7 +90,7 @@ impl fmt::Display for ObjectSetTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectSetTypeError::Unknown { os_type } => {
-                write!(f, "ObjectSetType unknown: {os_type}")
+                write!(f, "Unknown ObjectSetType {os_type}")
             }
         }
     }
@@ -179,7 +179,7 @@ pub struct ObjectSet {
 #[derive(Debug)]
 pub enum ObjectSetExtension {
     /// ???
-    None {},
+    Zero {},
 
     /// ???
     Two {
@@ -204,17 +204,28 @@ pub enum ObjectSetExtension {
 }
 
 impl ObjectSet {
-    /// Byte size of a encoded V1 [`ObjectSet`].
-    pub const SIZE_V1: usize = (Dnode::SIZE + ZilHeader::SIZE + 16 + ObjectSet::MAC_LEN * 2 + 240);
+    /// Byte size of a encoded [`ObjectSet`] with [`ObjectSetExtension::Zero`].
+    pub const SIZE_EXT_0: usize = (Dnode::SIZE
+        + ZilHeader::SIZE
+        + 16
+        + ObjectSet::MAC_LEN * 2
+        + ObjectSet::PADDING_SIZE_NONE);
 
-    /// Byte size of a encoded V15 [`ObjectSet`].
-    pub const SIZE_V15: usize = (ObjectSet::SIZE_V1 + 2 * Dnode::SIZE);
+    /// Byte size of a encoded [`ObjectSet`] [`ObjectSetExtension::Two`]
+    pub const SIZE_EXT_2: usize = (ObjectSet::SIZE_EXT_0 + 2 * Dnode::SIZE);
 
-    /// Byte size of a encoded V5000 [`ObjectSet`].
-    pub const SIZE_V5000: usize = (ObjectSet::SIZE_V15 + Dnode::SIZE + 1536);
+    /// Byte size of a encoded [`ObjectSet`] with [`ObjectSetExtension::Three`].
+    pub const SIZE_EXT_3: usize =
+        (ObjectSet::SIZE_EXT_2 + Dnode::SIZE + ObjectSet::PADDING_SIZE_THREE);
 
     /// Byte size of [`ObjectSet`] MAC.
     pub const MAC_LEN: usize = 32;
+
+    /// Padding size for [`ObjectSetExtension::Zero`].
+    const PADDING_SIZE_NONE: usize = 240;
+
+    /// Padding size for [`ObjectSetExtension::Three`].
+    const PADDING_SIZE_THREE: usize = 1536;
 
     /** Decodes an [`ObjectSet`].
      *
@@ -252,12 +263,12 @@ impl ObjectSet {
         let local_mac = decoder.get_bytes(ObjectSet::MAC_LEN)?.try_into().unwrap();
 
         ////////////////////////////////
-        // Decode padding up to SIZE_V1.
-        decoder.skip_zero_padding(240)?;
+        // Decode padding.
+        decoder.skip_zero_padding(ObjectSet::PADDING_SIZE_NONE)?;
 
         ////////////////////////////////
         // Check for extensions based on length.
-        let mut extension = ObjectSetExtension::None {};
+        let mut extension = ObjectSetExtension::Zero {};
 
         if !decoder.is_empty() {
             ////////////////////////////
@@ -270,7 +281,6 @@ impl ObjectSet {
                     user_used,
                     group_used,
                 };
-                // No padding for SIZE_V15.
             } else {
                 ////////////////////////
                 // Decode project used.
@@ -282,8 +292,7 @@ impl ObjectSet {
                     project_used,
                 };
 
-                // Decode padding up to SIZE_V5000.
-                decoder.skip_zero_padding(1536)?;
+                decoder.skip_zero_padding(ObjectSet::PADDING_SIZE_THREE)?;
             }
         }
 
@@ -347,20 +356,19 @@ impl ObjectSet {
         encoder.put_bytes(&self.local_mac)?;
 
         ////////////////////////////////
-        // Encode padding up to SIZE_V1.
-        encoder.put_zero_padding(240)?;
+        // Encode padding.
+        encoder.put_zero_padding(ObjectSet::PADDING_SIZE_NONE)?;
 
         ////////////////////////////////
         // Encode extensions.
         match &self.extension {
-            ObjectSetExtension::None {} => (),
+            ObjectSetExtension::Zero {} => (),
             ObjectSetExtension::Two {
                 user_used,
                 group_used,
             } => {
                 Dnode::option_to_encoder(user_used, encoder)?;
                 Dnode::option_to_encoder(group_used, encoder)?;
-                // No padding for SIZE_V15.
             }
             ObjectSetExtension::Three {
                 user_used,
@@ -370,8 +378,7 @@ impl ObjectSet {
                 Dnode::option_to_encoder(user_used, encoder)?;
                 Dnode::option_to_encoder(group_used, encoder)?;
                 Dnode::option_to_encoder(project_used, encoder)?;
-                // Encode padding up to SIZE_V5000.
-                encoder.put_zero_padding(1536)?;
+                encoder.put_zero_padding(ObjectSet::PADDING_SIZE_THREE)?;
             }
         };
 
@@ -448,22 +455,22 @@ impl fmt::Display for ObjectSetDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectSetDecodeError::Dnode { err } => {
-                write!(f, "ObjectSet decode error, dnode: [{err}]")
+                write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::EmptyDnode {} => {
                 write!(f, "ObjectSet decode error, empty dnode")
             }
             ObjectSetDecodeError::Endian { err } => {
-                write!(f, "ObjectSet decode error, endian: [{err}]")
+                write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::Flags { flags } => {
-                write!(f, "ObjectSet decode error, invalid flags:{flags}")
+                write!(f, "ObjectSet decode error, invalid flags {flags:#016x}")
             }
             ObjectSetDecodeError::ObjectSetType { err } => {
-                write!(f, "ObjectSet decode error, type: [{err}]")
+                write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::ZilHeader { err } => {
-                write!(f, "ObjectSet decode error, zil header: [{err}]")
+                write!(f, "ObjectSet decode error | {err}")
             }
         }
     }
@@ -475,6 +482,7 @@ impl error::Error for ObjectSetDecodeError {
         match self {
             ObjectSetDecodeError::Dnode { err } => Some(err),
             ObjectSetDecodeError::Endian { err } => Some(err),
+            ObjectSetDecodeError::ObjectSetType { err } => Some(err),
             ObjectSetDecodeError::ZilHeader { err } => Some(err),
             _ => None,
         }
@@ -527,13 +535,13 @@ impl fmt::Display for ObjectSetEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectSetEncodeError::Dnode { err } => {
-                write!(f, "ObjectSet encode error, dnode: [{err}]")
+                write!(f, "ObjectSet encode error | {err}")
             }
             ObjectSetEncodeError::Endian { err } => {
-                write!(f, "ObjectSet encode error, endian: [{err}]")
+                write!(f, "ObjectSet encode error | {err}")
             }
             ObjectSetEncodeError::ZilHeader { err } => {
-                write!(f, "ObjectSet encode error, zil header: [{err}]")
+                write!(f, "ObjectSet encode error | {err}")
             }
         }
     }

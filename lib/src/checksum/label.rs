@@ -194,16 +194,16 @@ impl fmt::Display for LabelChecksumError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LabelChecksumError::Checksum { err } => {
-                write!(f, "Label checksum error, checksum: [{err}]")
+                write!(f, "Label checksum error | {err}")
             }
             LabelChecksumError::ChecksumTail { err } => {
-                write!(f, "Label checksum error, checksum tail: [{err}]")
+                write!(f, "Label checksum error | {err}")
             }
             LabelChecksumError::Endian { err } => {
-                write!(f, "Label checksum error, endian: [{err}]")
+                write!(f, "Label checksum error | {err}")
             }
             LabelChecksumError::InvalidLength { length } => {
-                write!(f, "Label checksum error, invalid length: {length}")
+                write!(f, "Label checksum error, invalid length {length}")
             }
         }
     }
@@ -305,38 +305,27 @@ impl fmt::Display for LabelVerifyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LabelVerifyError::Checksum { err } => {
-                write!(f, "Label verify error, checksum: [{err}]")
+                write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::ChecksumTailDecode { err } => {
-                write!(f, "Label verify error, checksum tail decode: [{err}]")
+                write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::ChecksumTailEncode { err } => {
-                write!(f, "Label verify error, checksum tail encode: [{err}]")
+                write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::EndianEncode { err } => {
-                write!(f, "Label verify error, endian encode: [{err}]")
+                write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::EndianDecode { err } => {
-                write!(f, "Label verify error, endian decode: [{err}]")
+                write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::InvalidLength { length } => {
-                write!(f, "Label verify error, invalid length: {length}")
+                write!(f, "Label verify error, invalid length {length}")
             }
             LabelVerifyError::Mismatch { computed, stored } => write!(
                 f,
-                concat!(
-                    "Label verify checksum mismatch, ",
-                    "computed: 0x{:016x} 0x{:016x} 0x{:016x} 0x{:016x}, ",
-                    "stored: 0x{:016x} 0x{:016x} 0x{:016x} 0x{:016x}"
-                ),
-                computed[0],
-                computed[1],
-                computed[2],
-                computed[3],
-                stored[0],
-                stored[1],
-                stored[2],
-                stored[3],
+                "Label verify checksum mismatch, computed {:#016x?} stored {:#016x?}",
+                computed, stored,
             ),
         }
     }

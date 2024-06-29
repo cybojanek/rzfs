@@ -1381,11 +1381,11 @@ impl fmt::Display for XdrDecodeError {
             } => {
                 write!(
                     f,
-                    "XDR decode error, end of input at offset:{offset} capacity:{capacity} count:{count}"
+                    "XDR decode error, end of input at offset {offset} capacity {capacity} count {count}"
                 )
             }
             XdrDecodeError::InvalidBoolean { offset, value } => {
-                write!(f, "XDR invalid boolean at offset:{offset}, value:{value}")
+                write!(f, "XDR invalid boolean at offset {offset} value {value}")
             }
             XdrDecodeError::InvalidStr {
                 offset,
@@ -1394,55 +1394,55 @@ impl fmt::Display for XdrDecodeError {
             } => {
                 write!(
                     f,
-                    "XDR decode error, invalid UTF8 str of length:{length} at offset:{offset} err: [{err}]"
+                    "XDR decode error, invalid UTF8 str of length {length} at offset {offset} | {err}"
                 )
             }
             XdrDecodeError::I8Conversion { offset, value, err } => {
                 write!(
                     f,
-                    "XDR decode error, i8 conversion at offset:{offset}, value:{value} err: [{err}]"
+                    "XDR decode error, i8 conversion at offset {offset}, value {value} | {err}"
                 )
             }
             XdrDecodeError::I16Conversion { offset, value, err } => {
                 write!(
                     f,
-                    "XDR decode error, i16 conversion at offset:{offset}, value:{value} err: [{err}]"
+                    "XDR decode error, i16 conversion at offset {offset}, value {value} | {err}"
                 )
             }
             XdrDecodeError::SkipAlignment { count } => {
-                write!(f, "XDR skip not a multiple of 4:{count}")
+                write!(f, "XDR skip not a multiple of 4 {count}")
             }
             XdrDecodeError::RewindAlignment { count } => {
-                write!(f, "XDR rewind not a multiple of 4:{count}")
+                write!(f, "XDR rewind not a multiple of 4 {count}")
             }
             XdrDecodeError::RewindPastStart { offset, count } => {
-                write!(f, "XDR rewind past start at offset:{offset} count:{count}")
+                write!(f, "XDR rewind past start at offset {offset} count {count}")
             }
             XdrDecodeError::SeekAlignment { offset } => {
-                write!(f, "XDR seek not a multiple of 4:{offset}")
+                write!(f, "XDR seek not a multiple of 4 {offset}")
             }
             XdrDecodeError::SeekPastEnd { offset, capacity } => {
                 write!(
                     f,
-                    "XDR decode error, seek past end to offset:{offset} capacity:{capacity}"
+                    "XDR decode error, seek past end to offset {offset} capacity {capacity}"
                 )
             }
             XdrDecodeError::U8Conversion { offset, value, err } => {
                 write!(
                     f,
-                    "XDR decode error, u8 conversion at offset:{offset}, value:{value} err: [{err}]"
+                    "XDR decode error, u8 conversion at offset {offset}, value {value} | {err}"
                 )
             }
             XdrDecodeError::U16Conversion { offset, value, err } => {
                 write!(
                     f,
-                    "XDR decode error, u16 conversion at offset:{offset}, value:{value} err: [{err}]"
+                    "XDR decode error, u16 conversion at offset {offset}, value {value} | {err}"
                 )
             }
             XdrDecodeError::UsizeConversion { offset, value, err } => {
                 write!(
                     f,
-                    "XDR decode error, usize conversion at offset:{offset}, value:{value} err: [{err}]"
+                    "XDR decode error, usize conversion at offset {offset}, value {value} | {err}"
                 )
             }
         }

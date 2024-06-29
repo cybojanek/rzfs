@@ -30,21 +30,15 @@ pub enum ZplVersion {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Display for ZplVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ZplVersion::V1 => write!(f, "1"),
-            ZplVersion::V2 => write!(f, "2"),
-            ZplVersion::V3 => write!(f, "3"),
-            ZplVersion::V4 => write!(f, "4"),
-            ZplVersion::V5 => write!(f, "5"),
-        }
-    }
-}
-
 impl From<ZplVersion> for u64 {
     fn from(val: ZplVersion) -> u64 {
         val as u64
+    }
+}
+
+impl Display for ZplVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", u64::from(*self))
     }
 }
 
@@ -55,7 +49,7 @@ impl TryFrom<u64> for ZplVersion {
      *
      * # Errors
      *
-     * Returns [`ZplVersionError`] in case of an invalid [`ZplVersion`].
+     * Returns [`ZplVersionError`] in case of an unknown [`ZplVersion`].
      */
     fn try_from(version: u64) -> Result<Self, Self::Error> {
         match version {
@@ -85,7 +79,7 @@ impl fmt::Display for ZplVersionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ZplVersionError::Unknown { version } => {
-                write!(f, "ZplVersion unknown: {version}")
+                write!(f, "Unknown ZplVersion {version}")
             }
         }
     }

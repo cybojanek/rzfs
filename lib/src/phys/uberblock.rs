@@ -169,7 +169,7 @@ impl UberBlock {
         if let Ok(magic_is_zero) = decoder.is_zero_skip(8) {
             if magic_is_zero {
                 // Skip version.
-                if let Ok(_e) = decoder.skip(8) {
+                if decoder.skip(8).is_ok() {
                     // Exclude checksum.
                     let excluded_length = if exclude_checksum {
                         ChecksumTail::SIZE
@@ -442,22 +442,22 @@ impl fmt::Display for UberBlockDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockDecodeError::BlockPointer { err } => {
-                write!(f, "UberBlock decode error, block pointer: [{err}]")
+                write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::EmptyBlockPointer {} => {
-                write!(f, "UberBlock decode error, empty block pointer]")
+                write!(f, "UberBlock decode error, empty block pointer")
             }
             UberBlockDecodeError::Endian { err } => {
-                write!(f, "UberBlock decode error, endian: [{err}]")
+                write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::LabelVerify { err } => {
-                write!(f, "UberBlock decode error, label verify: [{err}]")
+                write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::SpaVersion { err } => {
-                write!(f, "UberBlock decode error, version: [{err}]")
+                write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::UberBlockMmp { err } => {
-                write!(f, "UberBlock decode error, MMP: [{err}]")
+                write!(f, "UberBlock decode error | {err}")
             }
         }
     }
@@ -533,16 +533,16 @@ impl fmt::Display for UberBlockEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockEncodeError::BlockPointer { err } => {
-                write!(f, "UberBlock encode error, BlockPointer: [{err}]")
+                write!(f, "UberBlock encode error | {err}")
             }
             UberBlockEncodeError::Endian { err } => {
-                write!(f, "UberBlock encode error, endian: [{err}]")
+                write!(f, "UberBlock encode error | {err}")
             }
             UberBlockEncodeError::LabelChecksum { err } => {
-                write!(f, "UberBlock encode error, label checksum: [{err}]")
+                write!(f, "UberBlock encode error | {err}")
             }
             UberBlockEncodeError::UberBlockMmp { err } => {
-                write!(f, "UberBlock encode error, MMP: [{err}]")
+                write!(f, "UberBlock encode error | {err}")
             }
         }
     }
@@ -859,15 +859,15 @@ impl fmt::Display for UberBlockMmpDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockMmpDecodeError::Endian { err } => {
-                write!(f, "UberBlockMmp decode error, endian: [{err}]")
+                write!(f, "UberBlockMmp decode error | {err}")
             }
             UberBlockMmpDecodeError::InvalidMagic { magic } => {
-                write!(f, "UberBlockMmp decode error, invalid magic 0x{magic:016x}")
+                write!(f, "UberBlockMmp decode error, invalid magic {magic:#016x}")
             }
             UberBlockMmpDecodeError::NonZeroReservedConfigBits { config } => {
                 write!(
                     f,
-                    "UberBlockMmp decode error: non-zero reserved config bits config 0x{config:016x}"
+                    "UberBlockMmp decode error, non-zero reserved config bits config {config:#016x}"
                 )
             }
             UberBlockMmpDecodeError::NonZeroValues {
@@ -877,7 +877,7 @@ impl fmt::Display for UberBlockMmpDecodeError {
             } => {
                 write!(
                     f,
-                    "UberBlockMmp decode error: non-zero values delay 0x{delay:016x} config 0x{config:016x} for magic:{magic:016x}"
+                    "UberBlockMmp decode error, non-zero values delay {delay:#016x} config {config:#016x} for magic {magic:#016x}"
                 )
             }
         }
@@ -920,13 +920,12 @@ impl fmt::Display for UberBlockMmpEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UberBlockMmpEncodeError::Endian { err } => {
-                write!(f, "UberBlockMmp encode error, endian: [{err}]")
+                write!(f, "UberBlockMmp encode error | {err}")
             }
             UberBlockMmpEncodeError::WriteIntervalTooLarge { write_interval } => {
                 write!(
                     f,
-                    "UberBlockMmp encode error, write interval is too large: {write_interval} > {}",
-                    MMP_CONFIG_WRITE_INTERVAL_MASK_LOW
+                    "UberBlockMmp encode error, write interval is too large {write_interval} > {MMP_CONFIG_WRITE_INTERVAL_MASK_LOW}"
                 )
             }
         }

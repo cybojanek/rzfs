@@ -974,25 +974,25 @@ impl fmt::Display for EndianDecodeError {
             } => {
                 write!(
                     f,
-                    "Endian end of input at offset:{offset} capacity:{capacity} count:{count}"
+                    "Endian end of input at offset {offset} capacity {capacity} count {count}"
                 )
             }
             EndianDecodeError::InvalidMagic { expected, actual } => write!(
                 f,
-                "Endian invalid magic expected 0x{expected:016x} actual {:?}",
+                "Endian invalid magic expected 0x{expected:016x} actual {:#02x?}",
                 actual
             ),
             EndianDecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
             EndianDecodeError::RewindPastStart { offset, count } => {
                 write!(
                     f,
-                    "Endian rewind past start at offset:{offset} count:{count}"
+                    "Endian rewind past start at offset {offset} count {count}"
                 )
             }
             EndianDecodeError::SeekPastEnd { offset, capacity } => {
                 write!(
                     f,
-                    "Endian seek past end to offset:{offset} capacity:{capacity}"
+                    "Endian seek past end to offset {offset} capacity {capacity}"
                 )
             }
         }
@@ -1594,7 +1594,7 @@ impl fmt::Display for EndianEncodeError {
             } => {
                 write!(
                     f,
-                    "Endian end of output at offset:{offset}, capacity:{capacity} count:{count}"
+                    "Endian end of output at offset {offset} capacity {capacity} count {count}"
                 )
             }
         }

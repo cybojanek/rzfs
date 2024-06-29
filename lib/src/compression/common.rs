@@ -28,7 +28,7 @@ impl fmt::Display for CompressionError {
                 write!(f, "Compression error, not compressable")
             }
             CompressionError::Unsupported { compression } => {
-                write!(f, "Compression error, unsupported {compression}")
+                write!(f, "Unsupported Compression {compression}")
             }
         }
     }
@@ -97,13 +97,16 @@ impl fmt::Display for DecompressionError {
                 capacity,
                 count,
             } => {
-                write!(f, "Decompression error, end of input at offset:{offset} capacity:{capacity} count:{count}")
+                write!(f, "Decompression error, end of input at offset {offset} capacity {capacity} count {count}")
             }
             DecompressionError::InvalidInput { offset } => {
-                write!(f, "Decompression error, invalid input at offset:{offset}")
+                write!(f, "Decompression error, invalid input at offset {offset}")
             }
             DecompressionError::Unsupported { compression } => {
-                write!(f, "Decompression error, unsupported {compression}")
+                write!(
+                    f,
+                    "Decompression error, unsupported compression {compression}"
+                )
             }
         }
     }

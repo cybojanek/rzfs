@@ -103,13 +103,13 @@ impl TryFrom<u8> for NvEndianOrder {
      *
      * # Errors
      *
-     * Returns [`NvDecodeError`] in case of an invalid [`NvEndianOrder`].
+     * Returns [`NvDecodeError`] in case of an unknown [`NvEndianOrder`].
      */
     fn try_from(order: u8) -> Result<Self, Self::Error> {
         match order {
             0 => Ok(NvEndianOrder::Big),
             1 => Ok(NvEndianOrder::Little),
-            _ => Err(NvDecodeError::InvalidEndian { order }),
+            _ => Err(NvDecodeError::UnknownEndian { order }),
         }
     }
 }
@@ -148,13 +148,13 @@ impl TryFrom<u8> for NvEncoding {
      *
      * # Errors
      *
-     * Returns [`NvDecodeError`] in case of an invalid [`NvEncoding`].
+     * Returns [`NvDecodeError`] in case of an unknown [`NvEncoding`].
      */
     fn try_from(encoding: u8) -> Result<Self, Self::Error> {
         match encoding {
             0 => Ok(NvEncoding::Native),
             1 => Ok(NvEncoding::Xdr),
-            _ => Err(NvDecodeError::InvalidEncoding { encoding }),
+            _ => Err(NvDecodeError::UnknownEncoding { encoding }),
         }
     }
 }
@@ -197,14 +197,14 @@ impl TryFrom<u8> for NvUnique {
      *
      * # Errors
      *
-     * Returns [`NvDecodeError`] in case of an invalid [`NvUnique`].
+     * Returns [`NvDecodeError`] in case of an unknown [`NvUnique`].
      */
     fn try_from(unique: u8) -> Result<Self, Self::Error> {
         match unique {
             0 => Ok(NvUnique::None),
             1 => Ok(NvUnique::Name),
             2 => Ok(NvUnique::NameType),
-            _ => Err(NvDecodeError::InvalidUnique { unique }),
+            _ => Err(NvDecodeError::UnknownUnique { unique }),
         }
     }
 }
@@ -343,7 +343,7 @@ impl TryFrom<u32> for NvDataType {
      *
      * # Errors
      *
-     * Returns [`NvDecodeError`] in case of an invalid [`NvDataType`].
+     * Returns [`NvDecodeError`] in case of an unknown [`NvDataType`].
      */
     fn try_from(data_type: u32) -> Result<Self, Self::Error> {
         match data_type {
@@ -374,7 +374,7 @@ impl TryFrom<u32> for NvDataType {
             25 => Ok(NvDataType::Int8Array),
             26 => Ok(NvDataType::Uint8Array),
             27 => Ok(NvDataType::Double),
-            _ => Err(NvDecodeError::InvalidDataType { data_type }),
+            _ => Err(NvDecodeError::UnknownDataType { data_type }),
         }
     }
 }
@@ -1121,7 +1121,7 @@ impl NvDecoder<'_> {
         // NvList version.
         let version = decoder.get_u32()?;
         if version != 0 {
-            return Err(NvDecodeError::InvalidVersion { version });
+            return Err(NvDecodeError::UnknownVersion { version });
         }
 
         // NvList flags.
@@ -1130,7 +1130,7 @@ impl NvDecoder<'_> {
 
         // Check for unknown flags.
         if unique_flags != flags {
-            return Err(NvDecodeError::InvalidFlags { flags });
+            return Err(NvDecodeError::UnknownFlags { flags });
         }
 
         // Decode unique flags.
@@ -1853,36 +1853,12 @@ pub enum NvDecodeError {
         count: usize,
     },
 
-    /// Invalid [`NvDataType`].
-    InvalidDataType {
-        /// Invalid [`NvDataType`].
-        data_type: u32,
-    },
-
     /// Invalid encoded size.
     InvalidEncodedSize {
         /// Encoded size.
         encoded_size: usize,
         /// Bytes used.
         used: usize,
-    },
-
-    /// Invalid [`NvEncoding`].
-    InvalidEncoding {
-        /// Invalid [`NvEncoding`].
-        encoding: u8,
-    },
-
-    /// Invalid [`NvEndianOrder`].
-    InvalidEndian {
-        /// Invalid [`NvEndianOrder`].
-        order: u8,
-    },
-
-    /// Invalid flags.
-    InvalidFlags {
-        /// Invalid flags.
-        flags: u32,
     },
 
     /// Invalid nested size.
@@ -1894,20 +1870,44 @@ pub enum NvDecodeError {
         reserved: [u8; 2],
     },
 
+    /// Nested decoder mismatch.
+    NestedDecoderMismatch {},
+
+    /// Unknown [`NvDataType`].
+    UnknownDataType {
+        /// Unknown [`NvDataType`].
+        data_type: u32,
+    },
+
+    /// Invalid [`NvEncoding`].
+    UnknownEncoding {
+        /// Invalid [`NvEncoding`].
+        encoding: u8,
+    },
+
+    /// Invalid [`NvEndianOrder`].
+    UnknownEndian {
+        /// Invalid [`NvEndianOrder`].
+        order: u8,
+    },
+
+    /// Invalid flags.
+    UnknownFlags {
+        /// Invalid flags.
+        flags: u32,
+    },
+
     /// Invalid [`NvUnique`].
-    InvalidUnique {
+    UnknownUnique {
         /// Invalid [`NvUnique`].
         unique: u8,
     },
 
     /// Invalid version.
-    InvalidVersion {
+    UnknownVersion {
         /// Invalid version.
         version: u32,
     },
-
-    /// Nested decoder mismatch.
-    NestedDecoderMismatch {},
 
     /// [`XdrDecoder`] error.
     Xdr {
@@ -1928,11 +1928,11 @@ impl fmt::Display for NvDecodeError {
             NvDecodeError::DataTypeMismatch { expected, actual } => {
                 write!(
                     f,
-                    "NV List decode error, data type mismatch, expected:{expected} actual:{actual}"
+                    "NV decode error, data type mismatch, expected {expected} actual {actual}"
                 )
             }
             NvDecodeError::EndOfArray {} => {
-                write!(f, "NV List decode error, end of array")
+                write!(f, "NV decode error, end of array")
             }
             NvDecodeError::EndOfInput {
                 offset,
@@ -1942,55 +1942,53 @@ impl fmt::Display for NvDecodeError {
             } => {
                 write!(
                     f,
-                    "NV List decode error, end of input at offset:{offset} capacity:{capacity} count:{count} detail: {detail}"
+                    "NV decode error, end of input at offset {offset} capacity {capacity} count {count} detail {detail}"
                 )
             }
             NvDecodeError::InvalidCount { data_type, count } => {
                 write!(
                     f,
-                    "NV List decode error, invalid count:{count} for data type:{data_type}"
+                    "NV decode error, invalid count {count} for data type {data_type}"
                 )
-            }
-            NvDecodeError::InvalidDataType { data_type } => {
-                write!(f, "NV List decode error, invalid data type:{data_type}")
             }
             NvDecodeError::InvalidEncodedSize { encoded_size, used } => {
                 write!(
                     f,
-                    "NV List decode error, invalid encoded size:{encoded_size} used:{used}"
+                    "NV decode error, invalid encoded size {encoded_size} used {used}"
                 )
-            }
-            NvDecodeError::InvalidEncoding { encoding } => {
-                write!(f, "NV List decode error, invalid encoding:{encoding}")
-            }
-            NvDecodeError::InvalidEndian { order } => {
-                write!(f, "NV List decode error, invalid endian:{order}")
-            }
-            NvDecodeError::InvalidFlags { flags } => {
-                write!(f, "NV List decode error, invalid flags:{flags}")
             }
             NvDecodeError::InvalidNestedSize {} => {
-                write!(f, "NV List decode error, invalid nested size")
+                write!(f, "NV decode error, invalid nested size")
             }
             NvDecodeError::InvalidReservedBytes { reserved } => {
-                let a = reserved[0];
-                let b = reserved[1];
                 write!(
                     f,
-                    "NV List decode error, invalid reserved bytes 0x{a:02x} 0x{b:02x}"
+                    "NV decode error, invalid reserved bytes {reserved:#02x?}"
                 )
             }
-            NvDecodeError::InvalidUnique { unique } => {
-                write!(f, "NV List decode error, invalid unique:{unique}")
-            }
-            NvDecodeError::InvalidVersion { version } => {
-                write!(f, "NV List decode error, invalid version:{version}")
-            }
             NvDecodeError::NestedDecoderMismatch {} => {
-                write!(f, "NV List decode error, nested decoder mismatch")
+                write!(f, "NV decode error, nested decoder mismatch")
+            }
+            NvDecodeError::UnknownDataType { data_type } => {
+                write!(f, "NV decode error, unknown data type {data_type}")
+            }
+            NvDecodeError::UnknownEncoding { encoding } => {
+                write!(f, "NV decode error, unknown encoding {encoding}")
+            }
+            NvDecodeError::UnknownEndian { order } => {
+                write!(f, "NV decode error, unknown endian {order}")
+            }
+            NvDecodeError::UnknownFlags { flags } => {
+                write!(f, "NV decode error, unknown flags {flags:#08x}")
+            }
+            NvDecodeError::UnknownUnique { unique } => {
+                write!(f, "NV decode error, unknown unique {unique}")
+            }
+            NvDecodeError::UnknownVersion { version } => {
+                write!(f, "NV decode error, unknown version {version}")
             }
             NvDecodeError::Xdr { err } => {
-                write!(f, "NV List decode error, XDR: [{err}]")
+                write!(f, "NV decode error | {err}")
             }
         }
     }

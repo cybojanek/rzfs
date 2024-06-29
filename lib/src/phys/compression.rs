@@ -122,7 +122,7 @@ impl TryFrom<u8> for CompressionType {
      *
      * # Errors
      *
-     * Returns [`CompressionTypeError`] in case of an invalid [`CompressionType`].
+     * Returns [`CompressionTypeError`] in case of an unknown [`CompressionType`].
      */
     fn try_from(compression: u8) -> Result<Self, Self::Error> {
         match compression {
@@ -164,7 +164,7 @@ impl fmt::Display for CompressionTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CompressionTypeError::Unknown { compression } => {
-                write!(f, "CompressionType unknown: {compression}")
+                write!(f, "Unknown CompressionType {compression}")
             }
         }
     }

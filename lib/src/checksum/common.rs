@@ -25,7 +25,10 @@ impl fmt::Display for ChecksumError {
                 checksum,
                 implementation,
             } => {
-                write!(f, "Checksum unsupported {checksum} {implementation}")
+                write!(
+                    f,
+                    "Unsupported Checksum {checksum} implementation {implementation}"
+                )
             }
         }
     }

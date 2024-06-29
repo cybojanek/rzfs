@@ -60,7 +60,7 @@ impl From<DmuGenericObjectType> for u8 {
 impl DmuGenericObjectType {
     /** Gets the [`DmuGenericObjectType`] from the [`DmuType`].
      *
-     * Only works on generic types.
+     * Returns [None] if the type is not a generic object type.
      */
     pub fn from_dmu_type(dmu_type: DmuType) -> Option<DmuGenericObjectType> {
         match dmu_type {
@@ -409,7 +409,7 @@ impl TryFrom<u8> for DmuType {
      *
      * # Errors
      *
-     * Returns [`DmuTypeError`] in case of an invalid [`DmuType`].
+     * Returns [`DmuTypeError`] in case of an unknown [`DmuType`].
      */
     fn try_from(dmu: u8) -> Result<Self, Self::Error> {
         match dmu {
@@ -513,7 +513,7 @@ impl fmt::Display for DmuTypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DmuTypeError::Unknown { dmu } => {
-                write!(f, "DmuType unknown: {dmu}")
+                write!(f, "Unknown DmuType {dmu}")
             }
         }
     }

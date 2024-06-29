@@ -115,37 +115,7 @@ pub enum SpaVersion {
 
 impl Display for SpaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SpaVersion::V1 => write!(f, "1"),
-            SpaVersion::V2 => write!(f, "2"),
-            SpaVersion::V3 => write!(f, "3"),
-            SpaVersion::V4 => write!(f, "4"),
-            SpaVersion::V5 => write!(f, "5"),
-            SpaVersion::V6 => write!(f, "6"),
-            SpaVersion::V7 => write!(f, "7"),
-            SpaVersion::V8 => write!(f, "8"),
-            SpaVersion::V9 => write!(f, "9"),
-            SpaVersion::V10 => write!(f, "10"),
-            SpaVersion::V11 => write!(f, "11"),
-            SpaVersion::V12 => write!(f, "12"),
-            SpaVersion::V13 => write!(f, "13"),
-            SpaVersion::V14 => write!(f, "14"),
-            SpaVersion::V15 => write!(f, "15"),
-            SpaVersion::V16 => write!(f, "16"),
-            SpaVersion::V17 => write!(f, "17"),
-            SpaVersion::V18 => write!(f, "18"),
-            SpaVersion::V19 => write!(f, "19"),
-            SpaVersion::V20 => write!(f, "20"),
-            SpaVersion::V21 => write!(f, "21"),
-            SpaVersion::V22 => write!(f, "22"),
-            SpaVersion::V23 => write!(f, "23"),
-            SpaVersion::V24 => write!(f, "24"),
-            SpaVersion::V25 => write!(f, "25"),
-            SpaVersion::V26 => write!(f, "26"),
-            SpaVersion::V27 => write!(f, "27"),
-            SpaVersion::V28 => write!(f, "28"),
-            SpaVersion::V5000 => write!(f, "5000"),
-        }
+        write!(f, "{}", u64::from(*self))
     }
 }
 
@@ -162,7 +132,7 @@ impl TryFrom<u64> for SpaVersion {
      *
      * # Errors
      *
-     * Returns [`SpaVersionError`] in case of an invalid [`SpaVersion`].
+     * Returns [`SpaVersionError`] in case of an unknown [`SpaVersion`].
      */
     fn try_from(version: u64) -> Result<Self, Self::Error> {
         match version {
@@ -216,7 +186,7 @@ impl fmt::Display for SpaVersionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SpaVersionError::Unknown { version } => {
-                write!(f, "SpaVersion unknown: {version}")
+                write!(f, "Unknown SpaVersion {version}")
             }
         }
     }
