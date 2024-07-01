@@ -96,4 +96,7 @@ pub(crate) mod zil;
 pub use zil::{ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError};
 
 pub(crate) mod zpl;
-pub use zpl::{ZplVersion, ZplVersionError};
+pub use zpl::{
+    Znode, ZnodeDecodeError, ZnodeEncodeError, ZnodeFileType, ZnodeFileTypeError, ZnodePermission,
+    ZnodeTime, ZplVersion, ZplVersionError,
+};

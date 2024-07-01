@@ -41,7 +41,7 @@ pub enum DmuGenericObjectType {
     /// [`crate::phys::ObjectSet`] DMU.
     ObjectSet = 6,
 
-    /// Znode DMU.
+    /// [`crate::phys::Znode`] DMU.
     Znode = 7,
 
     /// [`crate::phys::AclV0`] DMU.
