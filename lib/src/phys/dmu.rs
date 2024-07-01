@@ -44,11 +44,11 @@ pub enum DmuGenericObjectType {
     /// Znode DMU.
     Znode = 7,
 
-    /// ??? DMU.
-    OldAcl = 8,
+    /// [`crate::phys::AclV0`] DMU.
+    AclV0 = 8,
 
-    /// ??? DMU.
-    Acl = 9,
+    /// [`crate::phys::AclV1`] DMU.
+    AclV1 = 9,
 }
 
 impl From<DmuGenericObjectType> for u8 {
@@ -149,7 +149,7 @@ macro_rules! DmuObjectTypeEncrypted {
  * | DslProperties               |           1 |                 Zap |                          |
  * | DslDataSet                  |           1 |                 u64 |                          |
  * | Znode                       |           1 |               Znode |                          |
- * | OldAcl                      |           1 |              OldAcl |                          |
+ * | AclV0                       |           1 |               AclV0 |                          |
  * | PlainFileContents           |           1 |                  u8 |                          |
  * | DirectoryContents           |           1 |                 Zap |                          |
  * | MasterNode                  |           1 |                 Zap |                          |
@@ -164,7 +164,7 @@ macro_rules! DmuObjectTypeEncrypted {
  * | SpaHistoryOffsets           |           4 |          SpaHistory |                          |
  * | PoolProperties              |           6 |                 Zap |                          |
  * | DslPermissions              |           8 |                 Zap |                          |
- * | Acl                         |           9 |                 Acl |                          |
+ * | AclV1                       |           9 |               AclV1 |                          |
  * | SysAcl                      |           9 |              SysAcl |                          |
  * | Fuid                        |           9 | Fuid Table (NvList) |                          |
  * | FuidSize                    |           9 |                 u64 |                          |
@@ -229,7 +229,7 @@ pub enum DmuType {
     DslProperties = 15,
     DslDataSet = 16,
     Znode = 17,
-    OldAcl = 18,
+    AclV0 = 18,
     PlainFileContents = 19,
     DirectoryContents = 20,
     MasterNode = 21,
@@ -244,7 +244,7 @@ pub enum DmuType {
     SpaHistoryOffsets = 30,
     PoolProperties = 31,
     DslPermissions = 32,
-    Acl = 33,
+    AclV1 = 33,
     SysAcl = 34,
     Fuid = 35,
     FuidSize = 36,
@@ -332,7 +332,7 @@ impl Display for DmuType {
             DmuType::DslProperties => write!(f, "DslProperties"),
             DmuType::DslDataSet => write!(f, "DslDataSet"),
             DmuType::Znode => write!(f, "Znode"),
-            DmuType::OldAcl => write!(f, "OldAcl"),
+            DmuType::AclV0 => write!(f, "AclV0"),
             DmuType::PlainFileContents => write!(f, "PlainFileContents"),
             DmuType::DirectoryContents => write!(f, "DirectoryContents"),
             DmuType::MasterNode => write!(f, "MasterNode"),
@@ -347,7 +347,7 @@ impl Display for DmuType {
             DmuType::SpaHistoryOffsets => write!(f, "SpaHistoryOffsets"),
             DmuType::PoolProperties => write!(f, "PoolProperties"),
             DmuType::DslPermissions => write!(f, "DslPermissions"),
-            DmuType::Acl => write!(f, "Acl"),
+            DmuType::AclV1 => write!(f, "AclV1"),
             DmuType::SysAcl => write!(f, "SysAcl"),
             DmuType::Fuid => write!(f, "Fuid"),
             DmuType::FuidSize => write!(f, "FuidSize"),
@@ -431,7 +431,7 @@ impl TryFrom<u8> for DmuType {
             15 => Ok(DmuType::DslProperties),
             16 => Ok(DmuType::DslDataSet),
             17 => Ok(DmuType::Znode),
-            18 => Ok(DmuType::OldAcl),
+            18 => Ok(DmuType::AclV0),
             19 => Ok(DmuType::PlainFileContents),
             20 => Ok(DmuType::DirectoryContents),
             21 => Ok(DmuType::MasterNode),
@@ -446,7 +446,7 @@ impl TryFrom<u8> for DmuType {
             30 => Ok(DmuType::SpaHistoryOffsets),
             31 => Ok(DmuType::PoolProperties),
             32 => Ok(DmuType::DslPermissions),
-            33 => Ok(DmuType::Acl),
+            33 => Ok(DmuType::AclV1),
             34 => Ok(DmuType::SysAcl),
             35 => Ok(DmuType::Fuid),
             36 => Ok(DmuType::FuidSize),

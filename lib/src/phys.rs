@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 
+pub(crate) mod acl;
+pub use acl::{
+    AceDecodeError, AceEncodeError, AceFlag, AcePermission, AceType, AceTypeError, AceV0, AceV1,
+    AceV1Header, AceV1Iterator, AceV1Object, Acl, AclDecodeError, AclEncodeError, AclV0, AclV1,
+};
+
 pub(crate) mod block_pointer;
 pub use block_pointer::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEmbedded, BlockPointerEmbeddedType,
