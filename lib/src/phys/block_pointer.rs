@@ -1255,7 +1255,7 @@ pub enum BlockPointerDecodeError {
         err: BlockPointerEmbeddedTypeError,
     },
 
-    /// Invalid [`ChecksumType`].
+    /// Unknown [`ChecksumType`].
     ChecksumType {
         /// Error.
         err: ChecksumTypeError,
@@ -1267,13 +1267,13 @@ pub enum BlockPointerDecodeError {
         err: ChecksumValueDecodeError,
     },
 
-    /// Invalid [`CompressionType`].
+    /// Unknown [`CompressionType`].
     CompressionType {
         /// Error.
         err: CompressionTypeError,
     },
 
-    /// Invalid [`DmuType`].
+    /// Unknown [`DmuType`].
     DmuType {
         /// Error.
         err: DmuTypeError,

@@ -186,23 +186,23 @@ macro_rules! DmuObjectTypeEncrypted {
  * | DslClones                   |          26 |                 Zap |                          |
  * | BpObjectSubObject           |          26 |                 u64 |                          |
  * | Uint8 Data                  |        5000 |                  u8 |                          |
- * | Uint16 Data                 |        5000 |                u16  |                          |
- * | Uint32 Data                 |        5000 |                u32  |                          |
+ * | Uint16 Data                 |        5000 |                 u16 |                          |
+ * | Uint32 Data                 |        5000 |                 u32 |                          |
  * | Uint64 Data                 |        5000 |                 u64 |                          |
  * | ZAP Data                    |        5000 |                 Zap |                          |
  * | Uint8 Metadata              |        5000 |                  u8 |                          |
- * | Uint16 Metadata             |        5000 |                u16  |                          |
- * | Uint32 Metadata             |        5000 |                u32  |                          |
+ * | Uint16 Metadata             |        5000 |                 u16 |                          |
+ * | Uint32 Metadata             |        5000 |                 u32 |                          |
  * | Uint64 Metadata             |        5000 |                 u64 |                          |
  * | ZAP Metadata                |        5000 |                 Zap |                          |
  * | Uint8 Data Encrypted        |        5000 |                  u8 | com.datto:crypto_key_obj |
- * | Uint16 Data Encrypted       |        5000 |                u16  | com.datto:crypto_key_obj |
- * | Uint32 Data Encrypted       |        5000 |                u32  | com.datto:crypto_key_obj |
+ * | Uint16 Data Encrypted       |        5000 |                 u16 | com.datto:crypto_key_obj |
+ * | Uint32 Data Encrypted       |        5000 |                 u32 | com.datto:crypto_key_obj |
  * | Uint64 Data Encrypted       |        5000 |                 u64 | com.datto:crypto_key_obj |
  * | ZAP Data Encrypted          |        5000 |                 Zap | com.datto:crypto_key_obj |
  * | Uint8 Metadata Encrypted    |        5000 |                  u8 | com.datto:crypto_key_obj |
- * | Uint16 Metadata Encrypted   |        5000 |                u16  | com.datto:crypto_key_obj |
- * | Uint32 Metadata Encrypted   |        5000 |                u32  | com.datto:crypto_key_obj |
+ * | Uint16 Metadata Encrypted   |        5000 |                 u16 | com.datto:crypto_key_obj |
+ * | Uint32 Metadata Encrypted   |        5000 |                 u32 | com.datto:crypto_key_obj |
  * | Uint64 Metadata Encrypted   |        5000 |                 u64 | com.datto:crypto_key_obj |
  * | ZAP Metadata Encrypted      |        5000 |                 Zap | com.datto:crypto_key_obj |
  * +-----------------------------+-------------+---------------------+--------------------------+
@@ -504,7 +504,7 @@ impl TryFrom<u8> for DmuType {
 pub enum DmuTypeError {
     /// Unknown [`DmuType`].
     Unknown {
-        /// Unknown dmu.
+        /// DMU type.
         dmu: u8,
     },
 }

@@ -693,19 +693,19 @@ pub enum DnodeDecodeError {
         length: usize,
     },
 
-    /// Invalid checksum type.
+    /// Unknown checksum type.
     ChecksumType {
         /// Error.
         err: ChecksumTypeError,
     },
 
-    /// Invalid compression type.
+    /// Unknown compression type.
     CompressionType {
         /// Error.
         err: CompressionTypeError,
     },
 
-    /// Invalid DMU type.
+    /// Unknown DMU type.
     DmuType {
         /// Error.
         err: DmuTypeError,
@@ -717,7 +717,7 @@ pub enum DnodeDecodeError {
         err: EndianDecodeError,
     },
 
-    /// Invlaid flags.
+    /// Unknown flags.
     Flags {
         /// Flags.
         flags: u8,
