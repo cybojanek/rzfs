@@ -408,13 +408,13 @@ pub enum ObjectSetDecodeError {
         err: EndianDecodeError,
     },
 
-    /// Invalid flags.
+    /// Unknown flags.
     Flags {
         /// Flags.
         flags: u64,
     },
 
-    /// Invalid object set type.
+    /// Unknown object set type.
     ObjectSetType {
         /// Error.
         err: ObjectSetTypeError,

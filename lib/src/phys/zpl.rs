@@ -70,7 +70,7 @@ impl TryFrom<u64> for ZplVersion {
 pub enum ZplVersionError {
     /// Unknown [`ZplVersion`].
     Unknown {
-        /// Unknown version.
+        /// Version.
         version: u64,
     },
 }

@@ -159,7 +159,7 @@ impl TryFrom<u8> for ChecksumType {
 pub enum ChecksumTypeError {
     /// Unknown [`ChecksumType`].
     Unknown {
-        /// Unknown checksum.
+        /// Checksum.
         checksum: u8,
     },
 }

@@ -155,7 +155,7 @@ impl TryFrom<u8> for CompressionType {
 pub enum CompressionTypeError {
     /// Unknown [`CompressionType`].
     Unknown {
-        /// Unknown compression.
+        /// Compression.
         compression: u8,
     },
 }

@@ -177,7 +177,7 @@ impl TryFrom<u64> for SpaVersion {
 pub enum SpaVersionError {
     /// Unknown [`SpaVersion`].
     Unknown {
-        /// Unknown version.
+        /// Version.
         version: u64,
     },
 }
