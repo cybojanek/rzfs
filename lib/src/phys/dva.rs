@@ -12,42 +12,6 @@ use crate::phys::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Shift for padding field.
-const PADDING_SHIFT: usize = 56;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for vdev field.
-const VDEV_MASK_LOW: u64 = 0x0000000000ffffff;
-
-/// Shift for vdev field.
-const VDEV_SHIFT: usize = 32;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Shift for grid field.
-const GRID_SHIFT: usize = 24;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for asize field.
-const ASIZE_MASK_LOW: u64 = 0x0000000000ffffff;
-
-/// Shift for asize field.
-const ASIZE_SHIFT: usize = 0;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for gang bit.
-const GANG_MASK_HIGH: u64 = 0x8000000000000000;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for offset field.
-const OFFSET_MASK_LOW: u64 = 0x7fffffffffffffff;
-
-////////////////////////////////////////////////////////////////////////////////
-
 /** Data Virtual Address.
  *
  * ### Byte layout.
@@ -162,16 +126,40 @@ impl Dva {
     pub const ALLOCATED_MIN: u32 = 1;
 
     /// Maximimum number of allocated sectors.
-    pub const ALLOCATED_MAX: u32 = 0x00ffffff + 1;
+    pub const ALLOCATED_MAX: u32 = 1 << 24;
 
     /// Minimum offset in sectors.
     pub const OFFSET_MIN: u64 = ((2 * Label::SIZE + BootBlock::SIZE) as u64) >> SECTOR_SHIFT;
 
     /// Maximum offset in sectors.
-    pub const OFFSET_MAX: u64 = Dva::OFFSET_MIN + OFFSET_MASK_LOW;
+    pub const OFFSET_MAX: u64 = Dva::OFFSET_MIN + Dva::OFFSET_MASK;
 
     /// Maximum vdev.
-    pub const VDEV_MAX: u32 = 0x00ffffff;
+    pub const VDEV_MAX: u32 = (1 << 24) - 1;
+
+    /// Mask for asize field.
+    const ASIZE_MASK_DOWN_SHIFTED: u64 = (1 << 24) - 1;
+
+    /// Shift for asize field.
+    const ASIZE_SHIFT: usize = 0;
+
+    /// Shift for grid field.
+    const GRID_SHIFT: usize = 24;
+
+    /// Mask for vdev field.
+    const VDEV_MASK_DOWN_SHIFTED: u64 = (1 << 24) - 1;
+
+    /// Shift for vdev field.
+    const VDEV_SHIFT: usize = 32;
+
+    /// Shift for padding field.
+    const PADDING_SHIFT: usize = 56;
+
+    /// Mask for gang bit.
+    const GANG_MASK_BIT_FLAG: u64 = 0x8000000000000000;
+
+    /// Mask for offset field.
+    const OFFSET_MASK: u64 = (1 << 63) - 1;
 
     /** Decodes a [`Dva`]. Returns [`None`] if [`Dva`] is empty.
      *
@@ -193,14 +181,14 @@ impl Dva {
 
         ////////////////////////////////
         // Check for non-zero grid.
-        let grid = (a >> GRID_SHIFT) as u8;
+        let grid = (a >> Dva::GRID_SHIFT) as u8;
         if grid != 0 {
             return Err(DvaDecodeError::NonZeroGrid { grid });
         }
 
         ////////////////////////////////
         // Check for non-zero padding.
-        let padding = (a >> PADDING_SHIFT) as u8;
+        let padding = (a >> Dva::PADDING_SHIFT) as u8;
         if padding != 0 {
             return Err(DvaDecodeError::NonZeroPadding { padding });
         }
@@ -208,10 +196,10 @@ impl Dva {
         ////////////////////////////////
         // Success!
         Ok(Some(Dva {
-            vdev: ((a >> VDEV_SHIFT) & VDEV_MASK_LOW) as u32,
-            allocated: (((a >> ASIZE_SHIFT) & ASIZE_MASK_LOW) + 1) as u32,
-            offset: (b & OFFSET_MASK_LOW) + Dva::OFFSET_MIN,
-            is_gang: (b & GANG_MASK_HIGH) != 0,
+            vdev: ((a >> Dva::VDEV_SHIFT) & Dva::VDEV_MASK_DOWN_SHIFTED) as u32,
+            allocated: (((a >> Dva::ASIZE_SHIFT) & Dva::ASIZE_MASK_DOWN_SHIFTED) + 1) as u32,
+            offset: (b & Dva::OFFSET_MASK) + Dva::OFFSET_MIN,
+            is_gang: (b & Dva::GANG_MASK_BIT_FLAG) != 0,
         }))
     }
 
@@ -246,10 +234,14 @@ impl Dva {
 
         ////////////////////////////////
         // Encode.
-        let a = (u64::from(self.vdev) << VDEV_SHIFT)
-            | (0 << GRID_SHIFT)
-            | (u64::from(self.allocated - 1) << ASIZE_SHIFT);
-        let b = (if self.is_gang { GANG_MASK_HIGH } else { 0 }) | (self.offset - Dva::OFFSET_MIN);
+        let a = (u64::from(self.vdev) << Dva::VDEV_SHIFT)
+            | (0 << Dva::GRID_SHIFT)
+            | (u64::from(self.allocated - 1) << Dva::ASIZE_SHIFT);
+        let b = (if self.is_gang {
+            Dva::GANG_MASK_BIT_FLAG
+        } else {
+            0
+        }) | (self.offset - Dva::OFFSET_MIN);
 
         encoder.put_u64(a)?;
         encoder.put_u64(b)?;

@@ -15,85 +15,6 @@ use crate::phys::{
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Mask for shifted compression field.
-const COMPRESSION_MASK_SHIFTED: u64 = 0x1f;
-
-/// Shift for compression field.
-const COMPRESSION_SHIFT: u64 = 32;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Shift for checksum field.
-const CHECKSUM_SHIFT: u64 = 40;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Shift for DMU field.
-const DMU_SHIFT: u64 = 48;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for shifted level field.
-const LEVEL_MASK_SHIFTED: u64 = 0x1f;
-
-/// Shift for level field.
-const LEVEL_SHIFT: u64 = 56;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for embedded flag bit.
-const EMBEDDED_FLAG_MASK: u64 = 1 << 39;
-
-/// Mask for encrypted flag bit.
-const ENCRYPTED_FLAG_MASK: u64 = 1 << 61;
-
-/// Mask for deduplication flag bit.
-const DEDUP_FLAG_MASK: u64 = 1 << 62;
-
-/// Mask for little endian flag bit.
-const LITTLE_ENDIAN_FLAG_MASK: u64 = 1 << 63;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for [`BlockPointerEmbedded`] logical size.
-const EMBEDDED_LOGICAL_SIZE_MASK: u64 = 0x1ffffff;
-
-/// Mask for [`BlockPointerEmbedded`] shifted physical size.
-const EMBEDDED_PHYSICAL_SIZE_MASK_SHIFTED: u64 = 0x7f;
-
-/// Shift for [`BlockPointerEmbedded`] physical size.
-const EMBEDDED_PHYSICAL_SIZE_SHIFT: u64 = 25;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for [`BlockPointerEncrypted`] logical sectors.
-const ENCRYPTED_LOGICAL_SECTORS_MASK: u64 = 0xffff;
-
-/// Mask for [`BlockPointerEncrypted`] shifted physical sectors.
-const ENCRYPTED_PHYSICAL_SECTORS_MASK_SHIFTED: u64 = 0xffff;
-
-/// Shift for [`BlockPointerEncrypted`] physical sectors.
-const ENCRYPTED_PHYSICAL_SECTORS_SHIFT: u64 = 16;
-
-/// Shift for [`BlockPointerEncrypted`] iv 2.
-const ENCRYPTED_IV_2_SHIFT: u64 = 32;
-
-/// Mask for [`BlockPointerEncrypted`] fill count.
-const ENCRYPTED_IV_FILL_MASK: u64 = 0xffffffff;
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// Mask for [`BlockPointerRegular`] logical sectors.
-const REGULAR_LOGICAL_SECTORS_MASK: u64 = 0xffff;
-
-/// Mask for [`BlockPointerRegular`] shifted physical sectors.
-const REGULAR_PHYSICAL_SECTORS_MASK_SHIFTED: u64 = 0xffff;
-
-/// Shift for [`BlockPointerRegular`] physical sectors.
-const REGULAR_PHYSICAL_SECTORS_SHIFT: u64 = 16;
-
-////////////////////////////////////////////////////////////////////////////////
-
 /** Block pointer.
  *
  * - Bytes: 128
@@ -115,10 +36,40 @@ impl BlockPointer {
     pub const SIZE: usize = (3 * Dva::SIZE) + 48 + ChecksumValue::SIZE;
 
     /// Maximimum number of logical sectors (16 bits + 1).
-    pub const LOGICAL_SECTORS_MAX: u32 = 0xffff + 1;
+    pub const LOGICAL_SECTORS_MAX: u32 = 1 << 16;
 
     /// Maximimum number of physical sectors (16 bits + 1).
-    pub const PHYSICAL_SECTORS_MAX: u32 = 0xffff + 1;
+    pub const PHYSICAL_SECTORS_MAX: u32 = 1 << 16;
+
+    /// Mask for down shifted compression field.
+    const COMPRESSION_MASK_DOWN_SHIFTED: u64 = 0x1f;
+
+    /// Shift for compression field.
+    const COMPRESSION_SHIFT: u64 = 32;
+
+    /// Shift for checksum field.
+    const CHECKSUM_SHIFT: u64 = 40;
+
+    /// Shift for DMU field.
+    const DMU_SHIFT: u64 = 48;
+
+    /// Mask for down shifted level field.
+    const LEVEL_MASK_DOWN_SHIFTED: u64 = 0x1f;
+
+    /// Shift for level field.
+    const LEVEL_SHIFT: u64 = 56;
+
+    /// Mask for embedded flag bit.
+    const EMBEDDED_BIT_FLAG: u64 = 1 << 39;
+
+    /// Mask for encrypted flag bit.
+    const ENCRYPTED_BIT_FLAG: u64 = 1 << 61;
+
+    /// Mask for deduplication flag bit.
+    const DEDUP_BIT_FLAG: u64 = 1 << 62;
+
+    /// Mask for little endian flag bit.
+    const LITTLE_ENDIAN_BIT_FLAG: u64 = 1 << 63;
 
     /** Decodes a [`BlockPointer`]. Returns [`None`] if [`BlockPointer`] is empty.
      *
@@ -144,8 +95,8 @@ impl BlockPointer {
 
         ////////////////////////////////
         // Decode encrypted and embedded.
-        let embedded = (flags & EMBEDDED_FLAG_MASK) != 0;
-        let encrypted = (flags & ENCRYPTED_FLAG_MASK) != 0;
+        let embedded = (flags & BlockPointer::EMBEDDED_BIT_FLAG) != 0;
+        let encrypted = (flags & BlockPointer::ENCRYPTED_BIT_FLAG) != 0;
 
         ////////////////////////////////
         // Decode based on combination.
@@ -394,10 +345,19 @@ impl error::Error for BlockPointerEmbeddedTypeError {
 
 impl BlockPointerEmbedded {
     /// Maximum logical size in bytes of data embedded in pointer.
-    pub const LOGICAL_SIZE_MAX: usize = (EMBEDDED_LOGICAL_SIZE_MASK as usize);
+    pub const LOGICAL_SIZE_MAX: usize = (BlockPointerEmbedded::LOGICAL_SIZE_MASK as usize);
 
     /// Maximum payload length in bytes of data embedded in pointer.
     pub const PHYSICAL_SIZE_MAX: usize = 112;
+
+    /// Mask for [`BlockPointerEmbedded`] logical size.
+    const LOGICAL_SIZE_MASK: u64 = (1 << 25) - 1;
+
+    /// Mask for [`BlockPointerEmbedded`] shifted physical size.
+    const PHYSICAL_SIZE_MASK_DOWN_SHIFTED: u64 = 0x7f;
+
+    /// Shift for [`BlockPointerEmbedded`] physical size.
+    const PHYSICAL_SIZE_SHIFT: u64 = 25;
 
     /** Decodes a [`BlockPointer`].
      *
@@ -436,8 +396,8 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode encrypted and embedded.
-        let embedded = (flags & EMBEDDED_FLAG_MASK) != 0;
-        let encrypted = (flags & ENCRYPTED_FLAG_MASK) != 0;
+        let embedded = (flags & BlockPointer::EMBEDDED_BIT_FLAG) != 0;
+        let encrypted = (flags & BlockPointer::ENCRYPTED_BIT_FLAG) != 0;
         if (embedded, encrypted) != (true, false) {
             return Err(BlockPointerDecodeError::InvalidBlockPointerType {
                 embedded,
@@ -447,14 +407,14 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode dedup.
-        let dedup = (flags & DEDUP_FLAG_MASK) != 0;
+        let dedup = (flags & BlockPointer::DEDUP_BIT_FLAG) != 0;
         if dedup {
             return Err(BlockPointerDecodeError::InvalidDedupValue { dedup });
         }
 
         ////////////////////////////////
         // Decode endian.
-        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = (flags & BlockPointer::LITTLE_ENDIAN_BIT_FLAG) != 0;
         let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
@@ -462,11 +422,12 @@ impl BlockPointerEmbedded {
 
         ////////////////////////////////
         // Decode level.
-        let level = ((flags >> LEVEL_SHIFT) & LEVEL_MASK_SHIFTED) as u8;
+        let level =
+            ((flags >> BlockPointer::LEVEL_SHIFT) & BlockPointer::LEVEL_MASK_DOWN_SHIFTED) as u8;
 
         ////////////////////////////////
         // Decode DMU type.
-        let dmu = (flags >> DMU_SHIFT) as u8;
+        let dmu = (flags >> BlockPointer::DMU_SHIFT) as u8;
         let dmu = DmuType::try_from(dmu)?;
 
         ////////////////////////////////
@@ -474,24 +435,26 @@ impl BlockPointerEmbedded {
         // NOTE(cybojanek): Use CHECKSUM_SHIFT, because embedded type uses
         //                  those bits, and checksum is already calculated by
         //                  parent pointer over this DVA.
-        let embedded_type = (flags >> CHECKSUM_SHIFT) as u8;
+        let embedded_type = (flags >> BlockPointer::CHECKSUM_SHIFT) as u8;
         let embedded_type = BlockPointerEmbeddedType::try_from(embedded_type)?;
 
         ////////////////////////////////
         // Decode compression type.
-        let compression = ((flags >> COMPRESSION_SHIFT) & COMPRESSION_MASK_SHIFTED) as u8;
+        let compression = ((flags >> BlockPointer::COMPRESSION_SHIFT)
+            & BlockPointer::COMPRESSION_MASK_DOWN_SHIFTED) as u8;
         let compression = CompressionType::try_from(compression)?;
 
         ////////////////////////////////
         // Decode sizes. Already in bytes.
-        let logical_size = (flags & EMBEDDED_LOGICAL_SIZE_MASK) as u32;
+        let logical_size = (flags & BlockPointerEmbedded::LOGICAL_SIZE_MASK) as u32;
         let logical_size = match usize::try_from(logical_size) {
             Ok(v) => v,
             Err(_) => return Err(BlockPointerDecodeError::LogicalSizeTooLarge { logical_size }),
         };
 
         let physical_size = usize::from(
-            ((flags >> EMBEDDED_PHYSICAL_SIZE_SHIFT) & EMBEDDED_PHYSICAL_SIZE_MASK_SHIFTED) as u8,
+            ((flags >> BlockPointerEmbedded::PHYSICAL_SIZE_SHIFT)
+                & BlockPointerEmbedded::PHYSICAL_SIZE_MASK_DOWN_SHIFTED) as u8,
         );
 
         ////////////////////////////////
@@ -542,7 +505,7 @@ impl BlockPointerEmbedded {
         ////////////////////////////////
         // Encode flags.
         let level: u64 = self.level.into();
-        if level > LEVEL_MASK_SHIFTED {
+        if level > BlockPointer::LEVEL_MASK_DOWN_SHIFTED {
             return Err(BlockPointerEncodeError::InvalidLevel { level: self.level });
         }
 
@@ -550,21 +513,21 @@ impl BlockPointerEmbedded {
         let embedded_type: u8 = self.embedded_type.into();
         let compression: u8 = self.compression.into();
 
-        if self.logical_size > (EMBEDDED_LOGICAL_SIZE_MASK as usize) {
+        if self.logical_size > (BlockPointerEmbedded::LOGICAL_SIZE_MASK as usize) {
             return Err(BlockPointerEncodeError::InvalidLogicalSize {
                 logical_size: self.logical_size,
             });
         }
 
         let flags = (self.logical_size as u64)
-            | (self.physical_size as u64) << EMBEDDED_PHYSICAL_SIZE_SHIFT
-            | u64::from(compression) << COMPRESSION_SHIFT
-            | EMBEDDED_FLAG_MASK
-            | u64::from(embedded_type) << CHECKSUM_SHIFT
-            | u64::from(dmu) << DMU_SHIFT
-            | level << LEVEL_SHIFT
+            | (self.physical_size as u64) << BlockPointerEmbedded::PHYSICAL_SIZE_SHIFT
+            | u64::from(compression) << BlockPointer::COMPRESSION_SHIFT
+            | BlockPointer::EMBEDDED_BIT_FLAG
+            | u64::from(embedded_type) << BlockPointer::CHECKSUM_SHIFT
+            | u64::from(dmu) << BlockPointer::DMU_SHIFT
+            | level << BlockPointer::LEVEL_SHIFT
             | match self.order {
-                EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
+                EndianOrder::Little => BlockPointer::LITTLE_ENDIAN_BIT_FLAG,
                 EndianOrder::Big => 0,
             };
 
@@ -723,6 +686,21 @@ impl BlockPointerEncrypted {
     /// Padding byte size.
     const PADDING_SIZE: usize = 16;
 
+    /// Mask for [`BlockPointerEncrypted`] logical sectors.
+    const LOGICAL_SECTORS_MASK: u64 = (1 << 16) - 1;
+
+    /// Mask for [`BlockPointerEncrypted`] shifted physical sectors.
+    const PHYSICAL_SECTORS_MASK_DOWN_SHIFTED: u64 = (1 << 16) - 1;
+
+    /// Shift for [`BlockPointerEncrypted`] physical sectors.
+    const PHYSICAL_SECTORS_SHIFT: u64 = 16;
+
+    /// Shift for [`BlockPointerEncrypted`] iv 2.
+    const IV_2_SHIFT: u64 = 32;
+
+    /// Mask for [`BlockPointerEncrypted`] fill count.
+    const IV_FILL_MASK: u64 = (1 << 32) - 1;
+
     /** Decodes a [`BlockPointer`].
      *
      * # Errors
@@ -748,8 +726,8 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode encrypted and embedded.
-        let embedded = (flags & EMBEDDED_FLAG_MASK) != 0;
-        let encrypted = (flags & ENCRYPTED_FLAG_MASK) != 0;
+        let embedded = (flags & BlockPointer::EMBEDDED_BIT_FLAG) != 0;
+        let encrypted = (flags & BlockPointer::ENCRYPTED_BIT_FLAG) != 0;
         if (embedded, encrypted) != (false, true) {
             return Err(BlockPointerDecodeError::InvalidBlockPointerType {
                 embedded,
@@ -759,11 +737,11 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode dedup.
-        let dedup = (flags & DEDUP_FLAG_MASK) != 0;
+        let dedup = (flags & BlockPointer::DEDUP_BIT_FLAG) != 0;
 
         ////////////////////////////////
         // Decode endian.
-        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = (flags & BlockPointer::LITTLE_ENDIAN_BIT_FLAG) != 0;
         let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
@@ -771,28 +749,31 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode level.
-        let level = ((flags >> LEVEL_SHIFT) & LEVEL_MASK_SHIFTED) as u8;
+        let level =
+            ((flags >> BlockPointer::LEVEL_SHIFT) & BlockPointer::LEVEL_MASK_DOWN_SHIFTED) as u8;
 
         ////////////////////////////////
         // Decode DMU type.
-        let dmu = (flags >> DMU_SHIFT) as u8;
+        let dmu = (flags >> BlockPointer::DMU_SHIFT) as u8;
         let dmu = DmuType::try_from(dmu)?;
 
         ////////////////////////////////
         // Decode checksum.
-        let checksum_type = (flags >> CHECKSUM_SHIFT) as u8;
+        let checksum_type = (flags >> BlockPointer::CHECKSUM_SHIFT) as u8;
         let checksum_type = ChecksumType::try_from(checksum_type)?;
 
         ////////////////////////////////
         // Decode compression type.
-        let compression = ((flags >> COMPRESSION_SHIFT) & COMPRESSION_MASK_SHIFTED) as u8;
+        let compression = ((flags >> BlockPointer::COMPRESSION_SHIFT)
+            & BlockPointer::COMPRESSION_MASK_DOWN_SHIFTED) as u8;
         let compression = CompressionType::try_from(compression)?;
 
         ////////////////////////////////
         // Decode sizes.
-        let logical_sectors = ((flags & ENCRYPTED_LOGICAL_SECTORS_MASK) as u32) + 1;
-        let physical_sectors = (((flags >> ENCRYPTED_PHYSICAL_SECTORS_SHIFT)
-            & ENCRYPTED_PHYSICAL_SECTORS_MASK_SHIFTED) as u32)
+        let logical_sectors = ((flags & BlockPointerEncrypted::LOGICAL_SECTORS_MASK) as u32) + 1;
+        let physical_sectors = (((flags >> BlockPointerEncrypted::PHYSICAL_SECTORS_SHIFT)
+            & BlockPointerEncrypted::PHYSICAL_SECTORS_MASK_DOWN_SHIFTED)
+            as u32)
             + 1;
 
         ////////////////////////////////
@@ -807,8 +788,8 @@ impl BlockPointerEncrypted {
         ////////////////////////////////
         // Decode iv2 / fill count.
         let iv_fill = decoder.get_u64()?;
-        let iv_2 = (iv_fill >> ENCRYPTED_IV_2_SHIFT) as u32;
-        let fill_count = (iv_fill & ENCRYPTED_IV_FILL_MASK) as u32;
+        let iv_2 = (iv_fill >> BlockPointerEncrypted::IV_2_SHIFT) as u32;
+        let fill_count = (iv_fill & BlockPointerEncrypted::IV_FILL_MASK) as u32;
 
         ////////////////////////////////
         // Decode checksum value.
@@ -882,7 +863,7 @@ impl BlockPointerEncrypted {
         ////////////////////////////////
         // Encode flags.
         let level: u64 = self.level.into();
-        if level > LEVEL_MASK_SHIFTED {
+        if level > BlockPointer::LEVEL_MASK_DOWN_SHIFTED {
             return Err(BlockPointerEncodeError::InvalidLevel { level: self.level });
         }
 
@@ -891,15 +872,19 @@ impl BlockPointerEncrypted {
         let compression: u8 = self.compression.into();
 
         let flags = u64::from(self.logical_sectors - 1)
-            | u64::from(self.physical_sectors - 1) << ENCRYPTED_PHYSICAL_SECTORS_SHIFT
-            | u64::from(compression) << COMPRESSION_SHIFT
-            | u64::from(checksum) << CHECKSUM_SHIFT
-            | u64::from(dmu) << DMU_SHIFT
-            | level << LEVEL_SHIFT
-            | ENCRYPTED_FLAG_MASK
-            | if self.dedup { DEDUP_FLAG_MASK } else { 0 }
+            | u64::from(self.physical_sectors - 1) << BlockPointerEncrypted::PHYSICAL_SECTORS_SHIFT
+            | u64::from(compression) << BlockPointer::COMPRESSION_SHIFT
+            | u64::from(checksum) << BlockPointer::CHECKSUM_SHIFT
+            | u64::from(dmu) << BlockPointer::DMU_SHIFT
+            | level << BlockPointer::LEVEL_SHIFT
+            | BlockPointer::ENCRYPTED_BIT_FLAG
+            | if self.dedup {
+                BlockPointer::DEDUP_BIT_FLAG
+            } else {
+                0
+            }
             | match self.order {
-                EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
+                EndianOrder::Little => BlockPointer::LITTLE_ENDIAN_BIT_FLAG,
                 EndianOrder::Big => 0,
             };
 
@@ -916,8 +901,9 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Encode iv2 / fill count.
-        encoder
-            .put_u64(u64::from(self.fill_count) | u64::from(self.iv_2) << ENCRYPTED_IV_2_SHIFT)?;
+        encoder.put_u64(
+            u64::from(self.fill_count) | u64::from(self.iv_2) << BlockPointerEncrypted::IV_2_SHIFT,
+        )?;
 
         ////////////////////////////////
         // Encode checksum value.
@@ -1052,6 +1038,15 @@ impl BlockPointerRegular {
     /// Padding byte size.
     const PADDING_SIZE: usize = 16;
 
+    /// Mask for logical sectors.
+    const LOGICAL_SECTORS_MASK: u64 = (1 << 16) - 1;
+
+    /// Mask for shifted physical sectors.
+    const PHYSICAL_SECTORS_MASK_DOWN_SHIFTED: u64 = (1 << 16) - 1;
+
+    /// Shift for physical sectors.
+    const PHYSICAL_SECTORS_SHIFT: u64 = 16;
+
     /** Decodes a [`BlockPointerRegular`].
      *
      * # Errors
@@ -1076,8 +1071,8 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode encrypted and embedded.
-        let embedded = (flags & EMBEDDED_FLAG_MASK) != 0;
-        let encrypted = (flags & ENCRYPTED_FLAG_MASK) != 0;
+        let embedded = (flags & BlockPointer::EMBEDDED_BIT_FLAG) != 0;
+        let encrypted = (flags & BlockPointer::ENCRYPTED_BIT_FLAG) != 0;
         if (embedded, encrypted) != (false, false) {
             return Err(BlockPointerDecodeError::InvalidBlockPointerType {
                 embedded,
@@ -1087,11 +1082,11 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode dedup.
-        let dedup = (flags & (DEDUP_FLAG_MASK)) != 0;
+        let dedup = (flags & (BlockPointer::DEDUP_BIT_FLAG)) != 0;
 
         ////////////////////////////////
         // Decode endian.
-        let order = (flags & LITTLE_ENDIAN_FLAG_MASK) != 0;
+        let order = (flags & BlockPointer::LITTLE_ENDIAN_BIT_FLAG) != 0;
         let order = match order {
             true => EndianOrder::Little,
             false => EndianOrder::Big,
@@ -1099,28 +1094,31 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode level.
-        let level = ((flags >> LEVEL_SHIFT) & LEVEL_MASK_SHIFTED) as u8;
+        let level =
+            ((flags >> BlockPointer::LEVEL_SHIFT) & BlockPointer::LEVEL_MASK_DOWN_SHIFTED) as u8;
 
         ////////////////////////////////
         // Decode DMU type.
-        let dmu = (flags >> DMU_SHIFT) as u8;
+        let dmu = (flags >> BlockPointer::DMU_SHIFT) as u8;
         let dmu = DmuType::try_from(dmu)?;
 
         ////////////////////////////////
         // Decode checksum.
-        let checksum_type = (flags >> CHECKSUM_SHIFT) as u8;
+        let checksum_type = (flags >> BlockPointer::CHECKSUM_SHIFT) as u8;
         let checksum_type = ChecksumType::try_from(checksum_type)?;
 
         ////////////////////////////////
         // Decode compression type.
-        let compression = ((flags >> COMPRESSION_SHIFT) & COMPRESSION_MASK_SHIFTED) as u8;
+        let compression = ((flags >> BlockPointer::COMPRESSION_SHIFT)
+            & BlockPointer::COMPRESSION_MASK_DOWN_SHIFTED) as u8;
         let compression = CompressionType::try_from(compression)?;
 
         ////////////////////////////////
         // Decode sizes.
-        let logical_sectors = ((flags & REGULAR_LOGICAL_SECTORS_MASK) as u32) + 1;
-        let physical_sectors = (((flags >> REGULAR_PHYSICAL_SECTORS_SHIFT)
-            & REGULAR_PHYSICAL_SECTORS_MASK_SHIFTED) as u32)
+        let logical_sectors = ((flags & BlockPointerRegular::LOGICAL_SECTORS_MASK) as u32) + 1;
+        let physical_sectors = (((flags >> BlockPointerRegular::PHYSICAL_SECTORS_SHIFT)
+            & BlockPointerRegular::PHYSICAL_SECTORS_MASK_DOWN_SHIFTED)
+            as u32)
             + 1;
 
         ////////////////////////////////
@@ -1169,10 +1167,6 @@ impl BlockPointerRegular {
         &self,
         encoder: &mut EndianEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
-        // TODO: Check dva sectors are all the same?
-        // TODO: Check at least one dva is present?
-        // TODO: Check physical_sectors is <= dva.sectors?
-
         ////////////////////////////////
         // Encode DVAs.
         for dva in &self.dvas {
@@ -1199,7 +1193,7 @@ impl BlockPointerRegular {
         ////////////////////////////////
         // Encode flags.
         let level: u64 = self.level.into();
-        if level > LEVEL_MASK_SHIFTED {
+        if level > BlockPointer::LEVEL_MASK_DOWN_SHIFTED {
             return Err(BlockPointerEncodeError::InvalidLevel { level: self.level });
         }
 
@@ -1208,14 +1202,18 @@ impl BlockPointerRegular {
         let compression: u8 = self.compression.into();
 
         let flags = u64::from(self.logical_sectors - 1)
-            | u64::from(self.physical_sectors - 1) << REGULAR_PHYSICAL_SECTORS_SHIFT
-            | u64::from(compression) << COMPRESSION_SHIFT
-            | u64::from(checksum) << CHECKSUM_SHIFT
-            | u64::from(dmu) << DMU_SHIFT
-            | level << LEVEL_SHIFT
-            | if self.dedup { DEDUP_FLAG_MASK } else { 0 }
+            | u64::from(self.physical_sectors - 1) << BlockPointerRegular::PHYSICAL_SECTORS_SHIFT
+            | u64::from(compression) << BlockPointer::COMPRESSION_SHIFT
+            | u64::from(checksum) << BlockPointer::CHECKSUM_SHIFT
+            | u64::from(dmu) << BlockPointer::DMU_SHIFT
+            | level << BlockPointer::LEVEL_SHIFT
+            | if self.dedup {
+                BlockPointer::DEDUP_BIT_FLAG
+            } else {
+                0
+            }
             | match self.order {
-                EndianOrder::Little => LITTLE_ENDIAN_FLAG_MASK,
+                EndianOrder::Little => BlockPointer::LITTLE_ENDIAN_BIT_FLAG,
                 EndianOrder::Big => 0,
             };
 

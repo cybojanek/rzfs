@@ -74,7 +74,7 @@ pub struct UberBlock {
     /// Multi-Modifier protection.
     pub mmp: Option<UberBlockMmp>,
 
-    /// [`BlockPointer`] to root ObjectSet.
+    /// [`BlockPointer`] to [`crate::phys::ObjectSetType::Meta`] [`crate::phys::ObjectSet`].
     pub ptr: BlockPointer,
 
     /// Maximum [`SpaVersion`] supported by software that wrote out this txg.
@@ -642,31 +642,6 @@ pub struct UberBlockMmp {
     pub write_interval: Option<u32>,
 }
 
-/// Write interval is valid bit of [`UberBlockMmp`] config.
-const MMP_CONFIG_WRITE_INTERVAL_BIT: u64 = 0x01;
-
-/// Sequence is valid bit of [`UberBlockMmp`] config.
-const MMP_CONFIG_SEQUENCE_BIT: u64 = 0x02;
-
-/// Fail intervals is valid bit of [`UberBlockMmp`] config.
-const MMP_CONFIG_FAIL_INTERVALS_BIT: u64 = 0x04;
-
-/// Reserved bits of [`UberBlockMmp`] config.
-const MMP_CONFIG_RESERVED_BITS: u64 =
-    0xff ^ MMP_CONFIG_FAIL_INTERVALS_BIT ^ MMP_CONFIG_SEQUENCE_BIT ^ MMP_CONFIG_WRITE_INTERVAL_BIT;
-
-/// Write interval shift of [`UberBlockMmp`] config.
-const MMP_CONFIG_WRITE_INTERVAL_SHIFT: u64 = 8;
-
-/// Shifted write interval mask of [`UberBlockMmp`] config.
-const MMP_CONFIG_WRITE_INTERVAL_MASK_LOW: u64 = 0xffffff;
-
-/// Sequence shift of [`UberBlockMmp`] config.
-const MMP_CONFIG_SEQUENCE_SHIFT: u64 = 32;
-
-/// Fail intervals shift of [`UberBlockMmp`] config.
-const MMP_CONFIG_FAIL_INTERVALS_SHIFT: u64 = 48;
-
 impl UberBlockMmp {
     /// Byte size of an encoded [`UberBlockMmp`].
     pub const SIZE: usize = 24;
@@ -675,7 +650,35 @@ impl UberBlockMmp {
     pub const MAGIC: u64 = 0x00000000a11cea11;
 
     /// Maximum write interval.
-    pub const WRITE_INTERVAL_MAX: u32 = 0xffffff;
+    pub const WRITE_INTERVAL_MAX: u32 =
+        (UberBlockMmp::CONFIG_WRITE_INTERVAL_MASK_DOWN_SHIFTED as u32);
+
+    /// Write interval is valid bit of config.
+    const CONFIG_WRITE_INTERVAL_BIT_FLAG: u64 = 1 << 0;
+
+    /// Sequence is valid bit of config.
+    const CONFIG_SEQUENCE_BIT_FLAG: u64 = 1 << 1;
+
+    /// Fail intervals is valid bit of config.
+    const CONFIG_FAIL_INTERVALS_BIT_FLAG: u64 = 1 << 2;
+
+    /// Reserved bits of config.
+    const CONFIG_RESERVED_MASK: u64 = 0xff
+        ^ UberBlockMmp::CONFIG_FAIL_INTERVALS_BIT_FLAG
+        ^ UberBlockMmp::CONFIG_SEQUENCE_BIT_FLAG
+        ^ UberBlockMmp::CONFIG_WRITE_INTERVAL_BIT_FLAG;
+
+    /// Write interval shift of config.
+    const CONFIG_WRITE_INTERVAL_SHIFT: u64 = 8;
+
+    /// Shifted write interval mask of config.
+    const CONFIG_WRITE_INTERVAL_MASK_DOWN_SHIFTED: u64 = (1 << 24) - 1;
+
+    /// Sequence shift of config.
+    const CONFIG_SEQUENCE_SHIFT: u64 = 32;
+
+    /// Fail intervals shift of config.
+    const CONFIG_FAIL_INTERVALS_SHIFT: u64 = 48;
 
     /** Decodes an [`UberBlockMmp`].
      *
@@ -691,11 +694,6 @@ impl UberBlockMmp {
         let magic = decoder.get_u64()?;
         let delay = decoder.get_u64()?;
         let config = decoder.get_u64()?;
-
-        let fail_intervals = (config >> MMP_CONFIG_FAIL_INTERVALS_SHIFT) as u16;
-        let sequence = (config >> MMP_CONFIG_SEQUENCE_SHIFT) as u16;
-        let write_interval = ((config >> MMP_CONFIG_WRITE_INTERVAL_SHIFT)
-            & MMP_CONFIG_WRITE_INTERVAL_MASK_LOW) as u32;
 
         ////////////////////////////////
         // Check MMP magic.
@@ -716,53 +714,67 @@ impl UberBlockMmp {
             UberBlockMmp::MAGIC => {
                 ////////////////////////
                 // Check that reserved bits are not set.
-                if (config & MMP_CONFIG_RESERVED_BITS) != 0 {
+                if (config & UberBlockMmp::CONFIG_RESERVED_MASK) != 0 {
                     return Err(UberBlockMmpDecodeError::NonZeroReservedConfigBits { config });
                 }
 
                 ////////////////////////
                 // Decode config.
+                let fail_intervals = (config >> UberBlockMmp::CONFIG_FAIL_INTERVALS_SHIFT) as u16;
+                let sequence = (config >> UberBlockMmp::CONFIG_SEQUENCE_SHIFT) as u16;
+                let write_interval = ((config >> UberBlockMmp::CONFIG_WRITE_INTERVAL_SHIFT)
+                    & UberBlockMmp::CONFIG_WRITE_INTERVAL_MASK_DOWN_SHIFTED)
+                    as u32;
+
+                let fail_intervals = if (config & UberBlockMmp::CONFIG_FAIL_INTERVALS_BIT_FLAG) != 0
+                {
+                    Some(fail_intervals)
+                } else if fail_intervals != 0 {
+                    // The fail intervals bit is not set, and the fail
+                    // intervals value is not 0.
+                    return Err(UberBlockMmpDecodeError::NonZeroValues {
+                        magic,
+                        delay,
+                        config,
+                    });
+                } else {
+                    None
+                };
+
+                let sequence = if (config & UberBlockMmp::CONFIG_SEQUENCE_BIT_FLAG) != 0 {
+                    Some(sequence)
+                } else if sequence != 0 {
+                    // The sequence bit is not set, and the sequence value
+                    // is not 0.
+                    return Err(UberBlockMmpDecodeError::NonZeroValues {
+                        magic,
+                        delay,
+                        config,
+                    });
+                } else {
+                    None
+                };
+
+                let write_interval = if (config & UberBlockMmp::CONFIG_WRITE_INTERVAL_BIT_FLAG) != 0
+                {
+                    Some(write_interval)
+                } else if write_interval != 0 {
+                    // The write interval bit is not set, and the write
+                    // interval value is not 0.
+                    return Err(UberBlockMmpDecodeError::NonZeroValues {
+                        magic,
+                        delay,
+                        config,
+                    });
+                } else {
+                    None
+                };
+
                 Ok(Some(UberBlockMmp {
                     delay,
-                    fail_intervals: if (config & MMP_CONFIG_FAIL_INTERVALS_BIT) != 0 {
-                        Some(fail_intervals)
-                    } else if fail_intervals != 0 {
-                        // The fail intervals bit is not set, and the fail
-                        // intervals value is not 0.
-                        return Err(UberBlockMmpDecodeError::NonZeroValues {
-                            magic,
-                            delay,
-                            config,
-                        });
-                    } else {
-                        None
-                    },
-                    sequence: if (config & MMP_CONFIG_SEQUENCE_BIT) != 0 {
-                        Some(sequence)
-                    } else if sequence != 0 {
-                        // The sequence bit is not set, and the sequence value
-                        // is not 0.
-                        return Err(UberBlockMmpDecodeError::NonZeroValues {
-                            magic,
-                            delay,
-                            config,
-                        });
-                    } else {
-                        None
-                    },
-                    write_interval: if (config & MMP_CONFIG_WRITE_INTERVAL_BIT) != 0 {
-                        Some(write_interval)
-                    } else if write_interval != 0 {
-                        // The write interval bit is not set, and the write
-                        // interval value is not 0.
-                        return Err(UberBlockMmpDecodeError::NonZeroValues {
-                            magic,
-                            delay,
-                            config,
-                        });
-                    } else {
-                        None
-                    },
+                    fail_intervals,
+                    sequence,
+                    write_interval,
                 }))
             }
             _ => Err(UberBlockMmpDecodeError::InvalidMagic { magic }),
@@ -791,20 +803,25 @@ impl UberBlockMmp {
         // Encode config.
         let config: u64 = (match self.fail_intervals {
             Some(v) => {
-                (u64::from(v) << MMP_CONFIG_FAIL_INTERVALS_SHIFT) | MMP_CONFIG_FAIL_INTERVALS_BIT
+                (u64::from(v) << UberBlockMmp::CONFIG_FAIL_INTERVALS_SHIFT)
+                    | UberBlockMmp::CONFIG_FAIL_INTERVALS_BIT_FLAG
             }
             None => 0,
         } | match self.sequence {
-            Some(v) => (u64::from(v) << MMP_CONFIG_SEQUENCE_SHIFT) | MMP_CONFIG_SEQUENCE_BIT,
+            Some(v) => {
+                (u64::from(v) << UberBlockMmp::CONFIG_SEQUENCE_SHIFT)
+                    | UberBlockMmp::CONFIG_SEQUENCE_BIT_FLAG
+            }
             None => 0,
         } | match self.write_interval {
             Some(v) => {
-                if u64::from(v) > MMP_CONFIG_WRITE_INTERVAL_MASK_LOW {
+                if u64::from(v) > UberBlockMmp::CONFIG_WRITE_INTERVAL_MASK_DOWN_SHIFTED {
                     return Err(UberBlockMmpEncodeError::WriteIntervalTooLarge {
                         write_interval: v,
                     });
                 }
-                (u64::from(v) << MMP_CONFIG_WRITE_INTERVAL_SHIFT) | MMP_CONFIG_WRITE_INTERVAL_BIT
+                (u64::from(v) << UberBlockMmp::CONFIG_WRITE_INTERVAL_SHIFT)
+                    | UberBlockMmp::CONFIG_WRITE_INTERVAL_BIT_FLAG
             }
             None => 0,
         });
@@ -925,7 +942,8 @@ impl fmt::Display for UberBlockMmpEncodeError {
             UberBlockMmpEncodeError::WriteIntervalTooLarge { write_interval } => {
                 write!(
                     f,
-                    "UberBlockMmp encode error, write interval is too large {write_interval} > {MMP_CONFIG_WRITE_INTERVAL_MASK_LOW}"
+                    "UberBlockMmp encode error, write interval is too large {write_interval} > {}",
+                    UberBlockMmp::CONFIG_WRITE_INTERVAL_MASK_DOWN_SHIFTED
                 )
             }
         }
