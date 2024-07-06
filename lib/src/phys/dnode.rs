@@ -11,24 +11,6 @@ use crate::phys::{
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder,
 };
 
-/// Is used field of [`Dnode`] in bytes (else in sectors).
-const DNODE_FLAG_USED_BYTES: u8 = 1;
-
-/// TODO: What does this mean?
-const DNODE_FLAG_USER_USED_ACCOUNTED: u8 = 2;
-
-/// Is a spill block pointer present in [`Dnode`].
-const DNODE_FLAG_SPILL_BLOCK_POINTER: u8 = 4;
-
-/// TODO: What does this mean?
-const DNODE_FLAG_USER_OBJ_USED_ACCOUNTED: u8 = 8;
-
-/// All known values of flags field of [`Dnode`].
-const DNODE_FLAG_ALL: u8 = DNODE_FLAG_USED_BYTES
-    | DNODE_FLAG_USER_USED_ACCOUNTED
-    | DNODE_FLAG_SPILL_BLOCK_POINTER
-    | DNODE_FLAG_USER_OBJ_USED_ACCOUNTED;
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Dnode.
@@ -310,6 +292,24 @@ impl Dnode {
     /// Padding B byte size.
     const PADDING_SIZE_B: usize = 32;
 
+    /// Is used field of [`Dnode`] in bytes (else in sectors).
+    const FLAG_USED_BYTES: u8 = (1 << 0);
+
+    /// TODO: What does this mean?
+    const FLAG_USER_USED_ACCOUNTED: u8 = (1 << 1);
+
+    /// Is a spill block pointer present in [`Dnode`].
+    const FLAG_BLOCK_POINTER: u8 = (1 << 2);
+
+    /// TODO: What does this mean?
+    const FLAG_USER_OBJ_USED_ACCOUNTED: u8 = (1 << 3);
+
+    /// All known values of flags field of [`Dnode`].
+    const FLAG_ALL: u8 = Dnode::FLAG_USED_BYTES
+        | Dnode::FLAG_USER_USED_ACCOUNTED
+        | Dnode::FLAG_BLOCK_POINTER
+        | Dnode::FLAG_USER_OBJ_USED_ACCOUNTED;
+
     /** Decodes a [`Dnode`]. Returns [`None`] if [`Dnode`] is empty.
      *
      * # Errors
@@ -354,12 +354,12 @@ impl Dnode {
         ////////////////////////////////
         // Decode flags.
         let flags = decoder.get_u8()?;
-        if (flags & DNODE_FLAG_ALL) != flags {
+        if (flags & Dnode::FLAG_ALL) != flags {
             return Err(DnodeDecodeError::Flags { flags });
         }
 
         // Check for spill, which only makes sense if block pointers is 1.
-        let is_spill = (flags & DNODE_FLAG_SPILL_BLOCK_POINTER) != 0;
+        let is_spill = (flags & Dnode::FLAG_BLOCK_POINTER) != 0;
         if is_spill && block_pointers_n != 1 {
             return Err(DnodeDecodeError::SpillBlockPointerCount {
                 count: block_pointers_n,
@@ -389,7 +389,7 @@ impl Dnode {
         ////////////////////////////////
         // Decode used.
         let used = decoder.get_u64()?;
-        let used = if (flags & DNODE_FLAG_USED_BYTES) != 0 {
+        let used = if (flags & Dnode::FLAG_USED_BYTES) != 0 {
             DnodeUsed::Bytes(used)
         } else {
             DnodeUsed::Sectors(used)
@@ -490,8 +490,8 @@ impl Dnode {
             max_block_id,
             tail,
             used,
-            user_obj_used_accounted: (flags & DNODE_FLAG_USER_OBJ_USED_ACCOUNTED) != 0,
-            user_used_accounted: (flags & DNODE_FLAG_USER_USED_ACCOUNTED) != 0,
+            user_obj_used_accounted: (flags & Dnode::FLAG_USER_OBJ_USED_ACCOUNTED) != 0,
+            user_used_accounted: (flags & Dnode::FLAG_USER_USED_ACCOUNTED) != 0,
         }))
     }
 
@@ -534,18 +534,18 @@ impl Dnode {
         ////////////////////////////////
         // Encode flags.
         let flags = match self.used {
-            DnodeUsed::Bytes(_) => DNODE_FLAG_USED_BYTES,
+            DnodeUsed::Bytes(_) => Dnode::FLAG_USED_BYTES,
             _ => 0,
         } | if self.user_used_accounted {
-            DNODE_FLAG_USER_USED_ACCOUNTED
+            Dnode::FLAG_USER_USED_ACCOUNTED
         } else {
             0
         } | if self.user_obj_used_accounted {
-            DNODE_FLAG_USER_OBJ_USED_ACCOUNTED
+            Dnode::FLAG_USER_OBJ_USED_ACCOUNTED
         } else {
             0
         } | match &self.tail {
-            DnodeTail::Spill(_) => DNODE_FLAG_SPILL_BLOCK_POINTER,
+            DnodeTail::Spill(_) => Dnode::FLAG_BLOCK_POINTER,
             _ => 0,
         };
 
@@ -785,7 +785,7 @@ impl fmt::Display for DnodeDecodeError {
                 write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::Flags { flags } => {
-                write!(f, "Dnode decode error, invalid flags {flags:#02x}")
+                write!(f, "Dnode decode error, unknown flags {flags:#02x}")
             }
             DnodeDecodeError::SpillBlockPointerCount { count } => {
                 write!(

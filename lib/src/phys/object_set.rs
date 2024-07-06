@@ -19,13 +19,13 @@ pub enum ObjectSetType {
     /// ???
     None = 0,
 
-    /// ???
+    /// Top most [`ObjectSet`], pointed to from [`crate::phys::UberBlock`].
     Meta = 1,
 
-    /// ???
+    /// A ZFS posix filesystem.
     ZFS = 2,
 
-    /// ???
+    /// A ZFS volume (block device).
     ZVol = 3,
 
     /// ???
@@ -105,20 +105,6 @@ impl error::Error for ObjectSetTypeError {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// User accounting complete flag for [`ObjectSet`] flags.
-const FLAG_USER_ACCOUNTING_COMPLETE: u64 = 1 << 0;
-
-/// User object accounting complete flag for [`ObjectSet`] flags.
-const FLAG_USER_OBJECT_ACCOUNTING_COMPLETE: u64 = 1 << 1;
-
-/// Project quota complete flag for [`ObjectSet`] flags.
-const FLAG_PROJECT_QUOTA_COMPLETE: u64 = 1 << 2;
-
-/// All flags for [`ObjectSet`] flags.
-const FLAG_ALL: u64 = FLAG_USER_ACCOUNTING_COMPLETE
-    | FLAG_USER_OBJECT_ACCOUNTING_COMPLETE
-    | FLAG_PROJECT_QUOTA_COMPLETE;
-
 /** Object set.
  *
  * - Bytes:
@@ -145,7 +131,7 @@ const FLAG_ALL: u64 = FLAG_USER_ACCOUNTING_COMPLETE
  */
 #[derive(Debug)]
 pub struct ObjectSet {
-    /// [`Dnode`] of [`crate::phys::DmuType::Dnode`].
+    /// [`Dnode`] of type [`crate::phys::DmuType::Dnode`].
     pub dnode: Dnode,
 
     /// ???
@@ -227,6 +213,20 @@ impl ObjectSet {
     /// Padding size for [`ObjectSetExtension::Three`].
     const PADDING_SIZE_THREE: usize = 1536;
 
+    /// User accounting complete flag.
+    const FLAG_USER_ACCOUNTING_COMPLETE: u64 = 1 << 0;
+
+    /// User object accounting complete flag.
+    const FLAG_USER_OBJECT_ACCOUNTING_COMPLETE: u64 = 1 << 1;
+
+    /// Project quota complete flag.
+    const FLAG_PROJECT_QUOTA_COMPLETE: u64 = 1 << 2;
+
+    /// All flags for [`ObjectSet`] flags.
+    const FLAG_ALL: u64 = ObjectSet::FLAG_USER_ACCOUNTING_COMPLETE
+        | ObjectSet::FLAG_USER_OBJECT_ACCOUNTING_COMPLETE
+        | ObjectSet::FLAG_PROJECT_QUOTA_COMPLETE;
+
     /** Decodes an [`ObjectSet`].
      *
      * # Errors
@@ -253,7 +253,7 @@ impl ObjectSet {
         ////////////////////////////////
         // Decode flags.
         let flags = decoder.get_u64()?;
-        if (flags & FLAG_ALL) != flags {
+        if (flags & ObjectSet::FLAG_ALL) != flags {
             return Err(ObjectSetDecodeError::Flags { flags });
         }
 
@@ -303,9 +303,11 @@ impl ObjectSet {
             zil_header,
             os_type,
 
-            user_accounting_complete: (flags & FLAG_USER_ACCOUNTING_COMPLETE) != 0,
-            user_object_accounting_complete: (flags & FLAG_USER_OBJECT_ACCOUNTING_COMPLETE) != 0,
-            project_quota_complete: (flags & FLAG_PROJECT_QUOTA_COMPLETE) != 0,
+            user_accounting_complete: (flags & ObjectSet::FLAG_USER_ACCOUNTING_COMPLETE) != 0,
+            user_object_accounting_complete: (flags
+                & ObjectSet::FLAG_USER_OBJECT_ACCOUNTING_COMPLETE)
+                != 0,
+            project_quota_complete: (flags & ObjectSet::FLAG_PROJECT_QUOTA_COMPLETE) != 0,
 
             portable_mac,
             local_mac,
@@ -336,15 +338,15 @@ impl ObjectSet {
         ////////////////////////////////
         // Encode flags.
         let flags = if self.user_accounting_complete {
-            FLAG_USER_ACCOUNTING_COMPLETE
+            ObjectSet::FLAG_USER_ACCOUNTING_COMPLETE
         } else {
             0
         } | if self.user_object_accounting_complete {
-            FLAG_USER_OBJECT_ACCOUNTING_COMPLETE
+            ObjectSet::FLAG_USER_OBJECT_ACCOUNTING_COMPLETE
         } else {
             0
         } | if self.project_quota_complete {
-            FLAG_PROJECT_QUOTA_COMPLETE
+            ObjectSet::FLAG_PROJECT_QUOTA_COMPLETE
         } else {
             0
         };
@@ -464,7 +466,7 @@ impl fmt::Display for ObjectSetDecodeError {
                 write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::Flags { flags } => {
-                write!(f, "ObjectSet decode error, invalid flags {flags:#016x}")
+                write!(f, "ObjectSet decode error, unknown flags {flags:#016x}")
             }
             ObjectSetDecodeError::ObjectSetType { err } => {
                 write!(f, "ObjectSet decode error | {err}")
