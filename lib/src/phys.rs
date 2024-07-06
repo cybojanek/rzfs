@@ -30,6 +30,12 @@ pub use dnode::{
     DnodeTailTwo, DnodeTailZero,
 };
 
+pub(crate) mod dsl;
+pub use dsl::{
+    DslDataSet, DslDataSetDecodeError, DslDataSetEncodeError, DslDirectory,
+    DslDirectoryDecodeError, DslDirectoryEncodeError,
+};
+
 pub(crate) mod dmu;
 pub use dmu::{DmuGenericObjectType, DmuType, DmuTypeError};
 
