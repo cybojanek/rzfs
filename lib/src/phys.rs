@@ -4,7 +4,9 @@ pub(crate) mod block_pointer;
 pub use block_pointer::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEmbedded, BlockPointerEmbeddedType,
     BlockPointerEmbeddedTypeError, BlockPointerEncodeError, BlockPointerEncrypted,
-    BlockPointerRegular,
+    BlockPointerObjectHeader, BlockPointerObjectHeaderAccountingExtension,
+    BlockPointerObjectHeaderDeadListsExtension, BlockPointerObjectHeaderDecodeError,
+    BlockPointerObjectHeaderEncodeError, BlockPointerObjectHeaderExtension, BlockPointerRegular,
 };
 
 pub(crate) mod checksum;
