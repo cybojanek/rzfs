@@ -76,6 +76,13 @@ pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIF
 pub(crate) mod spa;
 pub use spa::{SpaVersion, SpaVersionError};
 
+pub(crate) mod space_map;
+pub use space_map::{
+    SpaceMapAction, SpaceMapActionError, SpaceMapDebugEntry, SpaceMapEntry,
+    SpaceMapEntryDecodeError, SpaceMapEntryEncodeError, SpaceMapEntryV1, SpaceMapEntryV2,
+    SpaceMapHeader, SpaceMapHeaderDecodeError, SpaceMapHeaderEncodeError,
+};
+
 pub(crate) mod uberblock;
 pub use uberblock::{
     UberBlock, UberBlockDecodeError, UberBlockEncodeError, UberBlockMmp, UberBlockMmpDecodeError,
