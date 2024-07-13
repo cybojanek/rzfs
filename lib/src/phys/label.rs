@@ -32,8 +32,8 @@ impl Blank {
     /// Byte size of an encoded [`Blank`].
     pub const SIZE: usize = 8 * 1024;
 
-    /// Byte offset into a [`Label`].
-    pub const LABEL_OFFSET: usize = 0;
+    /// Offset in sectors from the start of a [`Label`].
+    pub const LABEL_OFFSET: u64 = 0;
 
     /// Byte size of the blank payload (8152).
     pub const PAYLOAD_SIZE: usize = Blank::SIZE - ChecksumTail::SIZE;
@@ -122,8 +122,8 @@ impl BootHeader {
     /// Byte size of an encoded [`BootHeader`].
     pub const SIZE: usize = 8 * 1024;
 
-    /// Byte offset into a [`Label`].
-    pub const LABEL_OFFSET: usize = Blank::SIZE;
+    /// Offset in sectors from the start of a [`Label`].
+    pub const LABEL_OFFSET: u64 = (Blank::SIZE >> SECTOR_SHIFT) as u64;
 
     /// Byte size of the blank payload (8152).
     pub const PAYLOAD_SIZE: usize = BootHeader::SIZE - ChecksumTail::SIZE;
@@ -316,8 +316,8 @@ impl BootBlock {
     /// Byte size of an encoded [`BootBlock`].
     pub const SIZE: usize = 3584 * 1024;
 
-    /// Byte offset into a virtual block device.
-    pub const VDEV_OFFSET: u64 = (2 * Label::SIZE) as u64;
+    /// Offset in sectors from the start of a block device.
+    pub const BLOCK_DEVICE_OFFSET: u64 = ((2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
 
     /// Byte size of the payload (3670016).
     pub const PAYLOAD_SIZE: usize = BootBlock::SIZE - ChecksumTail::SIZE;
@@ -406,8 +406,9 @@ impl NvPairs {
     /// Byte size of an encoded [`NvPairs`].
     pub const SIZE: usize = 112 * 1024;
 
-    /// Byte offset into a [`Label`].
-    pub const LABEL_OFFSET: usize = BootHeader::LABEL_OFFSET + BootHeader::SIZE;
+    /// Offset in sectors from the start of a [`Label`].
+    pub const LABEL_OFFSET: u64 =
+        BootHeader::LABEL_OFFSET + ((BootHeader::SIZE >> SECTOR_SHIFT) as u64);
 
     /// Byte size of the blank payload (8152).
     pub const PAYLOAD_SIZE: usize = NvPairs::SIZE - ChecksumTail::SIZE;
@@ -617,6 +618,13 @@ impl Label {
 
     /// Byte size of an encoded [`Label`] (256 KiB).
     pub const SIZE: usize = Blank::SIZE + BootHeader::SIZE + NvPairs::SIZE + UberBlock::TOTAL_SIZE;
+
+    /// Number of sectors the start labels and boot block consume.
+    pub const LABEL_START_SECTORS: u64 =
+        ((BootBlock::SIZE + 2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
+
+    /// Number of sectors the end labels consume.
+    pub const LABEL_END_SECTORS: u64 = ((2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
 
     /** Gets label sector offsets for a virtual device size in sectors.
      *

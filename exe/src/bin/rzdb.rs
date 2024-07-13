@@ -76,7 +76,7 @@ fn dva_read(
     }
 
     let mut data = vec![0; size];
-    blk.read(&mut data, dva.offset)?;
+    blk.read(&mut data, dva.offset + phys::Label::LABEL_START_SECTORS)?;
 
     Ok(data)
 }
@@ -1059,10 +1059,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
     ////////////////////////////////////
     // Read boot block.
     let boot_block_bytes = &mut vec![0; phys::BootBlock::SIZE];
-    block_device.read(
-        boot_block_bytes,
-        phys::BootBlock::VDEV_OFFSET >> phys::SECTOR_SHIFT,
-    )?;
+    block_device.read(boot_block_bytes, phys::BootBlock::BLOCK_DEVICE_OFFSET)?;
 
     // Causes stack overflow in debug release.
     // let boot_block = phys::BootBlock::from_bytes(
@@ -1083,52 +1080,42 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
     ////////////////////////////////////
     // Parse each label.
-    for (label_idx, sector) in label_sectors.into_iter().enumerate() {
+    for (label_idx, label_offset) in label_sectors.into_iter().enumerate() {
         println!();
         println!("Label {label_idx}");
         println!();
 
         ////////////////////////////////
-        // Read label.
-        let label_bytes = &mut vec![0; phys::Label::SIZE];
-        block_device.read(label_bytes, sector)?;
-
-        let label_byte_offset_into_vdev = sector << phys::SECTOR_SHIFT;
-
-        ////////////////////////////////
         // Read blank.
-        let blank = phys::Blank::from_bytes(
-            label_bytes[phys::Blank::LABEL_OFFSET..phys::Blank::LABEL_OFFSET + phys::Blank::SIZE]
-                .try_into()
-                .unwrap(),
-        )?;
+        let blank_bytes = &mut vec![0; phys::Blank::SIZE];
+        block_device.read(blank_bytes, label_offset + phys::Blank::LABEL_OFFSET)?;
+        let blank = phys::Blank::from_bytes(&blank_bytes[..].try_into().unwrap())?;
         if !is_array_empty(&blank.payload) {
             println!("Blank is not empty");
         }
 
         ////////////////////////////////
         // Read boot header.
+        let boot_header_bytes = &mut vec![0; phys::BootHeader::SIZE];
+        let boot_header_offset = label_offset + phys::BootHeader::LABEL_OFFSET;
+        block_device.read(boot_header_bytes, boot_header_offset)?;
         let boot_header = phys::BootHeader::from_bytes(
-            label_bytes[phys::BootHeader::LABEL_OFFSET
-                ..phys::BootHeader::LABEL_OFFSET + phys::BootHeader::SIZE]
-                .try_into()
-                .unwrap(),
-            label_byte_offset_into_vdev + (phys::BootHeader::LABEL_OFFSET as u64),
+            &boot_header_bytes[..].try_into().unwrap(),
+            boot_header_offset,
             &mut sha256,
         )?;
-
         if !is_array_empty(&boot_header.payload) {
             println!("BootHeader is not empty");
         }
 
         ////////////////////////////////
         // Read NV pairs.
+        let nv_pairs_bytes = &mut vec![0; phys::NvPairs::SIZE];
+        let nv_pairs_offset = label_offset + phys::NvPairs::LABEL_OFFSET;
+        block_device.read(nv_pairs_bytes, nv_pairs_offset)?;
         let nv_pairs = phys::NvPairs::from_bytes(
-            label_bytes
-                [phys::NvPairs::LABEL_OFFSET..phys::NvPairs::LABEL_OFFSET + phys::NvPairs::SIZE]
-                .try_into()
-                .unwrap(),
-            label_byte_offset_into_vdev + (phys::NvPairs::LABEL_OFFSET as u64),
+            &nv_pairs_bytes[..].try_into().unwrap(),
+            nv_pairs_offset,
             &mut sha256,
         )?;
 
@@ -1148,15 +1135,15 @@ fn dump() -> Result<(), Box<dyn Error>> {
         // Read UberBlocks.
         let uberblock_size =
             1 << phys::UberBlock::get_shift_from_version_ashift(spa_version, ashift);
-        for i in 0..phys::UberBlock::TOTAL_SIZE / uberblock_size {
-            let uber_label_offset = phys::UberBlock::LABEL_OFFSET + i * uberblock_size;
-            let uber_bytes = &label_bytes[uber_label_offset..uber_label_offset + uberblock_size];
 
-            let uber_res = phys::UberBlock::from_bytes(
-                uber_bytes,
-                label_byte_offset_into_vdev + (uber_label_offset as u64),
-                &mut sha256,
-            );
+        for i in 0..phys::UberBlock::TOTAL_SIZE / uberblock_size {
+            let uber_offset = label_offset
+                + phys::UberBlock::LABEL_OFFSET
+                + (((i * uberblock_size) >> phys::SECTOR_SHIFT) as u64);
+            let uber_bytes = &mut vec![0; uberblock_size];
+            block_device.read(uber_bytes, uber_offset)?;
+
+            let uber_res = phys::UberBlock::from_bytes(uber_bytes, uber_offset, &mut sha256);
 
             let uber_opt = match uber_res {
                 Ok(v) => v,

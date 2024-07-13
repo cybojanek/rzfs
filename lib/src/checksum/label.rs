@@ -34,12 +34,16 @@ use std::error;
 use crate::checksum::{Checksum, ChecksumError, Sha256};
 use crate::phys::{
     ChecksumTail, ChecksumTailDecodeError, ChecksumTailEncodeError, ChecksumValue,
-    EndianDecodeError, EndianEncodeError, EndianOrder,
+    EndianDecodeError, EndianEncodeError, EndianOrder, SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Offset encoded into [`ChecksumTail`] bytes.
+/** Offset encoded into [`ChecksumTail`] bytes.
+ *
+ * - `offset` in bytes
+ * - `order`  to use for encoding
+ */
 fn offset_tail(
     offset: u64,
     order: EndianOrder,
@@ -61,7 +65,7 @@ fn offset_tail(
 /** Compute the checksum of the `data` block and encode it at the end of `data`.
  *
  * - `data` to checksum
- * - `offset` in bytes of `data` from start of device, included in checksum
+ * - `offset` in sectors of `data` from start of device, included in checksum
  * - `sha256` instance to use for checksum
  * - `order` to use for checksum
  *
@@ -81,7 +85,11 @@ pub fn label_checksum(
         return Err(LabelChecksumError::InvalidLength { length });
     }
 
-    // Encode tail with offset.
+    // Encode tail with offset in bytes.
+    let offset = match offset.checked_shl(SECTOR_SHIFT) {
+        Some(v) => v,
+        None => return Err(LabelChecksumError::OffsetTooLarge { offset }),
+    };
     let offset_tail_bytes = offset_tail(offset, order)?;
 
     // Compute checksum.
@@ -104,7 +112,7 @@ pub fn label_checksum(
 /** Verify the checksum of the `data` block.
  *
  * - `data` to checksum
- * - `offset` in bytes of `data` from start of device, included in checksum
+ * - `offset` in sectors of `data` from start of device, included in checksum
  * - `sha256` instance to use for checksum
  *
  * # Errors
@@ -122,7 +130,11 @@ pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(),
     let tail = &data[length - ChecksumTail::SIZE..length];
     let tail = ChecksumTail::from_bytes(tail.try_into().unwrap())?;
 
-    // Encode tail with offset.
+    // Encode tail with offset in bytes.
+    let offset = match offset.checked_shl(SECTOR_SHIFT) {
+        Some(v) => v,
+        None => return Err(LabelVerifyError::OffsetTooLarge { offset }),
+    };
     let offset_tail_bytes = offset_tail(offset, tail.order)?;
 
     // Compute checksum.
@@ -170,6 +182,12 @@ pub enum LabelChecksumError {
         /// Length.
         length: usize,
     },
+
+    /// Offset is too large.
+    OffsetTooLarge {
+        /// Offset.
+        offset: u64,
+    },
 }
 
 impl From<ChecksumError> for LabelChecksumError {
@@ -204,6 +222,9 @@ impl fmt::Display for LabelChecksumError {
             }
             LabelChecksumError::InvalidLength { length } => {
                 write!(f, "Label checksum error, invalid length {length}")
+            }
+            LabelChecksumError::OffsetTooLarge { offset } => {
+                write!(f, "Label checksum error, offset is too large {offset}")
             }
         }
     }
@@ -269,6 +290,12 @@ pub enum LabelVerifyError {
         /// Stored checksum.
         stored: [u64; 4],
     },
+
+    /// Offset is too large.
+    OffsetTooLarge {
+        /// Offset.
+        offset: u64,
+    },
 }
 
 impl From<ChecksumError> for LabelVerifyError {
@@ -327,6 +354,9 @@ impl fmt::Display for LabelVerifyError {
                 "Label verify checksum mismatch, computed {:#016x?} stored {:#016x?}",
                 computed, stored,
             ),
+            LabelVerifyError::OffsetTooLarge { offset } => {
+                write!(f, "Label verify error, offset is too large {offset}")
+            }
         }
     }
 }

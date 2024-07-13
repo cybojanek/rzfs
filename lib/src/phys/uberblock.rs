@@ -9,7 +9,7 @@ use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVer
 use crate::phys::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
     EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, NvPairs,
-    SpaVersion, SpaVersionError,
+    SpaVersion, SpaVersionError, SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,8 +97,8 @@ impl UberBlock {
     /// Total byte size of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
     pub const TOTAL_SIZE: usize = 131072;
 
-    /// Byte offset into a [`crate::phys::Label`] of first [`UberBlock`].
-    pub const LABEL_OFFSET: usize = NvPairs::LABEL_OFFSET + NvPairs::SIZE;
+    /// Offset in sectors from the start of a [`crate::phys::Label`] of first [`UberBlock`].
+    pub const LABEL_OFFSET: u64 = NvPairs::LABEL_OFFSET + ((NvPairs::SIZE >> SECTOR_SHIFT) as u64);
 
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;
