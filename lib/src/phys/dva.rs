@@ -5,10 +5,7 @@ use core::fmt;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{
-    BootBlock, EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, Label,
-    SECTOR_SHIFT,
-};
+use crate::phys::{EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,11 +35,11 @@ use crate::phys::{
  * |g|                                                         offset (63)                                                         |
  * +-------------------------------------------------------------------------------------------------------------------------------+
  *
- * asize  allocated (size - 1) in 512 byte sectors
- * g      gang block (contains block pointers to actual data)
+ * asize  Dva allocated
+ * g      Dva is_gang
  * grid   RAID-Z layout, reserved for future use
- * offset in 512 byte sectors after BASE_OFFSET_SECTORS
- * vdev   device index
+ * offset Dva offset
+ * vdev   Dva vdev
  * ```
  *
  * ### padding
@@ -52,68 +49,57 @@ use crate::phys::{
  * ### grid
  *
  * `grid` has been present since V1, but is unused.
- *
- * ### allocated
- *
- * Range: [`Dva::ALLOCATED_MIN`] to [`Dva::ALLOCATED_MAX`].
- *
- * The `allocated` size is in sectors. A [`Dva`] must have at least one
- * allocated sector. When a [`Dva`] with `allocated = N` sectors, is encoded to
- * bytes, the `allocated` field is encoded as `N - 1`. As a result, a [`Dva`]
- * with 0 `allocated` sectors is not valid.
- *
- * Given the above constraint, and that the encoded value is limited to 24 bits,
- * the maximum allowed `allocated` field in a [`Dva`] is `0xffffff + 1`. When
- * shifted by [`SECTOR_SHIFT`], this translates to exactly 8 GiB.
- *
- * ### offset
- *
- * Range: [`Dva::OFFSET_MIN`] to [`Dva::OFFSET_MAX`].
- *
- * The `offset` is in sectors from the start of the device. When a [`Dva`]
- * with `offset = N` sectors is encoded to bytes, the `offset` is encoded as
- * `offset - M`, where `M` is the size in sectors of the BootBlock and first
- * two Label. As a result, a [`Dva`] cannot point to any data in the BootBlock
- * or first two Label (it must also not point to any data in the Label at the
- * end of the device).
- *
- * Given the above constraint, and that and that the encoded value is limited
- * to 63 bits, the minimum allowed `offset` in a [`Dva`] is 8192, while the
- * maximum allowed `offset` in a [`Dva`] is: `0x7fffffffffffffff + 8192`.
- * When shifted by [`SECTOR_SHIFT`], this translates to about 4 ZiB.
- *
- * ### is_gang
- *
- * TODO: Document.
- *
- * ### vdev
- *
- * Range: 0 to [`Dva::VDEV_MAX`].
- *
- * The `vdev` number is the virtual device number for pools that span multiple
- * block devices. The encoded value is limited to 24 bits. Combined with
- * `offset`, a [`Dva`] could refer to up to about 64 RiB.
  */
 #[derive(Debug)]
 pub struct Dva {
     /** Number of sectors (512 bytes) allocated.
      *
-     * Range is 1 to [`Dva::ALLOCATED_MAX`].
+     * - Range is [`Dva::ALLOCATED_MIN`] to [`Dva::ALLOCATED_MAX`].
+     * - A [`Dva`] must have at least one allocated sector.
+     * - This includes sectors for for RAIDZ parity data, and gang block headers.
+     * - The encoded value is limited to 24 bits. When shifted by
+     *   [`crate::phys::SECTOR_SHIFT`], this computes to 512 bytes short of 8 GiB.
      */
     pub allocated: u32,
 
-    /** Offset in sectors (512 bytes) from start of device.
+    /** Offset in sectors (512 bytes) from start of the virtual device.
      *
-     * Range is [`Dva::OFFSET_MIN`] to [`Dva::OFFSET_MAX`].
+     * - Range is 0 to [`Dva::OFFSET_MAX`].
+     * - Note that this does not mean the offset in sectors from the start of
+     *   the physical device.
+     * - For a single disk, RAID1 (mirror), RAID0 (stripe), or RAID10 virtual
+     *   device, this offset is the number of sectors after the `L1` label of
+     *   [`crate::phys::Label`].
+     * * For a RAIDZ (RAID5, RAID6, RAID7) virtual device, this is the logical
+     *   offset into the entire RAIDZ pool, and maps to multiple sectors across
+     *   the child virtual devices.
+     * * For a stripped RAIDZ (RAID50, RAID60, RAID70), this is the number of
+     *   sectors from the start of the child virtual RAIDZ device.
+     * - The value is limited to 63 bits. With a [`crate::phys::SECTOR_SHIFT`],
+     *   this computes to 512 bytes short of 4 ZiB.
      */
     pub offset: u64,
 
-    /// Is gang block.
+    /** Is gang block.
+     *
+     * A gang block contains block pointers to data.
+     *
+     * TODO: Document.
+     */
     pub is_gang: bool,
 
-    /** Virtual device.
+    /** Virtual device index.
      *
-     * Range is 0 to [`Dva::VDEV_MAX`].
+     * - Range is 0 to [`Dva::VDEV_MAX`].
+     * - For a single disk, the `vdev` is 0.
+     * - For a RAID1 (mirror) pool, the `vdev` is 0, and the mirror module
+     *   handles replicating writes to all leaf devices.
+     * - For a RAID0 (stripe) pool, the `vdev` specifies the leaf device that
+     *   holds all the data for this [`Dva`].
+     * - For a RAIDZ pool, the `vdev` is 0, and the raidz module handles reads
+     *   and writes to leaf devices.
+     * - For a stripped RAIDZ, the `vdev` specifies the child RAIDZ device that
+     *   holds all the data for this [`Dva`].
      */
     pub vdev: u32,
 }
@@ -126,13 +112,10 @@ impl Dva {
     pub const ALLOCATED_MIN: u32 = 1;
 
     /// Maximimum number of allocated sectors.
-    pub const ALLOCATED_MAX: u32 = 1 << 24;
-
-    /// Minimum offset in sectors.
-    pub const OFFSET_MIN: u64 = ((2 * Label::SIZE + BootBlock::SIZE) as u64) >> SECTOR_SHIFT;
+    pub const ALLOCATED_MAX: u32 = (1 << 24) - 1;
 
     /// Maximum offset in sectors.
-    pub const OFFSET_MAX: u64 = Dva::OFFSET_MIN + Dva::OFFSET_MASK;
+    pub const OFFSET_MAX: u64 = Dva::OFFSET_MASK;
 
     /// Maximum vdev.
     pub const VDEV_MAX: u32 = (1 << 24) - 1;
@@ -197,8 +180,8 @@ impl Dva {
         // Success!
         Ok(Some(Dva {
             vdev: ((a >> Dva::VDEV_SHIFT) & Dva::VDEV_MASK_DOWN_SHIFTED) as u32,
-            allocated: (((a >> Dva::ASIZE_SHIFT) & Dva::ASIZE_MASK_DOWN_SHIFTED) + 1) as u32,
-            offset: (b & Dva::OFFSET_MASK) + Dva::OFFSET_MIN,
+            allocated: ((a >> Dva::ASIZE_SHIFT) & Dva::ASIZE_MASK_DOWN_SHIFTED) as u32,
+            offset: (b & Dva::OFFSET_MASK),
             is_gang: (b & Dva::GANG_MASK_BIT_FLAG) != 0,
         }))
     }
@@ -226,7 +209,7 @@ impl Dva {
 
         ////////////////////////////////
         // Check offset.
-        if self.offset > Dva::OFFSET_MAX || self.offset < Dva::OFFSET_MIN {
+        if self.offset > Dva::OFFSET_MAX {
             return Err(DvaEncodeError::InvalidOffset {
                 offset: self.offset,
             });
@@ -236,12 +219,12 @@ impl Dva {
         // Encode.
         let a = (u64::from(self.vdev) << Dva::VDEV_SHIFT)
             | (0 << Dva::GRID_SHIFT)
-            | (u64::from(self.allocated - 1) << Dva::ASIZE_SHIFT);
+            | (u64::from(self.allocated) << Dva::ASIZE_SHIFT);
         let b = (if self.is_gang {
             Dva::GANG_MASK_BIT_FLAG
         } else {
             0
-        }) | (self.offset - Dva::OFFSET_MIN);
+        }) | (self.offset);
 
         encoder.put_u64(a)?;
         encoder.put_u64(b)?;
