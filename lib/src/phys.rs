@@ -10,10 +10,9 @@ pub(crate) mod block_pointer;
 pub use block_pointer::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEmbedded, BlockPointerEmbeddedType,
     BlockPointerEmbeddedTypeError, BlockPointerEncodeError, BlockPointerEncrypted,
-    BlockPointerObjectHeader, BlockPointerObjectHeaderAccountingExtension,
-    BlockPointerObjectHeaderDeadListsExtension, BlockPointerObjectHeaderDecodeError,
-    BlockPointerObjectHeaderEncodeError, BlockPointerObjectHeaderExtension,
-    BlockPointerObjectHeaderLiveListExtension, BlockPointerRegular,
+    BlockPointerRegular, BpObjectHeader, BpObjectHeaderAccountingExtension,
+    BpObjectHeaderDeadListsExtension, BpObjectHeaderDecodeError, BpObjectHeaderEncodeError,
+    BpObjectHeaderExtension, BpObjectHeaderLiveListExtension,
 };
 
 pub(crate) mod checksum;

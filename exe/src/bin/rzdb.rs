@@ -762,9 +762,9 @@ fn dump_dsl_dataset(
                     } else if let phys::DmuType::BpObject = dnode.dmu {
                         let decoder = phys::EndianDecoder::from_bytes(dnode.bonus_used(), order);
                         _writes_bytes_to_file("bp_header.bin", dnode.bonus_used())?;
-                        let bp_header = phys::BlockPointerObjectHeader::from_decoder(&decoder)?;
+                        let bp_header = phys::BpObjectHeader::from_decoder(&decoder)?;
                         println!(
-                            "{:width$} BlockPointerObjectHeader: {bp_header:?}",
+                            "{:width$} BpObjectHeader: {bp_header:?}",
                             "",
                             width = depth + 4
                         );
