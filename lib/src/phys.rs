@@ -12,7 +12,8 @@ pub use block_pointer::{
     BlockPointerEmbeddedTypeError, BlockPointerEncodeError, BlockPointerEncrypted,
     BlockPointerObjectHeader, BlockPointerObjectHeaderAccountingExtension,
     BlockPointerObjectHeaderDeadListsExtension, BlockPointerObjectHeaderDecodeError,
-    BlockPointerObjectHeaderEncodeError, BlockPointerObjectHeaderExtension, BlockPointerRegular,
+    BlockPointerObjectHeaderEncodeError, BlockPointerObjectHeaderExtension,
+    BlockPointerObjectHeaderLiveListExtension, BlockPointerRegular,
 };
 
 pub(crate) mod checksum;

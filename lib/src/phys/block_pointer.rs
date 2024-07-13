@@ -1568,7 +1568,7 @@ pub struct BlockPointerObjectHeaderAccountingExtension {
     pub uncompressed_size: u64,
 }
 
-/** [`BlockPointerObjectHeader`] dead lists extensions.
+/** [`BlockPointerObjectHeader`] dead list extensions.
  *
  * Introduced in [`crate::phys::SpaVersion::V26`].
  */
@@ -1579,7 +1579,14 @@ pub struct BlockPointerObjectHeaderDeadListsExtension {
 
     /// Number of [`crate::phys::DmuType::BpObject`] object numbers in `sub_objects_obj`.
     pub sub_objects_num: u64,
+}
 
+/** [`BlockPointerObjectHeader`] live list extension.
+ *
+ * Introduced in [`crate::phys::SpaVersion::V5000`] `com.delphix:livelist`.
+ */
+#[derive(Debug)]
+pub struct BlockPointerObjectHeaderLiveListExtension {
     /// Number of freed [`BlockPointer`].
     pub block_pointers_freed: u64,
 }
@@ -1604,6 +1611,18 @@ pub enum BlockPointerObjectHeaderExtension {
         /// Dead lists.
         dead_lists: BlockPointerObjectHeaderDeadListsExtension,
     },
+
+    /// Extension Three.
+    Three {
+        /// Accounting.
+        accounting: BlockPointerObjectHeaderAccountingExtension,
+
+        /// Dead lists.
+        dead_lists: BlockPointerObjectHeaderDeadListsExtension,
+
+        /// Live list.
+        live_list: BlockPointerObjectHeaderLiveListExtension,
+    },
 }
 
 /** Bonus buffer header of type [`crate::phys::DmuType::BpObjectHeader`].
@@ -1612,20 +1631,20 @@ pub enum BlockPointerObjectHeaderExtension {
  *
  * ### Byte layout.
  *
- * - Bytes: 8, 16, or 40
+ * - Bytes: 16, 32, 48, or 56
  *
  * ```text
- * +----------------------+------+-------------+
- * | Field                | Size | SPA Version |
- * +----------------------+------+-------------+
- * | block pointers count |   8  |           1 |
- * | physical size        |   8  |           1 |
- * | compressed size      |   8  |           3 |
- * | uncompressed size    |   8  |           3 |
- * | sub objects object   |   8  |          26 |
- * | sub objects number   |   8  |          26 |
- * | block pointers freed |   8  |          26 |
- * +----------------------+------+-------------+
+ * +----------------------+------+-------------+----------------------+
+ * | Field                | Size | SPA Version | Feature              |
+ * +----------------------+------+-------------+----------------------+
+ * | block pointers count |   8  |           1 |                      |
+ * | physical size        |   8  |           1 |                      |
+ * | compressed size      |   8  |           3 |                      |
+ * | uncompressed size    |   8  |           3 |                      |
+ * | sub objects object   |   8  |          26 |                      |
+ * | sub objects number   |   8  |          26 |                      |
+ * | block pointers freed |   8  |        5000 | com.delphix:livelist |
+ * +----------------------+------+-------------+----------------------+
  * ```
  */
 #[derive(Debug)]
@@ -1679,13 +1698,24 @@ impl BlockPointerObjectHeader {
                         v => Some(v),
                     },
                     sub_objects_num: decoder.get_u64()?,
-                    block_pointers_freed: decoder.get_u64()?,
                 };
 
-                extensions = BlockPointerObjectHeaderExtension::Two {
-                    accounting,
-                    dead_lists,
-                };
+                if decoder.is_empty() {
+                    extensions = BlockPointerObjectHeaderExtension::Two {
+                        accounting,
+                        dead_lists,
+                    };
+                } else {
+                    let live_list = BlockPointerObjectHeaderLiveListExtension {
+                        block_pointers_freed: decoder.get_u64()?,
+                    };
+
+                    extensions = BlockPointerObjectHeaderExtension::Three {
+                        accounting,
+                        dead_lists,
+                        live_list,
+                    };
+                }
             }
         }
 
@@ -1722,7 +1752,10 @@ impl BlockPointerObjectHeader {
             if let Some(dead_lists) = self.dead_lists() {
                 encoder.put_u64(dead_lists.sub_objects_obj.unwrap_or(0))?;
                 encoder.put_u64(dead_lists.sub_objects_num)?;
-                encoder.put_u64(dead_lists.block_pointers_freed)?;
+
+                if let Some(live_list) = self.live_list() {
+                    encoder.put_u64(live_list.block_pointers_freed)?;
+                }
             }
         }
 
@@ -1738,6 +1771,11 @@ impl BlockPointerObjectHeader {
                 accounting,
                 dead_lists: _,
             } => Some(accounting),
+            BlockPointerObjectHeaderExtension::Three {
+                accounting,
+                dead_lists: _,
+                live_list: _,
+            } => Some(accounting),
         }
     }
 
@@ -1750,6 +1788,25 @@ impl BlockPointerObjectHeader {
                 accounting: _,
                 dead_lists,
             } => Some(dead_lists),
+            BlockPointerObjectHeaderExtension::Three {
+                accounting: _,
+                dead_lists,
+                live_list: _,
+            } => Some(dead_lists),
+        }
+    }
+
+    /// Gets the [`BlockPointerObjectHeaderLiveListExtension`] of the [`BlockPointerObjectHeader`].
+    pub fn live_list(&self) -> Option<&BlockPointerObjectHeaderLiveListExtension> {
+        match &self.extensions {
+            BlockPointerObjectHeaderExtension::Zero {} => None,
+            BlockPointerObjectHeaderExtension::One { .. } => None,
+            BlockPointerObjectHeaderExtension::Two { .. } => None,
+            BlockPointerObjectHeaderExtension::Three {
+                accounting: _,
+                dead_lists: _,
+                live_list,
+            } => Some(live_list),
         }
     }
 }
