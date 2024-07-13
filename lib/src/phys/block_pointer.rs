@@ -1555,12 +1555,12 @@ impl error::Error for BlockPointerEncodeError {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** [`BlockPointerObjectHeader`] accounting extensions.
+/** [`BpObjectHeader`] accounting extensions.
  *
  * Introduced in [`crate::phys::SpaVersion::V3`].
  */
 #[derive(Debug)]
-pub struct BlockPointerObjectHeaderAccountingExtension {
+pub struct BpObjectHeaderAccountingExtension {
     /// Total compressed size of ???.
     pub compressed_size: u64,
 
@@ -1568,12 +1568,12 @@ pub struct BlockPointerObjectHeaderAccountingExtension {
     pub uncompressed_size: u64,
 }
 
-/** [`BlockPointerObjectHeader`] dead list extensions.
+/** [`BpObjectHeader`] dead list extensions.
  *
  * Introduced in [`crate::phys::SpaVersion::V26`].
  */
 #[derive(Debug)]
-pub struct BlockPointerObjectHeaderDeadListsExtension {
+pub struct BpObjectHeaderDeadListsExtension {
     /// Object number of [`crate::phys::DmuType::BpObjectSubObject`].
     pub sub_objects_obj: Option<u64>,
 
@@ -1581,47 +1581,47 @@ pub struct BlockPointerObjectHeaderDeadListsExtension {
     pub sub_objects_num: u64,
 }
 
-/** [`BlockPointerObjectHeader`] live list extension.
+/** [`BpObjectHeader`] live list extension.
  *
  * Introduced in [`crate::phys::SpaVersion::V5000`] `com.delphix:livelist`.
  */
 #[derive(Debug)]
-pub struct BlockPointerObjectHeaderLiveListExtension {
+pub struct BpObjectHeaderLiveListExtension {
     /// Number of freed [`BlockPointer`].
     pub block_pointers_freed: u64,
 }
 
-/// [`BlockPointerObjectHeader`] extensions.
+/// [`BpObjectHeader`] extensions.
 #[derive(Debug)]
-pub enum BlockPointerObjectHeaderExtension {
+pub enum BpObjectHeaderExtension {
     /// No extensions.
     Zero {},
 
     /// Extension One.
     One {
         /// Accounting.
-        accounting: BlockPointerObjectHeaderAccountingExtension,
+        accounting: BpObjectHeaderAccountingExtension,
     },
 
     /// Extension Two.
     Two {
         /// Accounting.
-        accounting: BlockPointerObjectHeaderAccountingExtension,
+        accounting: BpObjectHeaderAccountingExtension,
 
         /// Dead lists.
-        dead_lists: BlockPointerObjectHeaderDeadListsExtension,
+        dead_lists: BpObjectHeaderDeadListsExtension,
     },
 
     /// Extension Three.
     Three {
         /// Accounting.
-        accounting: BlockPointerObjectHeaderAccountingExtension,
+        accounting: BpObjectHeaderAccountingExtension,
 
         /// Dead lists.
-        dead_lists: BlockPointerObjectHeaderDeadListsExtension,
+        dead_lists: BpObjectHeaderDeadListsExtension,
 
         /// Live list.
-        live_list: BlockPointerObjectHeaderLiveListExtension,
+        live_list: BpObjectHeaderLiveListExtension,
     },
 }
 
@@ -1648,7 +1648,7 @@ pub enum BlockPointerObjectHeaderExtension {
  * ```
  */
 #[derive(Debug)]
-pub struct BlockPointerObjectHeader {
+pub struct BpObjectHeader {
     /// Number of [`BlockPointer`] in DMU object.
     pub block_pointers_count: u64,
 
@@ -1656,10 +1656,10 @@ pub struct BlockPointerObjectHeader {
     pub physical_size: u64,
 
     /// Extensions.
-    pub extensions: BlockPointerObjectHeaderExtension,
+    pub extensions: BpObjectHeaderExtension,
 }
 
-impl BlockPointerObjectHeader {
+impl BpObjectHeader {
     /** Decodes a [`BlockPointerRegular`].
      *
      * # Errors
@@ -1669,7 +1669,7 @@ impl BlockPointerObjectHeader {
      */
     pub fn from_decoder(
         decoder: &EndianDecoder<'_>,
-    ) -> Result<BlockPointerObjectHeader, BlockPointerObjectHeaderDecodeError> {
+    ) -> Result<BpObjectHeader, BpObjectHeaderDecodeError> {
         ////////////////////////////////
         // Decode values.
         let block_pointers_count = decoder.get_u64()?;
@@ -1677,22 +1677,22 @@ impl BlockPointerObjectHeader {
 
         ////////////////////////////////
         // Check for extensions based on length.
-        let mut extensions = BlockPointerObjectHeaderExtension::Zero {};
+        let mut extensions = BpObjectHeaderExtension::Zero {};
 
         if !decoder.is_empty() {
             ////////////////////////////
             // Decode accounting.
-            let accounting = BlockPointerObjectHeaderAccountingExtension {
+            let accounting = BpObjectHeaderAccountingExtension {
                 compressed_size: decoder.get_u64()?,
                 uncompressed_size: decoder.get_u64()?,
             };
 
             if decoder.is_empty() {
-                extensions = BlockPointerObjectHeaderExtension::One { accounting };
+                extensions = BpObjectHeaderExtension::One { accounting };
             } else {
                 ////////////////////////
                 // Decode deadlists.
-                let dead_lists = BlockPointerObjectHeaderDeadListsExtension {
+                let dead_lists = BpObjectHeaderDeadListsExtension {
                     sub_objects_obj: match decoder.get_u64()? {
                         0 => None,
                         v => Some(v),
@@ -1701,16 +1701,16 @@ impl BlockPointerObjectHeader {
                 };
 
                 if decoder.is_empty() {
-                    extensions = BlockPointerObjectHeaderExtension::Two {
+                    extensions = BpObjectHeaderExtension::Two {
                         accounting,
                         dead_lists,
                     };
                 } else {
-                    let live_list = BlockPointerObjectHeaderLiveListExtension {
+                    let live_list = BpObjectHeaderLiveListExtension {
                         block_pointers_freed: decoder.get_u64()?,
                     };
 
-                    extensions = BlockPointerObjectHeaderExtension::Three {
+                    extensions = BpObjectHeaderExtension::Three {
                         accounting,
                         dead_lists,
                         live_list,
@@ -1720,28 +1720,28 @@ impl BlockPointerObjectHeader {
         }
 
         if !decoder.is_empty() {
-            return Err(BlockPointerObjectHeaderDecodeError::Size {
+            return Err(BpObjectHeaderDecodeError::Size {
                 size: decoder.len(),
             });
         }
 
-        Ok(BlockPointerObjectHeader {
+        Ok(BpObjectHeader {
             block_pointers_count,
             physical_size,
             extensions,
         })
     }
 
-    /** Encodes a non-empty [`BlockPointerObjectHeader`].
+    /** Encodes a non-empty [`BpObjectHeader`].
      *
      * # Errors
      *
-     * Returns [`BlockPointerObjectHeaderEncodeError`] on error.
+     * Returns [`BpObjectHeaderEncodeError`] on error.
      */
     pub fn to_encoder(
         &self,
         encoder: &mut EndianEncoder<'_>,
-    ) -> Result<(), BlockPointerObjectHeaderEncodeError> {
+    ) -> Result<(), BpObjectHeaderEncodeError> {
         encoder.put_u64(self.block_pointers_count)?;
         encoder.put_u64(self.physical_size)?;
 
@@ -1762,16 +1762,16 @@ impl BlockPointerObjectHeader {
         Ok(())
     }
 
-    /// Gets the [`BlockPointerObjectHeaderAccountingExtension`] of the [`BlockPointerObjectHeader`].
-    pub fn accounting(&self) -> Option<&BlockPointerObjectHeaderAccountingExtension> {
+    /// Gets the [`BpObjectHeaderAccountingExtension`] of the [`BpObjectHeader`].
+    pub fn accounting(&self) -> Option<&BpObjectHeaderAccountingExtension> {
         match &self.extensions {
-            BlockPointerObjectHeaderExtension::Zero {} => None,
-            BlockPointerObjectHeaderExtension::One { accounting } => Some(accounting),
-            BlockPointerObjectHeaderExtension::Two {
+            BpObjectHeaderExtension::Zero {} => None,
+            BpObjectHeaderExtension::One { accounting } => Some(accounting),
+            BpObjectHeaderExtension::Two {
                 accounting,
                 dead_lists: _,
             } => Some(accounting),
-            BlockPointerObjectHeaderExtension::Three {
+            BpObjectHeaderExtension::Three {
                 accounting,
                 dead_lists: _,
                 live_list: _,
@@ -1779,16 +1779,16 @@ impl BlockPointerObjectHeader {
         }
     }
 
-    /// Gets the [`BlockPointerObjectHeaderDeadListsExtension`] of the [`BlockPointerObjectHeader`].
-    pub fn dead_lists(&self) -> Option<&BlockPointerObjectHeaderDeadListsExtension> {
+    /// Gets the [`BpObjectHeaderDeadListsExtension`] of the [`BpObjectHeader`].
+    pub fn dead_lists(&self) -> Option<&BpObjectHeaderDeadListsExtension> {
         match &self.extensions {
-            BlockPointerObjectHeaderExtension::Zero {} => None,
-            BlockPointerObjectHeaderExtension::One { accounting: _ } => None,
-            BlockPointerObjectHeaderExtension::Two {
+            BpObjectHeaderExtension::Zero {} => None,
+            BpObjectHeaderExtension::One { accounting: _ } => None,
+            BpObjectHeaderExtension::Two {
                 accounting: _,
                 dead_lists,
             } => Some(dead_lists),
-            BlockPointerObjectHeaderExtension::Three {
+            BpObjectHeaderExtension::Three {
                 accounting: _,
                 dead_lists,
                 live_list: _,
@@ -1796,13 +1796,13 @@ impl BlockPointerObjectHeader {
         }
     }
 
-    /// Gets the [`BlockPointerObjectHeaderLiveListExtension`] of the [`BlockPointerObjectHeader`].
-    pub fn live_list(&self) -> Option<&BlockPointerObjectHeaderLiveListExtension> {
+    /// Gets the [`BpObjectHeaderLiveListExtension`] of the [`BpObjectHeader`].
+    pub fn live_list(&self) -> Option<&BpObjectHeaderLiveListExtension> {
         match &self.extensions {
-            BlockPointerObjectHeaderExtension::Zero {} => None,
-            BlockPointerObjectHeaderExtension::One { .. } => None,
-            BlockPointerObjectHeaderExtension::Two { .. } => None,
-            BlockPointerObjectHeaderExtension::Three {
+            BpObjectHeaderExtension::Zero {} => None,
+            BpObjectHeaderExtension::One { .. } => None,
+            BpObjectHeaderExtension::Two { .. } => None,
+            BpObjectHeaderExtension::Three {
                 accounting: _,
                 dead_lists: _,
                 live_list,
@@ -1811,9 +1811,9 @@ impl BlockPointerObjectHeader {
     }
 }
 
-/// [`BlockPointerObjectHeader`] decode error.
+/// [`BpObjectHeader`] decode error.
 #[derive(Debug)]
-pub enum BlockPointerObjectHeaderDecodeError {
+pub enum BpObjectHeaderDecodeError {
     /// [`EndianDecoder`] error.
     Endian {
         /// Error.
@@ -1827,41 +1827,38 @@ pub enum BlockPointerObjectHeaderDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for BlockPointerObjectHeaderDecodeError {
+impl From<EndianDecodeError> for BpObjectHeaderDecodeError {
     fn from(err: EndianDecodeError) -> Self {
-        BlockPointerObjectHeaderDecodeError::Endian { err }
+        BpObjectHeaderDecodeError::Endian { err }
     }
 }
 
-impl fmt::Display for BlockPointerObjectHeaderDecodeError {
+impl fmt::Display for BpObjectHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerObjectHeaderDecodeError::Endian { err } => {
-                write!(f, "BlockPointerObjectHeader decode error | {err}")
+            BpObjectHeaderDecodeError::Endian { err } => {
+                write!(f, "BpObjectHeader decode error | {err}")
             }
-            BlockPointerObjectHeaderDecodeError::Size { size } => {
-                write!(
-                    f,
-                    "BlockPointerObjectHeader decode error, unknown size {size}"
-                )
+            BpObjectHeaderDecodeError::Size { size } => {
+                write!(f, "BpObjectHeader decode error, unknown size {size}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for BlockPointerObjectHeaderDecodeError {
+impl error::Error for BpObjectHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BlockPointerObjectHeaderDecodeError::Endian { err } => Some(err),
+            BpObjectHeaderDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
 }
 
-/// [`BlockPointerObjectHeader`] encode error.
+/// [`BpObjectHeader`] encode error.
 #[derive(Debug)]
-pub enum BlockPointerObjectHeaderEncodeError {
+pub enum BpObjectHeaderEncodeError {
     /// [`EndianEncoder`] error.
     Endian {
         /// Error.
@@ -1869,27 +1866,27 @@ pub enum BlockPointerObjectHeaderEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for BlockPointerObjectHeaderEncodeError {
+impl From<EndianEncodeError> for BpObjectHeaderEncodeError {
     fn from(err: EndianEncodeError) -> Self {
-        BlockPointerObjectHeaderEncodeError::Endian { err }
+        BpObjectHeaderEncodeError::Endian { err }
     }
 }
 
-impl fmt::Display for BlockPointerObjectHeaderEncodeError {
+impl fmt::Display for BpObjectHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BlockPointerObjectHeaderEncodeError::Endian { err } => {
-                write!(f, "BlockPointerObjectHeader encode error | {err}")
+            BpObjectHeaderEncodeError::Endian { err } => {
+                write!(f, "BpObjectHeader encode error | {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for BlockPointerObjectHeaderEncodeError {
+impl error::Error for BpObjectHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BlockPointerObjectHeaderEncodeError::Endian { err } => Some(err),
+            BpObjectHeaderEncodeError::Endian { err } => Some(err),
         }
     }
 }
