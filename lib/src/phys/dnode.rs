@@ -79,6 +79,9 @@ pub struct Dnode {
      * which point to data blocks of logical size `data_block_size_sectors`.
      *
      * A level of `3` or more indicates additional levels of indirection.
+     *
+     * The [`BlockPointer`] in [`DnodeTail`] should have a value of one less
+     * than `levels` for its `level` value.
      */
     pub levels: u8,
 
