@@ -71,10 +71,6 @@ fn dva_read(
         todo!("implement gang");
     }
 
-    if dva.vdev != 0 {
-        todo!("implement vdev != 0");
-    }
-
     let mut data = vec![0; size];
     blk.read(&mut data, dva.offset + phys::Label::LABEL_START_SECTORS)?;
 
@@ -92,17 +88,19 @@ fn block_pointer_embedded_read(
 
 /// Reads a regular block pointer.
 fn block_pointer_regular_read(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     ptr: &phys::BlockPointerRegular,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut data: Option<Vec<u8>> = None;
 
     // Read all the dvas.
-    for dva_opt in ptr.dvas.iter() {
-        let dva = match dva_opt {
-            Some(dva) => dva,
-            None => continue,
-        };
+    for dva in ptr.dvas.iter().flatten() {
+        let vdev: usize = dva.vdev.try_into().unwrap();
+        if vdev >= blk_devs.len() {
+            todo!("implement error handling");
+        }
+
+        let blk = &blk_devs[vdev];
 
         // Read physical bytes.
         let phys_bytes = dva_read(blk, dva, ptr.physical_sectors)?;
@@ -188,13 +186,13 @@ fn block_pointer_regular_read(
 
 /// Reads the [`phys::BlockPointer`].
 fn block_pointer_read(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     ptr: &phys::BlockPointer,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     match ptr {
         phys::BlockPointer::Embedded(emb) => block_pointer_embedded_read(emb),
         phys::BlockPointer::Encrypted(_) => todo!("Implement encrypted"),
-        phys::BlockPointer::Regular(reg) => block_pointer_regular_read(blk, reg),
+        phys::BlockPointer::Regular(reg) => block_pointer_regular_read(blk_devs, reg),
     }
 }
 
@@ -204,7 +202,7 @@ type DnodeReadResult = Result<Option<(phys::EndianOrder, Vec<u8>)>, Box<dyn Erro
 
 /// Reads the [`phys::Dnode`]. Returns [None] if empty.
 fn dnode_read_block(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     dnode: &phys::Dnode,
     block_id: u64,
 ) -> DnodeReadResult {
@@ -256,7 +254,7 @@ fn dnode_read_block(
 
     // Block order and bytes.
     let mut order = ptr.order();
-    let mut block_bytes = block_pointer_read(blk, ptr)?;
+    let mut block_bytes = block_pointer_read(blk_devs, ptr)?;
 
     // Read intermediate block pointers.
     let mut level = levels - 1;
@@ -276,7 +274,7 @@ fn dnode_read_block(
 
         // Read data for next block.
         order = ptr.order();
-        block_bytes = block_pointer_read(blk, &ptr)?;
+        block_bytes = block_pointer_read(blk_devs, &ptr)?;
 
         // Decrement level.
         level -= 1;
@@ -287,7 +285,7 @@ fn dnode_read_block(
 
 /// Reads the [`phys::Dnode`] object. Returns [None] if empty.
 fn dnode_read_object(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     dnode: &phys::Dnode,
     object_id: u64,
     object_size: usize,
@@ -311,7 +309,7 @@ fn dnode_read_object(
     let idx_in_block = (object_id as usize) % objects_per_block;
 
     // Read the block.
-    if let Some((endian, block)) = dnode_read_block(blk, dnode, block_id)? {
+    if let Some((endian, block)) = dnode_read_block(blk_devs, dnode, block_id)? {
         // Read the object in the block.
         let mut data = vec![0; object_size];
 
@@ -329,7 +327,7 @@ fn dnode_read_object(
 
 /// Reads the [`phys::Dnode`] object for a [`phys::DmuType::Dnode`]. Returns [None] if empty.
 fn _dnode_read_dnode(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     dnode: &phys::Dnode,
     object_id: u64,
 ) -> Result<Option<(phys::EndianOrder, phys::Dnode)>, Box<dyn Error>> {
@@ -338,7 +336,7 @@ fn _dnode_read_dnode(
         // phys::DmuType::DslDataSet => (),
         _ => todo!("todo error {}", dnode.dmu),
     };
-    match dnode_read_object(blk, dnode, object_id, phys::Dnode::SIZE)? {
+    match dnode_read_object(blk_devs, dnode, object_id, phys::Dnode::SIZE)? {
         Some((endian, dnode_bytes)) => {
             let decoder = phys::EndianDecoder::from_bytes(&dnode_bytes, endian);
             match phys::Dnode::from_decoder(&decoder)? {
@@ -351,11 +349,11 @@ fn _dnode_read_dnode(
 }
 
 fn dnode_dump_zap(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     dnode: &phys::Dnode,
     depth: usize,
 ) -> Result<(), Box<dyn Error>> {
-    let (endian, zap_header_block) = dnode_read_block(blk, dnode, 0)?.unwrap();
+    let (endian, zap_header_block) = dnode_read_block(blk_devs, dnode, 0)?.unwrap();
     let decoder = phys::EndianDecoder::from_bytes(&zap_header_block, endian);
 
     let zap_header = phys::ZapHeader::from_decoder(&decoder)?;
@@ -402,7 +400,7 @@ fn dnode_dump_zap(
 
                 for leaf_pointer in leaf_hashset {
                     let (endian, zap_leaf_block_bytes) =
-                        dnode_read_block(blk, dnode, *leaf_pointer)?.unwrap();
+                        dnode_read_block(blk_devs, dnode, *leaf_pointer)?.unwrap();
                     let decoder = phys::EndianDecoder::from_bytes(&zap_leaf_block_bytes, endian);
 
                     let _zap_leaf_header = phys::ZapLeafHeader::from_decoder(&decoder)?;
@@ -534,7 +532,7 @@ fn dnode_dump_zap(
 ////////////////////////////////////////////////////////////////////////////////
 
 fn dump_dsl_dataset(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     object_set: &phys::ObjectSet,
     depth: usize,
 ) -> Result<(), Box<dyn Error>> {
@@ -546,7 +544,7 @@ fn dump_dsl_dataset(
     );
 
     for block_id in 0..object_set.dnode.max_block_id + 1 {
-        let block_opt = dnode_read_block(blk, &object_set.dnode, block_id)?;
+        let block_opt = dnode_read_block(blk_devs, &object_set.dnode, block_id)?;
 
         if let Some((order, block_bytes)) = block_opt {
             let mut object_id = (block_bytes.len() / phys::Dnode::SIZE) * (block_id as usize);
@@ -618,12 +616,12 @@ fn dump_dsl_dataset(
                             );
 
                             if let Some(ptr) = dsl_data_set.block_pointer {
-                                let object_set_bytes = block_pointer_read(blk, &ptr)?;
+                                let object_set_bytes = block_pointer_read(blk_devs, &ptr)?;
                                 let decoder =
                                     phys::EndianDecoder::from_bytes(&object_set_bytes, ptr.order());
                                 let object_set = phys::ObjectSet::from_decoder(&decoder)?;
 
-                                dump_dsl_dataset(blk, &object_set, depth + 4)?;
+                                dump_dsl_dataset(blk_devs, &object_set, depth + 4)?;
                             }
                         }
                         phys::DmuType::BpObjectHeader => {}
@@ -680,13 +678,14 @@ fn dump_dsl_dataset(
                     }
 
                     if is_zap {
-                        dnode_dump_zap(blk, &dnode, depth + 4)?;
+                        dnode_dump_zap(blk_devs, &dnode, depth + 4)?;
                         println!();
                     } else if let phys::DmuType::PackedNvList = dnode.dmu {
                         let decoder = phys::EndianDecoder::from_bytes(dnode.bonus_used(), order);
                         let nv_list_size = decoder.get_u64()?;
                         let nv_list_size = usize::try_from(nv_list_size)?;
-                        let (_endian, nv_list_bytes) = dnode_read_block(blk, &dnode, 0)?.unwrap();
+                        let (_endian, nv_list_bytes) =
+                            dnode_read_block(blk_devs, &dnode, 0)?.unwrap();
                         // TODO: handle multiple blocks
                         assert!(nv_list_bytes.len() >= nv_list_size);
 
@@ -705,7 +704,8 @@ fn dump_dsl_dataset(
                         let mut block_id = 0;
                         let mut todo = sm_header.length_bytes;
                         while todo > 0 {
-                            let (order, data) = dnode_read_block(blk, &dnode, block_id)?.unwrap();
+                            let (order, data) =
+                                dnode_read_block(blk_devs, &dnode, block_id)?.unwrap();
                             let mut data_to_process = &data[0..data.len()];
 
                             if data.len() as u64 > todo {
@@ -736,7 +736,7 @@ fn dump_dsl_dataset(
                         assert!(dnode.pointers().len() == 1);
                         assert!(dnode.pointers()[0].is_none());
                     } else if let phys::DmuType::PlainFileContents = dnode.dmu {
-                        if let Some((_order, data)) = dnode_read_block(blk, &dnode, 0)? {
+                        if let Some((_order, data)) = dnode_read_block(blk_devs, &dnode, 0)? {
                             let mut size = data.len();
                             match dnode.bonus_type {
                                 phys::DmuType::Znode => {
@@ -747,20 +747,28 @@ fn dump_dsl_dataset(
                                         size = znode.size as usize;
                                     }
                                 }
-                                _ => todo!("Implement other PlainFileContents bonus"),
+                                phys::DmuType::SystemAttribute => (),
+                                _ => todo!(
+                                    "Implement other PlainFileContents bonus {}",
+                                    dnode.bonus_type
+                                ),
                             };
 
-                            let stdout = io::stdout();
-                            let mut handle = stdout.lock();
-                            handle.write_all(&data[0..size])?;
-                            handle.flush()?;
-                            if !data.is_empty() {
-                                println!();
+                            for block_id in 0..dnode.max_block_id + 1 {
+                                dnode_read_block(blk_devs, &dnode, block_id)?;
                             }
+
+                            println!("File size: {size}");
+                            // let stdout = io::stdout();
+                            // let mut handle = stdout.lock();
+                            // handle.write_all(&data[0..size])?;
+                            // handle.flush()?;
+                            // if !data.is_empty() {
+                            //     println!();
+                            // }
                         }
                     } else if let phys::DmuType::BpObject = dnode.dmu {
                         let decoder = phys::EndianDecoder::from_bytes(dnode.bonus_used(), order);
-                        _writes_bytes_to_file("bp_header.bin", dnode.bonus_used())?;
                         let bp_header = phys::BpObjectHeader::from_decoder(&decoder)?;
                         println!(
                             "{:width$} BpObjectHeader: {bp_header:?}",
@@ -774,7 +782,7 @@ fn dump_dsl_dataset(
 
                         for idx in 0..bp_header.block_pointers_count {
                             let (order, bp_bytes) =
-                                dnode_read_object(blk, &dnode, idx, phys::BlockPointer::SIZE)?
+                                dnode_read_object(blk_devs, &dnode, idx, phys::BlockPointer::SIZE)?
                                     .unwrap();
                             let decoder = phys::EndianDecoder::from_bytes(&bp_bytes, order);
                             let bp = phys::BlockPointerRegular::from_decoder(&decoder)?;
@@ -799,7 +807,7 @@ fn dump_dsl_dataset(
                                 width = depth + 4
                             );
                     } else if let phys::DmuType::ObjectArray = dnode.dmu {
-                        let (order, data) = dnode_read_block(blk, &dnode, 0)?.unwrap();
+                        let (order, data) = dnode_read_block(blk_devs, &dnode, 0)?.unwrap();
                         let decoder = phys::EndianDecoder::from_bytes(&data, order);
                         let mut idx = 0;
                         while !decoder.is_empty() {
@@ -830,7 +838,7 @@ fn dump_dsl_dataset(
 ////////////////////////////////////////////////////////////////////////////////
 
 fn dump_root(
-    blk: &userspace::BlockDevice,
+    blk_devs: &[userspace::BlockDevice],
     nv: &phys::NvDecoder,
     uberblock: &phys::UberBlock,
 ) -> Result<(), Box<dyn Error>> {
@@ -843,6 +851,7 @@ fn dump_root(
     println!("mmp: {:#?}", uberblock.mmp);
     println!("txg: {}", uberblock.txg);
     println!("version: {}", uberblock.version);
+    println!("guid_sum: {}", uberblock.guid_sum);
     println!();
 
     ////////////////////////////////////
@@ -856,11 +865,11 @@ fn dump_root(
 
     ////////////////////////////////////
     // Read Meta ObjectSet.
-    let meta_object_set_bytes = block_pointer_read(blk, &uberblock.ptr)?;
+    let meta_object_set_bytes = block_pointer_read(blk_devs, &uberblock.ptr)?;
     let decoder = phys::EndianDecoder::from_bytes(&meta_object_set_bytes, uberblock.ptr.order());
     let meta_object_set = phys::ObjectSet::from_decoder(&decoder)?;
     println!("os zil: {:?}", meta_object_set.zil_header);
-    dump_dsl_dataset(blk, &meta_object_set, 0)?;
+    dump_dsl_dataset(blk_devs, &meta_object_set, 0)?;
 
     Ok(())
 }
@@ -1051,9 +1060,16 @@ fn dump() -> Result<(), Box<dyn Error>> {
     // Create SHA256 instance.
     let mut sha256 = checksum::Sha256::new(checksum::Sha256Implementation::Generic)?;
 
-    // Open block device.
-    let block_device = userspace::BlockDevice::open(&args[1])?;
-    println!("Sectors: {}", block_device.sectors);
+    // Open block devices.
+    let mut block_devices = Vec::new();
+
+    for path in &args[1..] {
+        let block_device = userspace::BlockDevice::open(path)?;
+        println!("Sectors: {}", block_device.sectors);
+        block_devices.push(block_device);
+    }
+
+    let block_device = &block_devices[0];
 
     ////////////////////////////////////
     // Read boot block.
@@ -1176,7 +1192,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         }
 
         if let Some(uberblock) = max_uberblock {
-            dump_root(&block_device, &nv_decoder, &uberblock)?;
+            dump_root(&block_devices, &nv_decoder, &uberblock)?;
             break;
         }
     }
