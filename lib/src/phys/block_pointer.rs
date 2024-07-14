@@ -233,7 +233,7 @@ pub struct BlockPointerEmbedded {
     /// Compression type for payload.
     pub compression: CompressionType,
 
-    /// ???
+    /// Data [`DmuType`] this block pointer points to.
     pub dmu: DmuType,
 
     /// ???
@@ -1000,10 +1000,14 @@ pub struct BlockPointerRegular {
     /// ???
     pub dedup: bool,
 
-    /// ???
+    /// Data [`DmuType`] this block pointer points to.
     pub dmu: DmuType,
 
-    /// Data virtual addresses.
+    /** Data virtual addresses.
+     *
+     * - If one [`Dva`] is [`Some`], then it must be the first.
+     * - If two [`Dva`] are [`Some`], they must be the first two.
+     */
     pub dvas: [Option<Dva>; 3],
 
     /// Endian of payload.
@@ -1012,7 +1016,18 @@ pub struct BlockPointerRegular {
     /// ???
     pub fill_count: u64,
 
-    /// ???
+    /** Number of [`BlockPointer`] levels of indirection to data.
+     *
+     * A level of `0` means that the [`BlockPointer`] points to data blocks.
+     *
+     * A level of `1` means that the [`BlockPointer`] points to intermediate
+     * blocks. The contents of one of these blocks is an array of packed
+     * [`BlockPointer`].
+     *
+     * A level of `2` or more indicates additional levels of indirection.
+     *
+     * Also look at the `levels` field of [`crate::phys::Dnode`].
+     */
     pub level: u8,
 
     /// ???
