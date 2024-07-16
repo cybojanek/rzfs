@@ -49,7 +49,10 @@ pub use endian::{
 };
 
 pub(crate) mod feature;
-pub use feature::Feature;
+pub use feature::{
+    Compatibility, CompatibilityIterator, Feature, FeatureDecodeError, FeatureSet,
+    FeatureSetDecodeError, FeatureSetIterator,
+};
 
 pub(crate) mod label;
 pub use label::{
