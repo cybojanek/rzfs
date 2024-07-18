@@ -55,10 +55,10 @@ impl XdrDecoder<'_> {
      * use rzfs::phys::XdrDecoder;
      *
      * // Some bytes.
-     * let data = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
+     * let data = &[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
      *
      * // Create decoder.
-     * let decoder = XdrDecoder::from_bytes(&data);
+     * let decoder = XdrDecoder::from_bytes(data);
      * assert_eq!(decoder.len(), 8);
      *
      * // Decode values.
@@ -79,6 +79,59 @@ impl XdrDecoder<'_> {
             data,
             offset: Cell::new(0),
         }
+    }
+
+    /** Finds a sequence of bytes in the decoder data, and returns it.
+     *
+     * Returns [None] if not found.
+     *
+     * This is intended for lifetime promotion when returning errors with
+     * [str] or [[u8]] references in nested decoders.
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * // Some bytes.
+     * let data = &[0x12, 0x34, 0x56, 0x78];
+     *
+     * // Create decoder.
+     * let decoder = XdrDecoder::from_bytes(data);
+     *
+     * // Found.
+     * let search = &[0x12, 0x34];
+     * assert_eq!(decoder.find_bytes(search).unwrap(), search);
+     *
+     * let search = &[0x78];
+     * assert_eq!(decoder.find_bytes(search).unwrap(), search);
+     *
+     * let search = data;
+     * assert_eq!(decoder.find_bytes(search).unwrap(), search);
+     *
+     * // Not found.
+     * let search = &[0x12, 0xff];
+     * assert!(decoder.find_bytes(search).is_none());
+     *
+     * // Too long
+     * let search = &[0x12, 0x34, 0x56, 0x78, 0x9a];
+     * assert!(decoder.find_bytes(search).is_none());
+     * ```
+     */
+    pub fn find_bytes<'a>(&'a self, search: &[u8]) -> Option<&'a [u8]> {
+        // Maximum index to search. No point searching further, because there
+        // would not be enough bytes in data to contain the search bytes.
+        let max_index = match self.data.len().checked_sub(search.len()) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        for idx in 0..max_index + 1 {
+            let sub_bytes = &self.data[idx..idx + search.len()];
+            if sub_bytes == search {
+                return Some(sub_bytes);
+            }
+        }
+
+        None
     }
 
     /** Checks if there are enough bytes to decode from the data slice.
