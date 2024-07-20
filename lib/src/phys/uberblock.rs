@@ -8,7 +8,7 @@ use std::error;
 use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVerifyError, Sha256};
 use crate::phys::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, NvPairs,
+    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, LabelNvPairs,
     SpaVersion, SpaVersionError, SECTOR_SHIFT,
 };
 
@@ -28,7 +28,7 @@ use crate::phys::{
  * - It is not clear if there exist any filesystems out there that actually have
  *   an [`UberBlock`] larger than 8192. The [`UberBlock`] code itself will work
  *   with any size, and the caller has to handle figuring out the size based
- *   on the [`NvPairs`] tuples.
+ *   on the [`LabelNvPairs`] tuples.
  * - It looks like MMP was added without a version flag.
  *
  * ```text
@@ -98,7 +98,8 @@ impl UberBlock {
     pub const TOTAL_SIZE: usize = 131072;
 
     /// Offset in sectors from the start of a [`crate::phys::Label`] of first [`UberBlock`].
-    pub const LABEL_OFFSET: u64 = NvPairs::LABEL_OFFSET + ((NvPairs::SIZE >> SECTOR_SHIFT) as u64);
+    pub const LABEL_OFFSET: u64 =
+        LabelNvPairs::LABEL_OFFSET + ((LabelNvPairs::SIZE >> SECTOR_SHIFT) as u64);
 
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;

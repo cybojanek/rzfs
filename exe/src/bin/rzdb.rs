@@ -72,7 +72,10 @@ fn dva_read(
     }
 
     let mut data = vec![0; size];
-    blk.read(&mut data, dva.offset + phys::Label::LABEL_START_SECTORS)?;
+    blk.read(
+        &mut data,
+        dva.offset + phys::BootBlock::BLOCK_DEVICE_OFFSET + phys::BootBlock::SECTORS,
+    )?;
 
     Ok(data)
 }
@@ -1102,33 +1105,33 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
         ////////////////////////////////
         // Read blank.
-        let blank_bytes = &mut vec![0; phys::Blank::SIZE];
-        block_device.read(blank_bytes, label_offset + phys::Blank::LABEL_OFFSET)?;
-        let blank = phys::Blank::from_bytes(&blank_bytes[..].try_into().unwrap())?;
+        let blank_bytes = &mut vec![0; phys::LabelBlank::SIZE];
+        block_device.read(blank_bytes, label_offset + phys::LabelBlank::LABEL_OFFSET)?;
+        let blank = phys::LabelBlank::from_bytes(&blank_bytes[..].try_into().unwrap())?;
         if !is_array_empty(&blank.payload) {
             println!("Blank is not empty");
         }
 
         ////////////////////////////////
         // Read boot header.
-        let boot_header_bytes = &mut vec![0; phys::BootHeader::SIZE];
-        let boot_header_offset = label_offset + phys::BootHeader::LABEL_OFFSET;
+        let boot_header_bytes = &mut vec![0; phys::LabelBootHeader::SIZE];
+        let boot_header_offset = label_offset + phys::LabelBootHeader::LABEL_OFFSET;
         block_device.read(boot_header_bytes, boot_header_offset)?;
-        let boot_header = phys::BootHeader::from_bytes(
+        let boot_header = phys::LabelBootHeader::from_bytes(
             &boot_header_bytes[..].try_into().unwrap(),
             boot_header_offset,
             &mut sha256,
         )?;
         if !is_array_empty(&boot_header.payload) {
-            println!("BootHeader is not empty");
+            println!("LabelBootHeader is not empty");
         }
 
         ////////////////////////////////
         // Read NV pairs.
-        let nv_pairs_bytes = &mut vec![0; phys::NvPairs::SIZE];
-        let nv_pairs_offset = label_offset + phys::NvPairs::LABEL_OFFSET;
+        let nv_pairs_bytes = &mut vec![0; phys::LabelNvPairs::SIZE];
+        let nv_pairs_offset = label_offset + phys::LabelNvPairs::LABEL_OFFSET;
         block_device.read(nv_pairs_bytes, nv_pairs_offset)?;
-        let nv_pairs = phys::NvPairs::from_bytes(
+        let nv_pairs = phys::LabelNvPairs::from_bytes(
             &nv_pairs_bytes[..].try_into().unwrap(),
             nv_pairs_offset,
             &mut sha256,

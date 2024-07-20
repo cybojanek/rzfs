@@ -56,9 +56,10 @@ pub use feature::{
 
 pub(crate) mod label;
 pub use label::{
-    Blank, BlankDecodeError, BlankEncodeError, BootBlock, BootBlockDecodeError,
-    BootBlockEncodeError, BootHeader, BootHeaderDecodeError, BootHeaderEncodeError, Label,
-    LabelSectorsError, NvPairs, NvPairsDecodeError, NvPairsEncodeError,
+    BootBlock, BootBlockDecodeError, BootBlockEncodeError, Label, LabelBlank,
+    LabelBlankDecodeError, LabelBlankEncodeError, LabelBootHeader, LabelBootHeaderDecodeError,
+    LabelBootHeaderEncodeError, LabelNvPairs, LabelNvPairsDecodeError, LabelNvPairsEncodeError,
+    LabelSectorsError,
 };
 
 pub(crate) mod nv;
