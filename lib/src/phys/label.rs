@@ -11,290 +11,6 @@ use crate::phys::{is_multiple_of_sector_size, ChecksumTail, EndianOrder, UberBlo
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Blank portion of label.
- *
- * ### Byte layout.
- *
- * - Bytes: 8192
- *
- * ```text
- * +---------+------+
- * | payload | 8192 |
- * +---------+------+
- * ```
- */
-pub struct Blank {
-    /// Payload.
-    pub payload: [u8; Blank::PAYLOAD_SIZE],
-}
-
-impl Blank {
-    /// Byte size of an encoded [`Blank`].
-    pub const SIZE: usize = 8 * 1024;
-
-    /// Offset in sectors from the start of a [`Label`].
-    pub const LABEL_OFFSET: u64 = 0;
-
-    /// Byte size of the blank payload (8152).
-    pub const PAYLOAD_SIZE: usize = Blank::SIZE - ChecksumTail::SIZE;
-
-    /** Decodes a [`Blank`].
-     *
-     * # Errors.
-     *
-     * Returns [`BlankDecodeError`] on error.
-     */
-    pub fn from_bytes(bytes: &[u8; Blank::SIZE]) -> Result<Blank, BlankDecodeError> {
-        Ok(Blank {
-            payload: bytes[0..Blank::PAYLOAD_SIZE].try_into().unwrap(),
-        })
-    }
-
-    /** Encodes a [`Blank`].
-     *
-     * # Errors
-     *
-     * Returns [`BlankEncodeError`] in case of encoding error.
-     */
-    pub fn to_bytes(&self, bytes: &mut [u8; Blank::SIZE]) -> Result<(), BlankEncodeError> {
-        bytes.copy_from_slice(&self.payload);
-        Ok(())
-    }
-}
-
-/// [`Blank`] decode error.
-#[derive(Debug)]
-pub enum BlankDecodeError {}
-
-impl fmt::Display for BlankDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for BlankDecodeError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-/// [`Blank`] encode error.
-#[derive(Debug)]
-pub enum BlankEncodeError {}
-
-impl fmt::Display for BlankEncodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for BlankEncodeError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Boot header portion of label.
- *
- * ### Byte layout.
- *
- * - Bytes: 8192
- *
- * ```text
- * +---------------+------+
- * | payload       | 8152 |
- * +---------------+------+
- * | checksum tail |   40 |
- * +---------------+------+
- * ```
- */
-pub struct BootHeader {
-    /// Payload.
-    pub payload: [u8; BootHeader::PAYLOAD_SIZE],
-}
-
-impl BootHeader {
-    /// Byte size of an encoded [`BootHeader`].
-    pub const SIZE: usize = 8 * 1024;
-
-    /// Offset in sectors from the start of a [`Label`].
-    pub const LABEL_OFFSET: u64 = (Blank::SIZE >> SECTOR_SHIFT) as u64;
-
-    /// Byte size of the blank payload (8152).
-    pub const PAYLOAD_SIZE: usize = BootHeader::SIZE - ChecksumTail::SIZE;
-
-    /** Decodes a [`BootHeader`].
-     *
-     * - `bytes` to decode from
-     * - `offset` in bytes of [`BootHeader`] from start of device
-     * - `sha256` instance to use for checksum
-     *
-     * # Errors.
-     *
-     * Returns [`BootHeaderDecodeError`] on error.
-     */
-    pub fn from_bytes(
-        bytes: &[u8; BootHeader::SIZE],
-        offset: u64,
-        sha256: &mut Sha256,
-    ) -> Result<BootHeader, BootHeaderDecodeError> {
-        // Verify the checksum.
-        label_verify(bytes, offset, sha256)?;
-
-        // Copy payload.
-        Ok(BootHeader {
-            payload: bytes[0..BootHeader::PAYLOAD_SIZE].try_into().unwrap(),
-        })
-    }
-
-    /** Encodes a [`BootHeader`].
-     *
-     * - `bytes` to encode into
-     * - `offset` in bytes of [`BootHeader`] from start of device
-     * - `sha256` instance to use for checksum
-     * - `order` to use for checksum
-     *
-     * # Errors
-     *
-     * Returns [`BootHeaderEncodeError`] on error.
-     */
-    pub fn to_bytes(
-        &self,
-        bytes: &mut [u8; BootHeader::SIZE],
-        offset: u64,
-        sha256: &mut Sha256,
-        order: EndianOrder,
-    ) -> Result<(), BootHeaderEncodeError> {
-        // Copy payload.
-        bytes[0..BootHeader::SIZE].copy_from_slice(&self.payload);
-
-        // Compute checksum.
-        label_checksum(bytes, offset, sha256, order)?;
-
-        Ok(())
-    }
-
-    /**
-     * Checksums a [`BootHeader`].
-     *
-     * - `bytes` to checksum
-     * - `offset` in bytes of [`BootHeader`] from start of device
-     * - `sha256` instance to use for checksum
-     * - `order` to use for checksum
-     *
-     * # Errors
-     *
-     * Returns [`LabelChecksumError`] on error.
-     */
-    pub fn checksum(
-        &self,
-        bytes: &mut [u8; BootHeader::SIZE],
-        offset: u64,
-        sha256: &mut Sha256,
-        order: EndianOrder,
-    ) -> Result<(), LabelChecksumError> {
-        // Compute checksum.
-        label_checksum(bytes, offset, sha256, order)
-    }
-
-    /** Verifies a [`BootHeader`].
-     *
-     * - `bytes` to decode from
-     * - `offset` in bytes of [`BootHeader`] from start of device
-     * - `sha256` instance to use for checksum
-     *
-     * # Errors.
-     *
-     * Returns [`LabelVerifyError`] on error.
-     */
-    pub fn verify(
-        bytes: &[u8; BootHeader::SIZE],
-        offset: u64,
-        sha256: &mut Sha256,
-    ) -> Result<(), LabelVerifyError> {
-        // Verify the checksum.
-        label_verify(bytes, offset, sha256)
-    }
-}
-
-/// [`BootHeader`] decode error.
-#[derive(Debug)]
-pub enum BootHeaderDecodeError {
-    /// Label error.
-    Label {
-        /// Error.
-        err: LabelVerifyError,
-    },
-}
-
-impl From<LabelVerifyError> for BootHeaderDecodeError {
-    fn from(err: LabelVerifyError) -> Self {
-        BootHeaderDecodeError::Label { err }
-    }
-}
-
-impl fmt::Display for BootHeaderDecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BootHeaderDecodeError::Label { err } => {
-                write!(f, "BootHeader decode error | {err}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for BootHeaderDecodeError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            BootHeaderDecodeError::Label { err } => Some(err),
-        }
-    }
-}
-
-/// [`BootHeader`] encode error.
-#[derive(Debug)]
-pub enum BootHeaderEncodeError {
-    /// Label error.
-    Label {
-        /// Error.
-        err: LabelChecksumError,
-    },
-}
-
-impl From<LabelChecksumError> for BootHeaderEncodeError {
-    fn from(err: LabelChecksumError) -> Self {
-        BootHeaderEncodeError::Label { err }
-    }
-}
-
-impl fmt::Display for BootHeaderEncodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BootHeaderEncodeError::Label { err } => {
-                write!(f, "BootHeader encode error | {err}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for BootHeaderEncodeError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            BootHeaderEncodeError::Label { err } => Some(err),
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
  * Boot block portion of label.
  *
  * ### Byte layout.
@@ -305,6 +21,14 @@ impl error::Error for BootHeaderEncodeError {
  * +---------+---------+
  * | payload | 3670016 |
  * +---------+---------+
+ * ```
+ *
+ * ### BootBlock layout in block device.
+ *
+ * ```text
+ * +----+----+-----------+-----+----+----+
+ * | L0 | L1 | BootBlock | ... | L2 | L3 |
+ * +----+----+-----------+-----+----+----+
  * ```
  */
 pub struct BootBlock {
@@ -317,10 +41,13 @@ impl BootBlock {
     pub const SIZE: usize = 3584 * 1024;
 
     /// Offset in sectors from the start of a block device.
-    pub const BLOCK_DEVICE_OFFSET: u64 = ((2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
+    pub const BLOCK_DEVICE_OFFSET: u64 = 2 * Label::SECTORS;
 
     /// Byte size of the payload (3670016).
     pub const PAYLOAD_SIZE: usize = BootBlock::SIZE - ChecksumTail::SIZE;
+
+    /// Size of an encoded [`BootBlock] in sectors.
+    pub const SECTORS: u64 = (BootBlock::SIZE >> SECTOR_SHIFT) as u64;
 
     /** Decodes a [`BootBlock`].
      *
@@ -383,6 +110,292 @@ impl error::Error for BootBlockEncodeError {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * Blank portion of label.
+ *
+ * ### Byte layout.
+ *
+ * - Bytes: 8192
+ *
+ * ```text
+ * +---------+------+
+ * | payload | 8192 |
+ * +---------+------+
+ * ```
+ */
+pub struct LabelBlank {
+    /// Payload.
+    pub payload: [u8; LabelBlank::PAYLOAD_SIZE],
+}
+
+impl LabelBlank {
+    /// Byte size of an encoded [`LabelBlank`].
+    pub const SIZE: usize = 8 * 1024;
+
+    /// Offset in sectors from the start of a [`Label`].
+    pub const LABEL_OFFSET: u64 = 0;
+
+    /// Byte size of the blank payload (8152).
+    pub const PAYLOAD_SIZE: usize = LabelBlank::SIZE - ChecksumTail::SIZE;
+
+    /** Decodes a [`LabelBlank`].
+     *
+     * # Errors.
+     *
+     * Returns [`LabelBlankDecodeError`] on error.
+     */
+    pub fn from_bytes(bytes: &[u8; LabelBlank::SIZE]) -> Result<LabelBlank, LabelBlankDecodeError> {
+        Ok(LabelBlank {
+            payload: bytes[0..LabelBlank::PAYLOAD_SIZE].try_into().unwrap(),
+        })
+    }
+
+    /** Encodes a [`LabelBlank`].
+     *
+     * # Errors
+     *
+     * Returns [`LabelBlankEncodeError`] in case of encoding error.
+     */
+    pub fn to_bytes(
+        &self,
+        bytes: &mut [u8; LabelBlank::SIZE],
+    ) -> Result<(), LabelBlankEncodeError> {
+        bytes.copy_from_slice(&self.payload);
+        Ok(())
+    }
+}
+
+/// [`LabelBlank`] decode error.
+#[derive(Debug)]
+pub enum LabelBlankDecodeError {}
+
+impl fmt::Display for LabelBlankDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
+}
+
+#[cfg(feature = "std")]
+impl error::Error for LabelBlankDecodeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+/// [`LabelBlank`] encode error.
+#[derive(Debug)]
+pub enum LabelBlankEncodeError {}
+
+impl fmt::Display for LabelBlankEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
+}
+
+#[cfg(feature = "std")]
+impl error::Error for LabelBlankEncodeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Boot header portion of label.
+ *
+ * ### Byte layout.
+ *
+ * - Bytes: 8192
+ *
+ * ```text
+ * +---------------+------+
+ * | payload       | 8152 |
+ * +---------------+------+
+ * | checksum tail |   40 |
+ * +---------------+------+
+ * ```
+ */
+pub struct LabelBootHeader {
+    /// Payload.
+    pub payload: [u8; LabelBootHeader::PAYLOAD_SIZE],
+}
+
+impl LabelBootHeader {
+    /// Byte size of an encoded [`LabelBootHeader`].
+    pub const SIZE: usize = 8 * 1024;
+
+    /// Offset in sectors from the start of a [`Label`].
+    pub const LABEL_OFFSET: u64 = (LabelBlank::SIZE >> SECTOR_SHIFT) as u64;
+
+    /// Byte size of the blank payload (8152).
+    pub const PAYLOAD_SIZE: usize = LabelBootHeader::SIZE - ChecksumTail::SIZE;
+
+    /** Decodes a [`LabelBootHeader`].
+     *
+     * - `bytes` to decode from
+     * - `offset` in bytes of [`LabelBootHeader`] from start of device
+     * - `sha256` instance to use for checksum
+     *
+     * # Errors.
+     *
+     * Returns [`LabelBootHeaderDecodeError`] on error.
+     */
+    pub fn from_bytes(
+        bytes: &[u8; LabelBootHeader::SIZE],
+        offset: u64,
+        sha256: &mut Sha256,
+    ) -> Result<LabelBootHeader, LabelBootHeaderDecodeError> {
+        // Verify the checksum.
+        label_verify(bytes, offset, sha256)?;
+
+        // Copy payload.
+        Ok(LabelBootHeader {
+            payload: bytes[0..LabelBootHeader::PAYLOAD_SIZE].try_into().unwrap(),
+        })
+    }
+
+    /** Encodes a [`LabelBootHeader`].
+     *
+     * - `bytes` to encode into
+     * - `offset` in bytes of [`LabelBootHeader`] from start of device
+     * - `sha256` instance to use for checksum
+     * - `order` to use for checksum
+     *
+     * # Errors
+     *
+     * Returns [`LabelBootHeaderEncodeError`] on error.
+     */
+    pub fn to_bytes(
+        &self,
+        bytes: &mut [u8; LabelBootHeader::SIZE],
+        offset: u64,
+        sha256: &mut Sha256,
+        order: EndianOrder,
+    ) -> Result<(), LabelBootHeaderEncodeError> {
+        // Copy payload.
+        bytes[0..LabelBootHeader::SIZE].copy_from_slice(&self.payload);
+
+        // Compute checksum.
+        label_checksum(bytes, offset, sha256, order)?;
+
+        Ok(())
+    }
+
+    /**
+     * Checksums a [`LabelBootHeader`].
+     *
+     * - `bytes` to checksum
+     * - `offset` in bytes of [`LabelBootHeader`] from start of device
+     * - `sha256` instance to use for checksum
+     * - `order` to use for checksum
+     *
+     * # Errors
+     *
+     * Returns [`LabelChecksumError`] on error.
+     */
+    pub fn checksum(
+        bytes: &mut [u8; LabelBootHeader::SIZE],
+        offset: u64,
+        sha256: &mut Sha256,
+        order: EndianOrder,
+    ) -> Result<(), LabelChecksumError> {
+        // Compute checksum.
+        label_checksum(bytes, offset, sha256, order)
+    }
+
+    /** Verifies a [`LabelBootHeader`].
+     *
+     * - `bytes` to decode from
+     * - `offset` in bytes of [`LabelBootHeader`] from start of device
+     * - `sha256` instance to use for checksum
+     *
+     * # Errors.
+     *
+     * Returns [`LabelVerifyError`] on error.
+     */
+    pub fn verify(
+        bytes: &[u8; LabelBootHeader::SIZE],
+        offset: u64,
+        sha256: &mut Sha256,
+    ) -> Result<(), LabelVerifyError> {
+        // Verify the checksum.
+        label_verify(bytes, offset, sha256)
+    }
+}
+
+/// [`LabelBootHeader`] decode error.
+#[derive(Debug)]
+pub enum LabelBootHeaderDecodeError {
+    /// Label error.
+    Label {
+        /// Error.
+        err: LabelVerifyError,
+    },
+}
+
+impl From<LabelVerifyError> for LabelBootHeaderDecodeError {
+    fn from(err: LabelVerifyError) -> Self {
+        LabelBootHeaderDecodeError::Label { err }
+    }
+}
+
+impl fmt::Display for LabelBootHeaderDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LabelBootHeaderDecodeError::Label { err } => {
+                write!(f, "LabelBootHeader decode error | {err}")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl error::Error for LabelBootHeaderDecodeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            LabelBootHeaderDecodeError::Label { err } => Some(err),
+        }
+    }
+}
+
+/// [`LabelBootHeader`] encode error.
+#[derive(Debug)]
+pub enum LabelBootHeaderEncodeError {
+    /// Label error.
+    Label {
+        /// Error.
+        err: LabelChecksumError,
+    },
+}
+
+impl From<LabelChecksumError> for LabelBootHeaderEncodeError {
+    fn from(err: LabelChecksumError) -> Self {
+        LabelBootHeaderEncodeError::Label { err }
+    }
+}
+
+impl fmt::Display for LabelBootHeaderEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LabelBootHeaderEncodeError::Label { err } => {
+                write!(f, "LabelBootHeader encode error | {err}")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl error::Error for LabelBootHeaderEncodeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            LabelBootHeaderEncodeError::Label { err } => Some(err),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
  * NV Pairs portion of a [`Label`].
  *
  * ### Byte layout.
@@ -397,66 +410,66 @@ impl error::Error for BootBlockEncodeError {
  * +---------------+--------+
  * ```
  */
-pub struct NvPairs {
+pub struct LabelNvPairs {
     /// Payload.
-    pub payload: [u8; NvPairs::PAYLOAD_SIZE],
+    pub payload: [u8; LabelNvPairs::PAYLOAD_SIZE],
 }
 
-impl NvPairs {
-    /// Byte size of an encoded [`NvPairs`].
+impl LabelNvPairs {
+    /// Byte size of an encoded [`LabelNvPairs`].
     pub const SIZE: usize = 112 * 1024;
 
     /// Offset in sectors from the start of a [`Label`].
     pub const LABEL_OFFSET: u64 =
-        BootHeader::LABEL_OFFSET + ((BootHeader::SIZE >> SECTOR_SHIFT) as u64);
+        LabelBootHeader::LABEL_OFFSET + ((LabelBootHeader::SIZE >> SECTOR_SHIFT) as u64);
 
     /// Byte size of the blank payload (8152).
-    pub const PAYLOAD_SIZE: usize = NvPairs::SIZE - ChecksumTail::SIZE;
+    pub const PAYLOAD_SIZE: usize = LabelNvPairs::SIZE - ChecksumTail::SIZE;
 
-    /** Decodes a [`NvPairs`].
+    /** Decodes a [`LabelNvPairs`].
      *
      * - `bytes` to decode from
-     * - `offset` in bytes of [`NvPairs`] from start of device
+     * - `offset` in bytes of [`LabelNvPairs`] from start of device
      * - `sha256` instance to use for checksum
      *
      * # Errors.
      *
-     * Returns [`NvPairsDecodeError`] on error.
+     * Returns [`LabelNvPairsDecodeError`] on error.
      */
     pub fn from_bytes(
-        bytes: &[u8; NvPairs::SIZE],
+        bytes: &[u8; LabelNvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
-    ) -> Result<NvPairs, NvPairsDecodeError> {
+    ) -> Result<LabelNvPairs, LabelNvPairsDecodeError> {
         // Verify the checksum.
         label_verify(bytes, offset, sha256)?;
 
         // Copy payload.
-        Ok(NvPairs {
-            payload: bytes[0..NvPairs::PAYLOAD_SIZE].try_into().unwrap(),
+        Ok(LabelNvPairs {
+            payload: bytes[0..LabelNvPairs::PAYLOAD_SIZE].try_into().unwrap(),
         })
     }
 
-    /** Encodes a [`NvPairs`].
+    /** Encodes a [`LabelNvPairs`].
      *
      * - `bytes` to encode into
-     * - `offset` in bytes of [`NvPairs`] from start of device
+     * - `offset` in bytes of [`LabelNvPairs`] from start of device
      * - `sha256` instance to use for checksum
      * - `order` to use for checksum
      *
      * # Errors
      *
-     * Returns [`NvPairsEncodeError`] on error.
+     * Returns [`LabelNvPairsEncodeError`] on error.
      */
     pub fn to_bytes(
         &self,
-        bytes: &mut [u8; NvPairs::SIZE],
+        bytes: &mut [u8; LabelNvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
-    ) -> Result<(), NvPairsEncodeError> {
+    ) -> Result<(), LabelNvPairsEncodeError> {
         // Copy payload.
-        bytes[0..NvPairs::SIZE].copy_from_slice(&self.payload);
+        bytes[0..LabelNvPairs::SIZE].copy_from_slice(&self.payload);
 
         // Compute checksum.
         label_checksum(bytes, offset, sha256, order)?;
@@ -465,10 +478,10 @@ impl NvPairs {
     }
 
     /**
-     * Checksums a [`NvPairs`].
+     * Checksums a [`LabelNvPairs`].
      *
      * - `bytes` to checksum
-     * - `offset` in bytes of [`NvPairs`] from start of device
+     * - `offset` in bytes of [`LabelNvPairs`] from start of device
      * - `sha256` instance to use for checksum
      * - `order` to use for checksum
      *
@@ -477,8 +490,7 @@ impl NvPairs {
      * Returns [`LabelChecksumError`] on error.
      */
     pub fn checksum(
-        &self,
-        bytes: &mut [u8; NvPairs::SIZE],
+        bytes: &mut [u8; LabelNvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
         order: EndianOrder,
@@ -487,10 +499,10 @@ impl NvPairs {
         label_checksum(bytes, offset, sha256, order)
     }
 
-    /** Verifies a [`NvPairs`].
+    /** Verifies a [`LabelNvPairs`].
      *
      * - `bytes` to decode from
-     * - `offset` in bytes of [`NvPairs`] from start of device
+     * - `offset` in bytes of [`LabelNvPairs`] from start of device
      * - `sha256` instance to use for checksum
      *
      * # Errors.
@@ -498,7 +510,7 @@ impl NvPairs {
      * Returns [`LabelVerifyError`] on error.
      */
     pub fn verify(
-        bytes: &[u8; NvPairs::SIZE],
+        bytes: &[u8; LabelNvPairs::SIZE],
         offset: u64,
         sha256: &mut Sha256,
     ) -> Result<(), LabelVerifyError> {
@@ -507,9 +519,9 @@ impl NvPairs {
     }
 }
 
-/// [`NvPairs`] decode error.
+/// [`LabelNvPairs`] decode error.
 #[derive(Debug)]
-pub enum NvPairsDecodeError {
+pub enum LabelNvPairsDecodeError {
     /// Label error.
     Label {
         /// Error.
@@ -517,34 +529,34 @@ pub enum NvPairsDecodeError {
     },
 }
 
-impl From<LabelVerifyError> for NvPairsDecodeError {
+impl From<LabelVerifyError> for LabelNvPairsDecodeError {
     fn from(err: LabelVerifyError) -> Self {
-        NvPairsDecodeError::Label { err }
+        LabelNvPairsDecodeError::Label { err }
     }
 }
 
-impl fmt::Display for NvPairsDecodeError {
+impl fmt::Display for LabelNvPairsDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NvPairsDecodeError::Label { err } => {
-                write!(f, "NvPairs decode error | {err}")
+            LabelNvPairsDecodeError::Label { err } => {
+                write!(f, "LabelNvPairs decode error | {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for NvPairsDecodeError {
+impl error::Error for LabelNvPairsDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            NvPairsDecodeError::Label { err } => Some(err),
+            LabelNvPairsDecodeError::Label { err } => Some(err),
         }
     }
 }
 
-/// [`NvPairs`] encode error.
+/// [`LabelNvPairs`] encode error.
 #[derive(Debug)]
-pub enum NvPairsEncodeError {
+pub enum LabelNvPairsEncodeError {
     /// Label error.
     Label {
         /// Error.
@@ -552,27 +564,27 @@ pub enum NvPairsEncodeError {
     },
 }
 
-impl From<LabelChecksumError> for NvPairsEncodeError {
+impl From<LabelChecksumError> for LabelNvPairsEncodeError {
     fn from(err: LabelChecksumError) -> Self {
-        NvPairsEncodeError::Label { err }
+        LabelNvPairsEncodeError::Label { err }
     }
 }
 
-impl fmt::Display for NvPairsEncodeError {
+impl fmt::Display for LabelNvPairsEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NvPairsEncodeError::Label { err } => {
-                write!(f, "NvPairs encode error | {err}")
+            LabelNvPairsEncodeError::Label { err } => {
+                write!(f, "LabelNvPairs encode error | {err}")
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl error::Error for NvPairsEncodeError {
+impl error::Error for LabelNvPairsEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            NvPairsEncodeError::Label { err } => Some(err),
+            LabelNvPairsEncodeError::Label { err } => Some(err),
         }
     }
 }
@@ -589,7 +601,6 @@ impl error::Error for NvPairsEncodeError {
  * ```text
  * +--------------+--------+
  * | Blank        |   8192 |
- * +--------------+--------+
  * | BootHeader   |   8192 |
  * | NvPairs      | 114688 |
  * | UberBlock[0] |      X |
@@ -617,14 +628,11 @@ impl Label {
     pub const COUNT: usize = 4;
 
     /// Byte size of an encoded [`Label`] (256 KiB).
-    pub const SIZE: usize = Blank::SIZE + BootHeader::SIZE + NvPairs::SIZE + UberBlock::TOTAL_SIZE;
+    pub const SIZE: usize =
+        LabelBlank::SIZE + LabelBootHeader::SIZE + LabelNvPairs::SIZE + UberBlock::TOTAL_SIZE;
 
-    /// Number of sectors the start labels and boot block consume.
-    pub const LABEL_START_SECTORS: u64 =
-        ((BootBlock::SIZE + 2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
-
-    /// Number of sectors the end labels consume.
-    pub const LABEL_END_SECTORS: u64 = ((2 * Label::SIZE) >> SECTOR_SHIFT) as u64;
+    /// Size of and encoded [`Label`] in sectors.
+    pub const SECTORS: u64 = (Label::SIZE >> SECTOR_SHIFT) as u64;
 
     /** Gets label sector offsets for a virtual device size in sectors.
      *
@@ -635,10 +643,8 @@ impl Label {
     pub fn sectors(vdev_sectors: u64) -> Result<[u64; 4], LabelSectorsError> {
         debug_assert!(is_multiple_of_sector_size(Label::SIZE));
 
-        let size_sectors: u64 = (Label::SIZE >> SECTOR_SHIFT) as u64;
-
         // Check if vdev is too small.
-        if vdev_sectors < size_sectors * 4 {
+        if vdev_sectors < Label::SECTORS * 4 {
             return Err(LabelSectorsError::TooSmall {
                 sectors: vdev_sectors,
             });
@@ -648,11 +654,11 @@ impl Label {
             // L0
             0,
             // L1
-            size_sectors,
+            Label::SECTORS,
             // L2
-            vdev_sectors - 2 * size_sectors,
+            vdev_sectors - 2 * Label::SECTORS,
             // L3
-            vdev_sectors - size_sectors,
+            vdev_sectors - Label::SECTORS,
         ])
     }
 }
