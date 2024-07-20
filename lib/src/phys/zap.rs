@@ -1980,7 +1980,7 @@ impl error::Error for ZapHeaderEncodeError {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-pub const ZAP_LEAF_EOL: u16 = 0xffff;
+const ZAP_LEAF_EOL: u16 = 0xffff;
 
 /** Mask for [`ZapLeafHeader`] indicating if the entry chain is sorted by
  * increasing collision differentiator.
