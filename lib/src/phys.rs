@@ -58,8 +58,11 @@ pub(crate) mod label;
 pub use label::{
     BootBlock, BootBlockDecodeError, BootBlockEncodeError, Label, LabelBlank,
     LabelBlankDecodeError, LabelBlankEncodeError, LabelBootHeader, LabelBootHeaderDecodeError,
-    LabelBootHeaderEncodeError, LabelNvPairs, LabelNvPairsDecodeError, LabelNvPairsEncodeError,
-    LabelSectorsError,
+    LabelBootHeaderEncodeError, LabelConfig, LabelConfigDecodeError, LabelConfigL2Cache,
+    LabelConfigSpare, LabelConfigStorage, LabelNvPairs, LabelNvPairsDecodeError,
+    LabelNvPairsEncodeError, LabelSectorsError, LabelVdevChild, LabelVdevTree,
+    LabelVdevTreeDecodeError, LabelVdevTreeDisk, LabelVdevTreeFile, LabelVdevTreeMirror,
+    LabelVdevTreeRaidZ, LabelVdevTreeType,
 };
 
 pub(crate) mod nv;

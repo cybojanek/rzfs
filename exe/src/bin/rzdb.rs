@@ -999,8 +999,9 @@ fn dump_nv_list(list: &phys::NvList, depth: usize) -> Result<(), Box<dyn Error>>
             }
             phys::NvDataValue::NvListArray(array) => {
                 println!();
-                for res in &array {
+                for (idx, res) in array.iter().enumerate() {
                     let list = res?;
+                    println!("{:width$}{}[{}]", "", nv_pair.name, idx, width = depth);
                     dump_nv_list(&list, depth + 4)?;
                 }
             }
@@ -1134,15 +1135,32 @@ fn dump() -> Result<(), Box<dyn Error>> {
             &mut sha256,
         )?;
 
-        let nv_decoder = phys::NvList::from_bytes(&nv_pairs.payload)?;
-        dump_nv_list(&nv_decoder, 0)?;
+        let nv_list = phys::NvList::from_bytes(&nv_pairs.payload)?;
+        dump_nv_list(&nv_list, 0)?;
+
+        let pool = phys::LabelConfig::from_list(&nv_list).unwrap();
+        println!("Pool: {pool:#?}");
+
+        let pool = match pool {
+            phys::LabelConfig::L2Cache(_) => todo!("Handle cache device"),
+            phys::LabelConfig::Spare(_) => todo!("Handle spare device"),
+            phys::LabelConfig::Storage(storage) => storage,
+        };
+
+        if let Some(children) = pool.vdev_tree.vdev_type.children() {
+            for nv_child in &children {
+                let nv_child = nv_child?;
+                let child =
+                    phys::LabelVdevChild::from_list_direct(&nv_child, nv_child.data()).unwrap();
+                println!("Child: {child:#?}");
+            }
+        }
 
         ////////////////////////////////
-        // Get the ashift value for the vdev_tree.
-        let vdev_tree = nv_decoder.get_nv_list("vdev_tree")?.unwrap();
-        let spa_version = phys::SpaVersion::try_from(nv_decoder.get_u64("version")?.unwrap())?;
-        let ashift = vdev_tree.get_u64("ashift")?.unwrap();
-        let label_txg = nv_decoder.get_u64("txg")?.unwrap();
+        // Get the ashift value.
+        let spa_version = pool.version;
+        let ashift = pool.vdev_tree.allocate_shift;
+        let label_txg = pool.txg;
 
         let mut max_uberblock: Option<phys::UberBlock> = None;
 
@@ -1192,7 +1210,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         }
 
         if let Some(uberblock) = max_uberblock {
-            dump_root(&block_devices, &nv_decoder, &uberblock)?;
+            dump_root(&block_devices, &nv_list, &uberblock)?;
             break;
         }
     }
