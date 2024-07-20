@@ -905,31 +905,30 @@ impl ZapMicroIterator<'_> {
         })
     }
 
-    /** Gets the next entry or [None] if no more entries.
-     *
-     * # Errors
-     *
-     * Returns [`ZapMicroEntryDecodeError`] on error.
-     */
-    pub fn next_entry(&mut self) -> Result<Option<ZapMicroEntryRef<'_>>, ZapMicroEntryDecodeError> {
-        while !self.decoder.is_empty() {
-            // Get the next entry.
-            let entry_opt = ZapMicroEntryRef::from_decoder(&self.decoder)?;
-
-            // Skip empty entries.
-            if entry_opt.is_none() {
-                continue;
-            }
-
-            return Ok(entry_opt);
-        }
-
-        Ok(None)
-    }
-
     /// Resets the iterator.
     pub fn reset(&mut self) {
         self.decoder.reset();
+    }
+}
+
+impl<'a> Iterator for &'a ZapMicroIterator<'_> {
+    type Item = Result<ZapMicroEntryRef<'a>, ZapMicroEntryDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        while !self.decoder.is_empty() {
+            // Get the next entry.
+            let entry_opt = match ZapMicroEntryRef::from_decoder(&self.decoder) {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+
+            match entry_opt {
+                Some(entry) => return Some(Ok(entry)),
+                None => continue,
+            };
+        }
+
+        None
     }
 }
 
