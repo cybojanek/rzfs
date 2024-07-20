@@ -74,6 +74,12 @@ pub use object_set::{
     ObjectSetTypeError,
 };
 
+pub(crate) mod pool;
+pub use pool::{
+    PoolConfigKey, PoolConfigKeyDecodeError, PoolErrata, PoolErrataDecodeError, PoolState,
+    PoolStateDecodeError,
+};
+
 pub(crate) mod sector;
 pub use sector::{is_multiple_of_sector_size, IsMultipleOfSectorSize, SECTOR_SHIFT};
 
