@@ -363,22 +363,20 @@ fn dnode_dump_zap(
     match zap_header {
         phys::ZapHeader::Micro(_) => {
             decoder.reset();
-            let mut zap_micro_iter = phys::ZapMicroIterator::from_decoder(&decoder)?;
+            let zap_micro_iter = phys::ZapMicroIterator::from_decoder(&decoder)?;
 
-            loop {
-                match zap_micro_iter.next_entry()? {
-                    Some(entry) => {
-                        println!(
-                            "{:width$}{} -> {}",
-                            "",
-                            entry.name,
-                            entry.value,
-                            width = depth,
-                        );
-                    }
-                    None => return Ok(()),
-                }
+            for entry_res in &zap_micro_iter {
+                let entry = entry_res?;
+                println!(
+                    "{:width$}{} -> {}",
+                    "",
+                    entry.name,
+                    entry.value,
+                    width = depth,
+                );
             }
+
+            Ok(())
         }
         phys::ZapHeader::Mega(zap_mega_header) => {
             let (padding, leaves_count) =
@@ -662,9 +660,10 @@ fn dump_dsl_dataset(
                                         &acl.aces[0..(acl.size) as usize],
                                         order,
                                     );
-                                    let mut iterator = phys::AceV1Iterator::from_decoder(&decoder)?;
-                                    for _ in 0..acl.count {
-                                        let ace = iterator.next_entry()?.unwrap();
+                                    let iterator = phys::AceV1Iterator::from_decoder(&decoder)?;
+                                    for (index, ace_res) in iterator.enumerate() {
+                                        let ace = ace_res?;
+                                        assert!(index < acl.count.into());
                                         println!(
                                             "{:width$}  AceV1: {:?}",
                                             "",

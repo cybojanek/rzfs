@@ -875,16 +875,22 @@ impl AceV1Iterator<'_> {
         })
     }
 
-    /** Gets the ACE or [None] if no more entries.
-     *
-     * # Errors
-     *
-     * Returns [`AceDecodeError`] on error.
-     */
-    pub fn next_entry(&mut self) -> Result<Option<AceV1>, AceDecodeError> {
+    /// Resets the iterator.
+    pub fn reset(&mut self) {
+        self.decoder.reset();
+    }
+}
+
+impl Iterator for AceV1Iterator<'_> {
+    type Item = Result<AceV1, AceDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         if !self.decoder.is_empty() {
             // Decode header.
-            let header = AceV1Header::from_decoder(&self.decoder)?;
+            let header = match AceV1Header::from_decoder(&self.decoder) {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
 
             // Decode body based on ACE type.
             match header.ace_type {
@@ -892,37 +898,42 @@ impl AceV1Iterator<'_> {
                 | AceType::AccessDenyObject
                 | AceType::SystemAuditObject
                 | AceType::SystemAlarmObject => {
+                    let object_guid = match self.decoder.get_bytes(16) {
+                        Ok(v) => v.try_into().unwrap(),
+                        Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
+                    };
+                    let inherit_guid = match self.decoder.get_bytes(16) {
+                        Ok(v) => v.try_into().unwrap(),
+                        Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
+                    };
                     let ace_object = AceV1Object {
                         header,
-                        object_guid: self.decoder.get_bytes(16)?.try_into().unwrap(),
-                        inherit_guid: self.decoder.get_bytes(16)?.try_into().unwrap(),
+                        object_guid,
+                        inherit_guid,
                     };
-                    return Ok(Some(AceV1::Object(ace_object)));
+                    return Some(Ok(AceV1::Object(ace_object)));
                 }
                 AceType::Allow | AceType::Deny => match header.flags & AceFlag::TYPE {
                     AceFlag::OWNER | AceFlag::OWNING_GROUP | AceFlag::EVERYONE => {
                         let ace_simple = AceV1Simple { header };
-                        return Ok(Some(AceV1::Simple(ace_simple)));
+                        return Some(Ok(AceV1::Simple(ace_simple)));
                     }
                     _ => (),
                 },
                 _ => (),
             }
 
-            let ace_id = AceV1Id {
-                header,
-                id: self.decoder.get_u64()?,
+            let id = match self.decoder.get_u64() {
+                Ok(v) => v,
+                Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
             };
 
-            return Ok(Some(AceV1::Id(ace_id)));
+            let ace_id = AceV1Id { header, id };
+
+            return Some(Ok(AceV1::Id(ace_id)));
         }
 
-        Ok(None)
-    }
-
-    /// Resets the iterator.
-    pub fn reset(&mut self) {
-        self.decoder.reset();
+        None
     }
 }
 
