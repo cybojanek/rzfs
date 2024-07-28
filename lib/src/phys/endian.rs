@@ -274,6 +274,36 @@ impl EndianDecoder<'_> {
         self.data.len()
     }
 
+    /** Returns the source data.
+     *
+     * Remains unchanged while decoding values.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
+     *
+     * // Some bytes (big endian).
+     * let data = &[
+     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+     *     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
+     * assert_eq!(decoder.data(), data);
+     *
+     * // Data remains unchanged while decoding.
+     * decoder.get_u64().unwrap();
+     * assert_eq!(decoder.data(), data);
+     * ```
+     */
+    pub fn data(&self) -> &[u8] {
+        self.data
+    }
+
     /** Returns true if there are no more bytes to decode.
      *
      * # Examples
@@ -684,6 +714,7 @@ impl EndianDecoder<'_> {
      * # Errors
      *
      * Returns [`EndianDecodeError`] if there are not enough bytes to decode.
+     * In case of error, offset remains unchanged.
      *
      * # Examples
      *
@@ -708,6 +739,53 @@ impl EndianDecoder<'_> {
      * assert!(decoder.get_bytes(2).is_err());
      */
     pub fn get_bytes(&self, length: usize) -> Result<&[u8], EndianDecodeError> {
+        self.get_bytes_direct(length, self.data)
+    }
+
+    /** Decodes bytes.
+     *
+     * The same as [`EndianDecoder::get_bytes`], but returns a value, whose
+     * lifetime is tied to the input `data`, which must be the same `data` as
+     * was used to create the [`EndianDecoder`].
+     *
+     * # Errors
+     *
+     * Returns [`EndianDecodeError`] if there are not enough bytes to decode, or
+     * `data` pointer does not match.
+     * In case of error, offset remains unchanged.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
+     *
+     * // Some bytes (big endian).
+     * let data = &[0xf2, 0x34, 0x56, 0x78];
+     *
+     * // Create decoder.
+     * let decoder = EndianDecoder::from_bytes(data, EndianOrder::Big);
+     *
+     * // Get bytes.
+     * let a = decoder.get_bytes_direct(2, data).unwrap();
+     * let b = decoder.get_bytes_direct(1, data).unwrap();
+     * assert_eq!(a, [0xf2, 0x34]);
+     * assert_eq!(b, [0x56]);
+     *
+     * // Incorrect slice.
+     * decoder.reset();
+     * assert!(decoder.get_bytes_direct(1, &data[1..]).is_err());
+     */
+    pub fn get_bytes_direct<'a>(
+        &self,
+        length: usize,
+        data: &'a [u8],
+    ) -> Result<&'a [u8], EndianDecodeError> {
+        if !core::ptr::eq(self.data, data) {
+            return Err(EndianDecodeError::DataMismatch {});
+        }
+
         // Check bounds for length.
         self.check_need(length)?;
 
@@ -716,7 +794,7 @@ impl EndianDecoder<'_> {
         let end = start + length;
 
         // Consume bytes.
-        let value = &self.data[start..end];
+        let value = &data[start..end];
         self.offset.set(end);
 
         // Return bytes.
@@ -926,6 +1004,9 @@ impl GetFromEndianDecoder for u64 {
 /// [`EndianDecoder`] error.
 #[derive(Debug)]
 pub enum EndianDecodeError {
+    /// Data mismatch
+    DataMismatch {},
+
     /// End of input data.
     EndOfInput {
         /// Byte offset of data.
@@ -967,6 +1048,10 @@ pub enum EndianDecodeError {
 impl fmt::Display for EndianDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            EndianDecodeError::DataMismatch {} => write!(
+                f,
+                "Endian decode error, provided data slice does not match decoder data slice"
+            ),
             EndianDecodeError::EndOfInput {
                 offset,
                 capacity,
