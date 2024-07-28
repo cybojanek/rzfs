@@ -129,6 +129,33 @@ impl XdrDecoder<'_> {
         self.data.len()
     }
 
+    /** Returns the source data.
+     *
+     * Remains unchanged while decoding values.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * let data = &[
+     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+     *     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+     * ];
+     * let decoder = XdrDecoder::from_bytes(data);
+     * assert_eq!(decoder.data(), data);
+     *
+     * // Data remains unchanged while decoding.
+     * decoder.get_u64().unwrap();
+     * assert_eq!(decoder.data(), data);
+     * ```
+     */
+    pub fn data(&self) -> &[u8] {
+        self.data
+    }
+
     /** Returns true if there are no more bytes to decode.
      *
      * # Examples
@@ -477,6 +504,57 @@ impl XdrDecoder<'_> {
      * ```
      */
     pub fn get_bytes(&self, length: usize) -> Result<&[u8], XdrDecodeError> {
+        self.get_bytes_direct(length, self.data)
+    }
+
+    /** Decodes bytes.
+     *
+     * The same as [`XdrDecoder::get_bytes`], but returns a value, whose lifetime
+     * is tied to the input `data`, which must be the same `data` as was used to
+     * create the [`XdrDecoder`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrDecodeError`] if there are not enough bytes available, or
+     * `data` pointer does not match.
+     * In case of error, offset remains unchanged.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * // Some bytes.
+     * let data = &[0x12, 0x34, 0x56, 0x78, 0x61, 0x62, 0x63, 0x00];
+     *
+     * // Create decoder.
+     * let decoder = XdrDecoder::from_bytes(data);
+     *
+     * // Decode values.
+     * let a = decoder.get_bytes_direct(4, data).unwrap();
+     * let b = decoder.get_bytes_direct(4, data).unwrap();
+     * let d = [0x12, 0x34, 0x56, 0x78];
+     * let e = [0x61, 0x62, 0x63, 0x00];
+     *
+     * assert_eq!(a, d);
+     * assert_eq!(b, e);
+     *
+     * // Incorrect slice.
+     * decoder.reset();
+     * assert!(decoder.get_bytes_direct(4, &data[1..5]).is_err());
+     * ```
+     */
+    pub fn get_bytes_direct<'a>(
+        &self,
+        length: usize,
+        data: &'a [u8],
+    ) -> Result<&'a [u8], XdrDecodeError> {
+        if !core::ptr::eq(self.data, data) {
+            return Err(XdrDecodeError::DataMismatch {});
+        }
+
         // Compute padding.
         let remainder = length % 4;
         let padding = if remainder == 0 { 0 } else { 4 - remainder };
@@ -501,7 +579,7 @@ impl XdrDecoder<'_> {
         let end = start + length;
 
         // Consume bytes.
-        let value = &self.data[start..end];
+        let value = &data[start..end];
         self.offset.set(start + padded_length);
 
         // TODO(cybojanek): Check padding is zero?
@@ -603,11 +681,53 @@ impl XdrDecoder<'_> {
      * ```
      */
     pub fn get_byte_array(&self) -> Result<&[u8], XdrDecodeError> {
+        self.get_byte_array_direct(self.data)
+    }
+
+    /** Decodes a [`&[u8]`].
+     *
+     * The same as [`XdrDecoder::get_byte_array`], but returns a value, whose
+     * lifetime is tied to the input `data`, which must be the same `data` as
+     * was used to create the [`XdrDecoder`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrDecodeError`] if there are not enough bytes available, or
+     * `data` pointer does not match.
+     * In case of error, offset remains unchanged.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * // Some bytes.
+     * let data = &[
+     *     0x00, 0x00, 0x00, 0x03, 0x61, 0x62, 0x63, 0x00,
+     *     0x00, 0x00, 0x00, 0x0c, 0x61, 0x62, 0x63, 0x64,
+     *     0x00, 0x00, 0x00, 0x03, 0x61, 0x62, 0x63,
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = XdrDecoder::from_bytes(data);
+     *
+     * // Decode values.
+     * let a = decoder.get_byte_array_direct(data).unwrap();
+     * let d = [0x61, 0x62, 0x63];
+     *
+     * assert_eq!(a, d);
+     *
+     * // Incorrect slice.
+     * decoder.reset();
+     * assert!(decoder.get_byte_array_direct(&data[1..]).is_err());
+     * ```
+     */
+    pub fn get_byte_array_direct<'a>(&self, data: &'a [u8]) -> Result<&'a [u8], XdrDecodeError> {
         let offset = self.offset.get();
 
         let length = self.get_usize()?;
 
-        let res = self.get_bytes(length);
+        let res = self.get_bytes_direct(length, data);
         if res.is_err() {
             self.offset.set(offset);
         }
@@ -1096,9 +1216,51 @@ impl XdrDecoder<'_> {
      * ```
      */
     pub fn get_str(&self) -> Result<&str, XdrDecodeError> {
+        self.get_str_direct(self.data)
+    }
+
+    /** Decodes a [`str`].
+     *
+     * The same as [`XdrDecoder::get_str`], but returns a value, whose lifetime
+     * is tied to the input `data`, which must be the same `data` as was used to
+     * create the [`XdrDecoder`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrDecodeError`] if there are not enough bytes available, or
+     * `data` pointer does not match., or the bytes are not a valid UTF8 string.
+     * In case of error, offset remains unchanged.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * // Some bytes.
+     * let data = &[
+     *     0x00, 0x00, 0x00, 0x03, 0x61, 0x62, 0x63, 0x00,
+     *     0x00, 0x00, 0x00, 0x02, 0x64, 0x65, 0x00, 0x00,
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = XdrDecoder::from_bytes(data);
+     *
+     * // Decode values.
+     * let a = decoder.get_str_direct(data).unwrap();
+     * let b = decoder.get_str_direct(data).unwrap();
+     *
+     * assert_eq!(a, "abc");
+     * assert_eq!(b, "de");
+     *
+     * // Incorrect slice.
+     * decoder.reset();
+     * assert!(decoder.get_str_direct(&data[1..]).is_err());
+     * ```
+     */
+    pub fn get_str_direct<'a>(&self, data: &'a [u8]) -> Result<&'a str, XdrDecodeError> {
         let offset = self.offset.get();
         let length = self.get_usize()?;
-        let data = self.get_bytes(length)?;
+        let data = self.get_bytes_direct(length, data)?;
 
         match core::str::from_utf8(data) {
             Ok(v) => Ok(v),
@@ -1258,6 +1420,9 @@ impl GetFromXdrDecoder for usize {
 /// [`XdrDecoder`] error.
 #[derive(Debug)]
 pub enum XdrDecodeError {
+    /// Data mismatch
+    DataMismatch {},
+
     /// End of input data.
     EndOfInput {
         /// Byte offset of data.
@@ -1374,6 +1539,10 @@ pub enum XdrDecodeError {
 impl fmt::Display for XdrDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            XdrDecodeError::DataMismatch {} => write!(
+                f,
+                "XDR decode error, provided data slice does not match decoder data slice"
+            ),
             XdrDecodeError::EndOfInput {
                 offset,
                 capacity,
