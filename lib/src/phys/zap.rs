@@ -646,6 +646,23 @@ impl ZapMicroEntryRef<'_> {
     pub fn from_decoder<'a>(
         decoder: &'a EndianDecoder<'_>,
     ) -> Result<Option<ZapMicroEntryRef<'a>>, ZapMicroEntryDecodeError> {
+        ZapMicroEntryRef::from_decoder_direct(decoder, decoder.data())
+    }
+
+    /** Decodes a [`ZapMicroEntryRef`]. Returns [`None`] if [`ZapMicroEntryRef`] is empty.
+     *
+     * The same as [`ZapMicroEntryRef::from_decoder`], but returns a value,
+     * whose lifetime is tied to the input `data`, which must be the same `data`
+     * as was used to create the [`EndianDecodeError`].
+     *
+     * # Errors
+     *
+     * Returns [`ZapMicroEntryDecodeError`] on error.
+     */
+    pub fn from_decoder_direct<'a>(
+        decoder: &EndianDecoder<'_>,
+        data: &'a [u8],
+    ) -> Result<Option<ZapMicroEntryRef<'a>>, ZapMicroEntryDecodeError> {
         ////////////////////////////////
         // Check for an empty ZapMicroEntryRef.
         if decoder.is_zero_skip(ZapMicroEntryRef::SIZE)? {
@@ -666,7 +683,7 @@ impl ZapMicroEntryRef<'_> {
 
         ////////////////////////////////
         // Decode name.
-        let name = decoder.get_bytes(ZapMicroEntryRef::NAME_MAX + 1)?;
+        let name = decoder.get_bytes_direct(ZapMicroEntryRef::NAME_MAX + 1, data)?;
 
         ////////////////////////////////
         // Error if it was not NULL terminated.
@@ -903,6 +920,32 @@ impl ZapMicroIterator<'_> {
             header,
             decoder: EndianDecoder::from_bytes(entries, decoder.order()),
         })
+    }
+
+    /** Gets the next [`ZapMicroEntryRef`].
+     *
+     * The same as [`ZapMicroIterator`] [`Iterator::next`] but returns a value,
+     * whose lifetime is tied to the input `data`, which must be the same `data`
+     * as was used to create the [`EndianDecoder`].
+     */
+    pub fn next_direct<'a>(
+        &mut self,
+        data: &'a [u8],
+    ) -> Option<Result<ZapMicroEntryRef<'a>, ZapMicroEntryDecodeError>> {
+        while !self.decoder.is_empty() {
+            // Get the next entry.
+            let entry_opt = match ZapMicroEntryRef::from_decoder_direct(&self.decoder, data) {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+
+            match entry_opt {
+                Some(entry) => return Some(Ok(entry)),
+                None => continue,
+            };
+        }
+
+        None
     }
 
     /// Resets the iterator.
