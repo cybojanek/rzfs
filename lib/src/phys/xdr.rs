@@ -32,6 +32,8 @@ use std::error;
 pub struct XdrDecoder<'a> {
     data: &'a [u8],
     offset: Cell<usize>,
+    min_offset: usize,
+    max_offset: usize,
 }
 
 impl fmt::Debug for XdrDecoder<'_> {
@@ -40,12 +42,13 @@ impl fmt::Debug for XdrDecoder<'_> {
         f.debug_struct("XdrDecoder")
             .field("length", &self.data.len())
             .field("offset", &self.offset.get())
+            .field("max_offset", &self.max_offset)
             .finish()
     }
 }
 
 impl XdrDecoder<'_> {
-    /** EndianDecoder an [`XdrDecoder`] from a slice of bytes.
+    /** Initializes an [`XdrDecoder`] from a slice of bytes.
      *
      * # Examples
      *
@@ -78,7 +81,58 @@ impl XdrDecoder<'_> {
         XdrDecoder {
             data,
             offset: Cell::new(0),
+            min_offset: 0,
+            max_offset: data.len(),
         }
+    }
+
+    /** Initializes an [`XdrDecoder`] from a slice of clamped bytes.
+     *
+     * The same as [`XdrDecoder::from_bytes`], but clamps minimum and maximum
+     * offsets.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrDecoder;
+     *
+     * // Some bytes.
+     * let data = &[
+     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+     *     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = XdrDecoder::from_bytes_clamped(data, 8, 4).unwrap();
+     * assert_eq!(decoder.len(), 4);
+     *
+     * // Decode bytes.
+     * let a = decoder.get_bytes_direct(4, data).unwrap();
+     * let d = [0x11, 0x22, 0x33, 0x44];
+     * assert_eq!(a, d);
+     * ```
+     */
+    pub fn from_bytes_clamped(
+        data: &[u8],
+        offset: usize,
+        length: usize,
+    ) -> Result<XdrDecoder<'_>, XdrDecodeError> {
+        if offset > data.len() || data.len() - offset < length {
+            return Err(XdrDecodeError::InvalidClamp {
+                capacity: data.len(),
+                offset,
+                length,
+            });
+        }
+
+        Ok(XdrDecoder {
+            data,
+            offset: Cell::new(offset),
+            min_offset: offset,
+            max_offset: offset + length,
+        })
     }
 
     /** Checks if there are enough bytes to decode from the data slice.
@@ -93,6 +147,7 @@ impl XdrDecoder<'_> {
         } else {
             Err(XdrDecodeError::EndOfInput {
                 offset: self.offset.get(),
+                max_offset: self.max_offset,
                 capacity: self.capacity(),
                 count,
             })
@@ -123,10 +178,17 @@ impl XdrDecoder<'_> {
      *
      * decoder.get_u64().unwrap();
      * assert_eq!(decoder.capacity(), data.len());
+     *
+     * /// For clamped, it is the clamped length.
+     * let decoder = XdrDecoder::from_bytes_clamped(data, 4, 8).unwrap();
+     * assert_eq!(decoder.capacity(), 8);
+     *
+     * decoder.get_u64().unwrap();
+     * assert_eq!(decoder.capacity(), 8);
      * ```
      */
     pub fn capacity(&self) -> usize {
-        self.data.len()
+        self.max_offset.saturating_sub(self.min_offset)
     }
 
     /** Returns the source data.
@@ -211,7 +273,7 @@ impl XdrDecoder<'_> {
      */
     pub fn len(&self) -> usize {
         // Gracefully handle offset errors, and just return 0.
-        self.data.len().saturating_sub(self.offset.get())
+        self.max_offset.saturating_sub(self.offset.get())
     }
 
     /** Gets the current offset in bytes.
@@ -267,7 +329,7 @@ impl XdrDecoder<'_> {
      * ```
      */
     pub fn reset(&self) {
-        self.offset.set(0);
+        self.offset.set(self.min_offset);
     }
 
     /** Rewinds `count` bytes.
@@ -313,8 +375,13 @@ impl XdrDecoder<'_> {
         }
 
         let offset = self.offset.get();
-        if count > offset {
-            return Err(XdrDecodeError::RewindPastStart { offset, count });
+        let min_offset = self.min_offset;
+        if count > offset || offset - count < self.min_offset {
+            return Err(XdrDecodeError::RewindPastStart {
+                offset,
+                min_offset,
+                count,
+            });
         }
         self.offset.set(offset - count);
 
@@ -365,9 +432,11 @@ impl XdrDecoder<'_> {
             return Err(XdrDecodeError::SeekAlignment { offset });
         }
 
-        if offset > self.data.len() {
+        let max_offset = self.max_offset;
+        if offset > max_offset {
             return Err(XdrDecodeError::SeekPastEnd {
                 offset,
+                max_offset,
                 capacity: self.capacity(),
             });
         }
@@ -565,6 +634,7 @@ impl XdrDecoder<'_> {
             None => {
                 return Err(XdrDecodeError::EndOfInput {
                     offset: self.offset.get(),
+                    max_offset: self.max_offset,
                     capacity: self.capacity(),
                     count: length,
                 })
@@ -1427,6 +1497,8 @@ pub enum XdrDecodeError {
     EndOfInput {
         /// Byte offset of data.
         offset: usize,
+        /// Maximum offset.
+        max_offset: usize,
         /// Total capacity of data.
         capacity: usize,
         /// Number of bytes needed.
@@ -1439,6 +1511,16 @@ pub enum XdrDecodeError {
         offset: usize,
         /// Value.
         value: u32,
+    },
+
+    /// Invalid clamp.
+    InvalidClamp {
+        /// Total capacity of data.
+        capacity: usize,
+        /// Offset.
+        offset: usize,
+        /// Length.
+        length: usize,
     },
 
     /// Invalid str.
@@ -1491,6 +1573,8 @@ pub enum XdrDecodeError {
     RewindPastStart {
         /// Byte offset of data.
         offset: usize,
+        /// Minimum offset.
+        min_offset: usize,
         /// Number of bytes needed to rewind.
         count: usize,
     },
@@ -1505,6 +1589,8 @@ pub enum XdrDecodeError {
     SeekPastEnd {
         /// Requested offset.
         offset: usize,
+        /// Maximum offset.
+        max_offset: usize,
         /// Total capacity of data.
         capacity: usize,
     },
@@ -1545,16 +1631,27 @@ impl fmt::Display for XdrDecodeError {
             ),
             XdrDecodeError::EndOfInput {
                 offset,
+                max_offset,
                 capacity,
                 count,
             } => {
                 write!(
                     f,
-                    "XDR decode error, end of input at offset {offset} capacity {capacity} count {count}"
+                    "XDR decode error, end of input at offset {offset} max_offset {max_offset} capacity {capacity} count {count}"
                 )
             }
             XdrDecodeError::InvalidBoolean { offset, value } => {
                 write!(f, "XDR invalid boolean at offset {offset} value {value}")
+            }
+            XdrDecodeError::InvalidClamp {
+                capacity,
+                offset,
+                length,
+            } => {
+                write!(
+                    f,
+                    "XDR decode error, invalid clamp offset {offset} length {length}) for capacity {capacity}"
+                )
             }
             XdrDecodeError::InvalidStr {
                 offset,
@@ -1584,16 +1681,24 @@ impl fmt::Display for XdrDecodeError {
             XdrDecodeError::RewindAlignment { count } => {
                 write!(f, "XDR rewind not a multiple of 4 {count}")
             }
-            XdrDecodeError::RewindPastStart { offset, count } => {
-                write!(f, "XDR rewind past start at offset {offset} count {count}")
+            XdrDecodeError::RewindPastStart {
+                offset,
+                min_offset,
+                count,
+            } => {
+                write!(f, "XDR rewind past start at offset {offset} min_offset {min_offset} count {count}")
             }
             XdrDecodeError::SeekAlignment { offset } => {
                 write!(f, "XDR seek not a multiple of 4 {offset}")
             }
-            XdrDecodeError::SeekPastEnd { offset, capacity } => {
+            XdrDecodeError::SeekPastEnd {
+                offset,
+                max_offset,
+                capacity,
+            } => {
                 write!(
                     f,
-                    "XDR decode error, seek past end to offset {offset} capacity {capacity}"
+                    "XDR decode error, seek past end to offset {offset} max_offset {max_offset} capacity {capacity}"
                 )
             }
             XdrDecodeError::U8Conversion { offset, value, err } => {

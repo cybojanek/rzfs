@@ -641,11 +641,24 @@ impl FeatureSet {
     pub fn from_decoder<'a>(
         decoder: &'a NvDecoder<'_>,
     ) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
+        FeatureSet::from_decoder_direct(decoder, decoder.data())
+    }
+
+    /** Decodes a [`FeatureSet`].
+     *
+     * # Errors
+     *
+     * Returns [`FeatureSetDecodeError`] in case of decoding error.
+     */
+    pub fn from_decoder_direct<'a>(
+        decoder: &NvDecoder<'_>,
+        data: &'a [u8],
+    ) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
         // Bitmap of features.
         let mut features = 0;
 
         // Decode the next pair.
-        while let Some(pair) = decoder.next_pair()? {
+        while let Some(pair) = decoder.next_pair_direct(data)? {
             // Check the pair is a bool flag.
             pair.get_bool_flag()?;
 

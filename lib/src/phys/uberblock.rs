@@ -274,6 +274,7 @@ impl UberBlock {
                 return Err(UberBlockDecodeError::Endian {
                     err: EndianDecodeError::EndOfInput {
                         offset: decoder.offset(),
+                        max_offset: bytes.len(),
                         capacity: decoder.capacity(),
                         count: ChecksumTail::SIZE,
                     },

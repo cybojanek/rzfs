@@ -85,6 +85,8 @@ const LITTLE_ENDIAN_DECODER: EndianDecoderImpl = EndianDecoderImpl {
 pub struct EndianDecoder<'a> {
     data: &'a [u8],
     offset: Cell<usize>,
+    min_offset: usize,
+    max_offset: usize,
     decoder: EndianDecoderImpl,
 }
 
@@ -128,11 +130,66 @@ impl EndianDecoder<'_> {
         EndianDecoder {
             data,
             offset: Cell::new(0),
+            min_offset: 0,
+            max_offset: data.len(),
             decoder: match order {
                 EndianOrder::Big => BIG_ENDIAN_DECODER,
                 EndianOrder::Little => LITTLE_ENDIAN_DECODER,
             },
         }
+    }
+
+    /** Initializes a [`EndianDecoder`] based on the supplied [`EndianOrder`] value.
+     *
+     * The same as [`EndianDecoder::from_bytes`], but clamps minimum and maximum
+     * offsets.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::{EndianDecoder, EndianOrder};
+     *
+     * // Some bytes (big endian).
+     * let data = &[
+     *     0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
+     *     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+     * ];
+     *
+     * // Create decoder.
+     * let decoder = EndianDecoder::from_bytes_clamped(
+     *     data, EndianOrder::Big, 8, 4).unwrap();
+     * assert_eq!(decoder.len(), 4);
+     *
+     * // Decode bytes.
+     * let a = decoder.get_bytes_direct(4, data).unwrap();
+     * let d = [0x11, 0x22, 0x33, 0x44];
+     * assert_eq!(a, d);
+     * ```
+     */
+    pub fn from_bytes_clamped(
+        data: &[u8],
+        order: EndianOrder,
+        offset: usize,
+        length: usize,
+    ) -> Result<EndianDecoder<'_>, EndianDecodeError> {
+        if offset > data.len() || data.len() - offset < length {
+            return Err(EndianDecodeError::InvalidClamp {
+                capacity: data.len(),
+                offset,
+                length,
+            });
+        }
+
+        Ok(EndianDecoder {
+            data,
+            offset: Cell::new(offset),
+            min_offset: offset,
+            max_offset: offset + length,
+            decoder: match order {
+                EndianOrder::Big => BIG_ENDIAN_DECODER,
+                EndianOrder::Little => LITTLE_ENDIAN_DECODER,
+            },
+        })
     }
 
     /** Initializes a [`EndianDecoder`] based on the expected magic value.
@@ -235,6 +292,7 @@ impl EndianDecoder<'_> {
         } else {
             Err(EndianDecodeError::EndOfInput {
                 offset: self.offset.get(),
+                max_offset: self.max_offset,
                 capacity: self.capacity(),
                 count,
             })
@@ -268,10 +326,18 @@ impl EndianDecoder<'_> {
      *
      * decoder.get_u64().unwrap();
      * assert_eq!(decoder.capacity(), data.len());
+     *
+     * /// For clamped, it is the clamped length.
+     * let decoder = EndianDecoder::from_bytes_clamped(
+     *     data, EndianOrder::Big, 4, 8).unwrap();
+     * assert_eq!(decoder.capacity(), 8);
+     *
+     * decoder.get_u64().unwrap();
+     * assert_eq!(decoder.capacity(), 8);
      * ```
      */
     pub fn capacity(&self) -> usize {
-        self.data.len()
+        self.max_offset.saturating_sub(self.min_offset)
     }
 
     /** Returns the source data.
@@ -358,7 +424,7 @@ impl EndianDecoder<'_> {
      */
     pub fn len(&self) -> usize {
         // Gracefully handle offset errors, and just return 0.
-        self.data.len().saturating_sub(self.offset.get())
+        self.max_offset.saturating_sub(self.offset.get())
     }
 
     /** Gets the current offset in bytes.
@@ -435,7 +501,7 @@ impl EndianDecoder<'_> {
      * ```
      */
     pub fn reset(&self) {
-        self.offset.set(0);
+        self.offset.set(self.min_offset);
     }
 
     /** Rewinds `count` bytes.
@@ -470,10 +536,16 @@ impl EndianDecoder<'_> {
      */
     pub fn rewind(&self, count: usize) -> Result<(), EndianDecodeError> {
         let offset = self.offset.get();
-        if count > offset {
-            return Err(EndianDecodeError::RewindPastStart { offset, count });
+        let min_offset = self.min_offset;
+        if count > offset || offset - count < min_offset {
+            return Err(EndianDecodeError::RewindPastStart {
+                offset,
+                min_offset,
+                count,
+            });
         }
         self.offset.set(offset - count);
+
         Ok(())
     }
 
@@ -510,9 +582,11 @@ impl EndianDecoder<'_> {
      * ```
      */
     pub fn seek(&self, offset: usize) -> Result<(), EndianDecodeError> {
-        if offset > self.data.len() {
+        let max_offset = self.max_offset;
+        if offset > max_offset {
             return Err(EndianDecodeError::SeekPastEnd {
                 offset,
+                max_offset,
                 capacity: self.capacity(),
             });
         }
@@ -1011,6 +1085,8 @@ pub enum EndianDecodeError {
     EndOfInput {
         /// Byte offset of data.
         offset: usize,
+        /// Maximum offset.
+        max_offset: usize,
         /// Total capacity of data.
         capacity: usize,
         /// Number of bytes needed.
@@ -1025,6 +1101,16 @@ pub enum EndianDecodeError {
         actual: [u8; 8],
     },
 
+    /// Invalid clamp.
+    InvalidClamp {
+        /// Total capacity of data.
+        capacity: usize,
+        /// Offset.
+        offset: usize,
+        /// Length.
+        length: usize,
+    },
+
     /// Non-zero padding.
     NonZeroPadding {},
 
@@ -1032,6 +1118,8 @@ pub enum EndianDecodeError {
     RewindPastStart {
         /// Byte offset of data.
         offset: usize,
+        /// Minimum offset.
+        min_offset: usize,
         /// Number of bytes needed to rewind.
         count: usize,
     },
@@ -1040,6 +1128,8 @@ pub enum EndianDecodeError {
     SeekPastEnd {
         /// Requested offset.
         offset: usize,
+        /// Maximum offset.
+        max_offset: usize,
         /// Total capacity of data.
         capacity: usize,
     },
@@ -1054,12 +1144,13 @@ impl fmt::Display for EndianDecodeError {
             ),
             EndianDecodeError::EndOfInput {
                 offset,
+                max_offset,
                 capacity,
                 count,
             } => {
                 write!(
                     f,
-                    "Endian end of input at offset {offset} capacity {capacity} count {count}"
+                    "Endian end of input at offset {offset} max_offset {max_offset} capacity {capacity} count {count}"
                 )
             }
             EndianDecodeError::InvalidMagic { expected, actual } => write!(
@@ -1067,17 +1158,35 @@ impl fmt::Display for EndianDecodeError {
                 "Endian invalid magic expected 0x{expected:016x} actual {:#02x?}",
                 actual
             ),
-            EndianDecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
-            EndianDecodeError::RewindPastStart { offset, count } => {
+            EndianDecodeError::InvalidClamp {
+                capacity,
+                offset,
+                length,
+            } => {
                 write!(
                     f,
-                    "Endian rewind past start at offset {offset} count {count}"
+                    "Endian decode error, invalid clamp offset {offset} length {length}) for capacity {capacity}"
                 )
             }
-            EndianDecodeError::SeekPastEnd { offset, capacity } => {
+            EndianDecodeError::NonZeroPadding {} => write!(f, "Endian non-zero padding"),
+            EndianDecodeError::RewindPastStart {
+                offset,
+                min_offset,
+                count,
+            } => {
                 write!(
                     f,
-                    "Endian seek past end to offset {offset} capacity {capacity}"
+                    "Endian rewind past start at offset {offset} min_offset {min_offset} count {count}"
+                )
+            }
+            EndianDecodeError::SeekPastEnd {
+                offset,
+                max_offset,
+                capacity,
+            } => {
+                write!(
+                    f,
+                    "Endian seek past end to offset {offset} max_offset {max_offset} capacity {capacity}"
                 )
             }
         }
