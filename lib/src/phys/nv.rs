@@ -383,15 +383,17 @@ impl TryFrom<u32> for NvDataType {
 
 /** Checks the [`NvDataType`] and count are valid.
  *
+ * Returns the size of an element in a numerical array.
+ *
  * # Errors
  *
  * Returns [`NvDecodeError::InvalidCount`] if count is invalid.
  */
-fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<(), NvDecodeError> {
+fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<usize, NvDecodeError> {
     match data_type {
         // Boolean has no value.
         NvDataType::Boolean => match count {
-            0 => Ok(()),
+            0 => Ok(0),
             _ => Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
@@ -410,23 +412,24 @@ fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<(), NvDe
         | NvDataType::Int8
         | NvDataType::Uint8
         | NvDataType::Double => match count {
-            1 => Ok(()),
+            1 => Ok(0),
             _ => Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
         // Arrays have from 0 to N values.
-        NvDataType::ByteArray
+        NvDataType::BooleanArray
         | NvDataType::Int16Array
         | NvDataType::Uint16Array
         | NvDataType::Int32Array
         | NvDataType::Uint32Array
-        | NvDataType::Int64Array
-        | NvDataType::Uint64Array
-        | NvDataType::StringArray
-        | NvDataType::NvListArray
-        | NvDataType::BooleanArray
         | NvDataType::Int8Array
-        | NvDataType::Uint8Array => Ok(()),
+        | NvDataType::Uint8Array => Ok(4),
+
+        // Arrays have from 0 to N values.
+        NvDataType::Int64Array | NvDataType::Uint64Array => Ok(8),
+
+        // Arrays have from 0 to N values.
+        NvDataType::ByteArray | NvDataType::StringArray | NvDataType::NvListArray => Ok(0),
     }
 }
 
@@ -633,8 +636,13 @@ pub enum NvDecodedDataValue<'a> {
 /// A name value pair list decoder.
 #[derive(Debug)]
 pub struct NvDecoder<'a> {
+    /// Decoder.
     decoder: XdrDecoder<'a>,
+
+    /// Encoding.
     encoding: NvEncoding,
+
+    /// Order.
     order: EndianOrder,
 }
 
@@ -748,15 +756,15 @@ impl<'a> NvArrayDecoder<'a, NvDecoder<'a>> {
         // The length of the array is not actually known, so decode the array,
         // in order to increment offset of the outer decoder.
         if index < self.count {
-            // Get the rest of the bytes.
-            let starting_length = self.decoder.len();
-            let data = self.decoder.get_bytes(starting_length)?;
-
-            // Rewind decoder back.
-            self.decoder.rewind(starting_length)?;
-
             // Create a temporary decoder.
-            let decoder = NvDecoder::from_partial(self.encoding, self.order, data)?;
+            let starting_offset = self.decoder.offset();
+            let decoder = NvDecoder::from_partial(
+                self.decoder.data(),
+                self.decoder.offset(),
+                self.decoder.len(),
+                self.encoding,
+                self.order,
+            )?;
 
             // Decode until end of list or error.
             loop {
@@ -770,16 +778,22 @@ impl<'a> NvArrayDecoder<'a, NvDecoder<'a>> {
             }
 
             // Compute number of bytes used for this list.
-            let bytes_used = starting_length - decoder.decoder.len();
+            let bytes_used = decoder.decoder.offset() - starting_offset;
 
-            // Get bytes actually used.
-            let data = self.decoder.get_bytes(bytes_used)?;
+            // Decode bytes, but discard because data will be used.
+            self.decoder.get_bytes(bytes_used)?;
 
             // Increment index.
             self.index.set(index + 1);
 
             // Return decoder.
-            NvDecoder::from_partial(self.encoding, self.order, data)
+            NvDecoder::from_partial(
+                self.decoder.data(),
+                starting_offset,
+                bytes_used,
+                self.encoding,
+                self.order,
+            )
         } else {
             Err(NvDecodeError::EndOfArray {})
         }
@@ -1060,6 +1074,9 @@ impl NvDecodedPair<'_> {
 }
 
 impl NvDecoder<'_> {
+    /// Header byte size.
+    const HEADER_SIZE: usize = 4;
+
     /** Create a [`NvDecoder`] from a slice of bytes.
      *
      * # Errors.
@@ -1068,20 +1085,20 @@ impl NvDecoder<'_> {
      */
     pub fn from_bytes(data: &[u8]) -> Result<NvDecoder<'_>, NvDecodeError> {
         // Check that NvList header is not truncated.
-        if data.len() < 4 {
+        if data.len() < NvDecoder::HEADER_SIZE {
             return Err(NvDecodeError::EndOfInput {
                 offset: 0,
                 capacity: data.len(),
-                count: 4,
+                count: NvDecoder::HEADER_SIZE,
                 detail: "NV List header is truncated",
             });
         }
 
         // Get the first four bytes.
-        let (header, rest) = data.split_at(4);
+        let header = &data[0..NvDecoder::HEADER_SIZE];
 
         let encoding = NvEncoding::try_from(header[0])?;
-        let endian = NvEndianOrder::try_from(header[1])?;
+        let endian = EndianOrder::from(NvEndianOrder::try_from(header[1])?);
         let reserved_0 = header[2];
         let reserved_1 = header[3];
 
@@ -1092,7 +1109,10 @@ impl NvDecoder<'_> {
             });
         }
 
-        NvDecoder::from_partial(encoding, EndianOrder::from(endian), rest)
+        let start = header.len();
+        let length = data.len() - start;
+
+        NvDecoder::from_partial(data, start, length, encoding, endian)
     }
 
     /** Instantiates a nested NV list [`NvDecoder`] from a slice of bytes.
@@ -1104,9 +1124,11 @@ impl NvDecoder<'_> {
      * Returns [`NvDecodeError`] on error.
      */
     fn from_partial(
+        data: &[u8],
+        start: usize,
+        length: usize,
         encoding: NvEncoding,
         order: EndianOrder,
-        data: &[u8],
     ) -> Result<NvDecoder<'_>, NvDecodeError> {
         // Check encoding.
         match encoding {
@@ -1116,7 +1138,7 @@ impl NvDecoder<'_> {
 
         // NOTE: For XDR, it is always big endian, no matter what the endian
         //       field says.
-        let decoder = XdrDecoder::from_bytes(data);
+        let decoder = XdrDecoder::from_bytes_clamped(data, start, length)?;
 
         // NvList version.
         let version = decoder.get_u32()?;
@@ -1152,14 +1174,14 @@ impl NvDecoder<'_> {
      * Returns [`NvDecodeError`] on error.
      */
     pub fn next_pair(&self) -> Result<Option<NvDecodedPair<'_>>, NvDecodeError> {
-        // Keep track of starting length, to verify encoded_size, and
-        // construct nested NV List structures.
-        let starting_length = self.decoder.len();
-
         // Check for end of list.
-        if starting_length == 0 {
+        if self.decoder.is_empty() {
             return Ok(None);
         }
+
+        // Keep track of starting offset, to verify encoded_size, and
+        // construct nested NV List structures.
+        let starting_offset = self.decoder.offset();
 
         // Encoded and decoded sizes.
         let encoded_size = self.decoder.get_usize()?;
@@ -1181,7 +1203,8 @@ impl NvDecoder<'_> {
         let element_count = self.decoder.get_usize()?;
 
         // Number of bytes remaining.
-        let bytes_used = starting_length - self.decoder.len();
+        let value_offset = self.decoder.offset();
+        let bytes_used = value_offset - starting_offset;
         let bytes_rem = match encoded_size.checked_sub(bytes_used) {
             Some(v) => v,
             None => {
@@ -1194,7 +1217,18 @@ impl NvDecoder<'_> {
         };
 
         // Check count.
-        check_data_type_count(data_type, element_count)?;
+        // NOTE: array_element_size will be 0 for non-array types, as well as
+        //       ByteArray, StringArray, and NvListArray.
+        let array_element_size = check_data_type_count(data_type, element_count)?;
+        let array_value_size = match element_count.checked_mul(array_element_size) {
+            Some(v) => v,
+            None => {
+                return Err(NvDecodeError::InvalidCount {
+                    data_type,
+                    count: element_count,
+                })
+            }
+        };
 
         // Decode data value.
         let value = match data_type {
@@ -1208,110 +1242,207 @@ impl NvDecoder<'_> {
             NvDataType::Uint64 => NvDecodedDataValue::Uint64(self.decoder.get_u64()?),
             NvDataType::String => NvDecodedDataValue::String(self.decoder.get_str()?),
             NvDataType::ByteArray => NvDecodedDataValue::ByteArray(self.decoder.get_byte_array()?),
-            NvDataType::Int16Array => NvDecodedDataValue::Int16Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Int16Array => NvDecodedDataValue::Int16Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+
+            NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Int32Array => NvDecodedDataValue::Int32Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Int32Array => NvDecodedDataValue::Int32Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Int64Array => NvDecodedDataValue::Int64Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 8)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Int64Array => NvDecodedDataValue::Int64Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 8)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::StringArray => NvDecodedDataValue::StringArray(NvArrayDecoder {
-                // TODO(cybojanek): Verify length of strings at this point?
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(bytes_rem)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::StringArray => NvDecodedDataValue::StringArray({
+                self.decoder.skip(bytes_rem)?;
+
+                NvArrayDecoder {
+                    // TODO(cybojanek): Verify length of strings at this point?
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        bytes_rem,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
             NvDataType::HrTime => NvDecodedDataValue::HrTime(self.decoder.get_i64()?),
-            NvDataType::NvList => NvDecodedDataValue::NvList(NvDecoder::from_partial(
-                self.encoding,
-                self.order,
-                self.decoder.get_bytes(bytes_rem)?,
-            )?),
-            NvDataType::NvListArray => NvDecodedDataValue::NvListArray(NvArrayDecoder {
-                // TODO(cybojanek): Verify length of list at this point?
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(bytes_rem)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::NvList => NvDecodedDataValue::NvList({
+                // Decode bytes, but discard because data will be used.
+                self.decoder.get_bytes(bytes_rem)?;
+
+                NvDecoder::from_partial(
+                    self.decoder.data(),
+                    value_offset,
+                    bytes_rem,
+                    self.encoding,
+                    self.order,
+                )?
+            }),
+            NvDataType::NvListArray => NvDecodedDataValue::NvListArray({
+                // Decode bytes, but discard because data will be used.
+                self.decoder.get_bytes(bytes_rem)?;
+
+                NvArrayDecoder {
+                    // TODO(cybojanek): Verify length of list at this point?
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        bytes_rem,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
             NvDataType::BooleanValue => NvDecodedDataValue::BooleanValue(self.decoder.get_bool()?),
             NvDataType::Int8 => NvDecodedDataValue::Int8(self.decoder.get_i8()?),
             NvDataType::Uint8 => NvDecodedDataValue::Uint8(self.decoder.get_u8()?),
-            NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Int8Array => NvDecodedDataValue::Int8Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Int8Array => NvDecodedDataValue::Int8Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
-            NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array(NvArrayDecoder {
-                decoder: XdrDecoder::from_bytes(self.decoder.get_bytes(element_count * 4)?),
-                count: element_count,
-                index: Cell::new(0),
-                order: self.order,
-                encoding: self.encoding,
-                phantom: PhantomData,
+            NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArrayDecoder {
+                    decoder: XdrDecoder::from_bytes_clamped(
+                        self.decoder.data(),
+                        value_offset,
+                        array_value_size,
+                    )?,
+                    count: element_count,
+                    index: Cell::new(0),
+                    order: self.order,
+                    encoding: self.encoding,
+                    phantom: PhantomData,
+                }
             }),
             NvDataType::Double => NvDecodedDataValue::Double(self.decoder.get_f64()?),
         };
 
         // Number of bytes remaining.
-        let bytes_used = starting_length - self.decoder.len();
+        let bytes_used = self.decoder.offset() - starting_offset;
         let bytes_rem = match encoded_size.checked_sub(bytes_used) {
             Some(v) => v,
             None => {
