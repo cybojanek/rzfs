@@ -644,6 +644,9 @@ pub struct NvDecoder<'a> {
 
     /// Order.
     order: EndianOrder,
+
+    /// Unique.
+    unique: NvUnique,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1082,6 +1085,11 @@ impl NvDecoder<'_> {
         self.decoder.data()
     }
 
+    /// Gets the [`NvUnique`] value for this decoder.
+    pub fn unique(&self) -> NvUnique {
+        self.unique
+    }
+
     /** Create a [`NvDecoder`] from a slice of bytes.
      *
      * # Errors.
@@ -1161,12 +1169,13 @@ impl NvDecoder<'_> {
         }
 
         // Decode unique flags.
-        let _unique = NvUnique::try_from(unique_flags as u8)?;
+        let unique = NvUnique::try_from(unique_flags as u8)?;
 
         Ok(NvDecoder {
             decoder,
             encoding,
             order,
+            unique,
         })
     }
 
