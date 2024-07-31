@@ -1815,20 +1815,6 @@ impl NvDecoder<'_> {
             None => Ok(None),
         }
     }
-
-    /** Finds a string in the decoder data, and returns it.
-     *
-     * Returns [None] if not found.
-     *
-     * This is intended for lifetime promotion when returning errors with
-     * string references in nested decoders.
-     */
-    pub fn find_str<'a>(&'a self, search: &str) -> Option<&'a str> {
-        match self.decoder.find_bytes(search.as_bytes()) {
-            Some(v) => core::str::from_utf8(v).ok(),
-            None => None,
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
