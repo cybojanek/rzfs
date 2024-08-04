@@ -582,25 +582,25 @@ pub enum NvDecodedDataValue<'a> {
     ByteArray(&'a [u8]),
 
     /// An array of [i16].
-    Int16Array(NvArrayDecoder<'a, i16>),
+    Int16Array(NvArray<'a, i16>),
 
     /// An array of [u16].
-    Uint16Array(NvArrayDecoder<'a, u16>),
+    Uint16Array(NvArray<'a, u16>),
 
     /// An array of [i32].
-    Int32Array(NvArrayDecoder<'a, i32>),
+    Int32Array(NvArray<'a, i32>),
 
     /// An array of [u32].
-    Uint32Array(NvArrayDecoder<'a, u32>),
+    Uint32Array(NvArray<'a, u32>),
 
     /// An array of [i64].
-    Int64Array(NvArrayDecoder<'a, i64>),
+    Int64Array(NvArray<'a, i64>),
 
     /// An array of [u64].
-    Uint64Array(NvArrayDecoder<'a, u64>),
+    Uint64Array(NvArray<'a, u64>),
 
     /// An array of [str].
-    StringArray(NvArrayDecoder<'a, &'a str>),
+    StringArray(NvArray<'a, &'a str>),
 
     /// High resolution time in nanoseconds.
     HrTime(i64),
@@ -609,7 +609,7 @@ pub enum NvDecodedDataValue<'a> {
     NvList(NvDecoder<'a>),
 
     /// An array of nested [`NvList`].
-    NvListArray(NvArrayDecoder<'a, NvDecoder<'a>>),
+    NvListArray(NvArray<'a, NvDecoder<'a>>),
 
     /// A [bool].
     BooleanValue(bool),
@@ -621,13 +621,13 @@ pub enum NvDecodedDataValue<'a> {
     Uint8(u8),
 
     /// An array of [bool].
-    BooleanArray(NvArrayDecoder<'a, bool>),
+    BooleanArray(NvArray<'a, bool>),
 
     /// An array of [i8].
-    Int8Array(NvArrayDecoder<'a, i8>),
+    Int8Array(NvArray<'a, i8>),
 
     /// An array of [u8].
-    Uint8Array(NvArrayDecoder<'a, u8>),
+    Uint8Array(NvArray<'a, u8>),
 
     /// A [f64].
     Double(f64),
@@ -653,7 +653,7 @@ pub struct NvDecoder<'a> {
 
 /// A decoder of an array of [`NvPair`] entries.
 #[derive(Debug)]
-pub struct NvArrayDecoder<'a, T> {
+pub struct NvArray<'a, T> {
     /// The decoder for this array.
     decoder: XdrDecoder<'a>,
 
@@ -673,7 +673,7 @@ pub struct NvArrayDecoder<'a, T> {
     phantom: PhantomData<T>,
 }
 
-impl<T> NvArrayDecoder<'_, T> {
+impl<T> NvArray<'_, T> {
     /// Returns the number of elements in the entire array.
     pub fn capacity(&self) -> usize {
         self.count
@@ -691,10 +691,10 @@ impl<T> NvArrayDecoder<'_, T> {
     }
 }
 
-impl NvArrayDecoder<'_, &str> {
+impl NvArray<'_, &str> {
     /** Returns the next element.
      *
-     * - Call while [`NvArrayDecoder::len`] is greater than 0.
+     * - Call while [`NvArray::len`] is greater than 0.
      *
      * # Errors.
      *
@@ -718,10 +718,10 @@ impl NvArrayDecoder<'_, &str> {
     }
 }
 
-impl<T: GetFromXdrDecoder> NvArrayDecoder<'_, T> {
+impl<T: GetFromXdrDecoder> NvArray<'_, T> {
     /** Returns the next element.
      *
-     * - Call while [`NvArrayDecoder::len`] is greater than 0.
+     * - Call while [`NvArray::len`] is greater than 0.
      *
      * # Errors.
      *
@@ -744,10 +744,10 @@ impl<T: GetFromXdrDecoder> NvArrayDecoder<'_, T> {
     }
 }
 
-impl NvArrayDecoder<'_, NvDecoder<'_>> {
+impl NvArray<'_, NvDecoder<'_>> {
     /** Returns the next element.
      *
-     * - Call while [`NvArrayDecoder::len`] is greater than 0.
+     * - Call while [`NvArray::len`] is greater than 0.
      *
      * # Errors.
      *
@@ -1280,7 +1280,7 @@ impl NvDecoder<'_> {
             NvDataType::Int16Array => NvDecodedDataValue::Int16Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1292,7 +1292,7 @@ impl NvDecoder<'_> {
             NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1304,7 +1304,7 @@ impl NvDecoder<'_> {
             NvDataType::Int32Array => NvDecodedDataValue::Int32Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1316,7 +1316,7 @@ impl NvDecoder<'_> {
             NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1328,7 +1328,7 @@ impl NvDecoder<'_> {
             NvDataType::Int64Array => NvDecodedDataValue::Int64Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1340,7 +1340,7 @@ impl NvDecoder<'_> {
             NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1352,7 +1352,7 @@ impl NvDecoder<'_> {
             NvDataType::StringArray => NvDecodedDataValue::StringArray({
                 self.decoder.skip(bytes_rem)?;
 
-                NvArrayDecoder {
+                NvArray {
                     // TODO(cybojanek): Verify length of strings at this point?
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, bytes_rem)?,
                     count: element_count,
@@ -1373,7 +1373,7 @@ impl NvDecoder<'_> {
                 // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
-                NvArrayDecoder {
+                NvArray {
                     // TODO(cybojanek): Verify length of list at this point?
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, bytes_rem)?,
                     count: element_count,
@@ -1389,7 +1389,7 @@ impl NvDecoder<'_> {
             NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1401,7 +1401,7 @@ impl NvDecoder<'_> {
             NvDataType::Int8Array => NvDecodedDataValue::Int8Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1413,7 +1413,7 @@ impl NvDecoder<'_> {
             NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array({
                 self.decoder.skip(array_value_size)?;
 
-                NvArrayDecoder {
+                NvArray {
                     decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
                     count: element_count,
                     index: Cell::new(0),
@@ -1533,10 +1533,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_bool_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, bool>>, NvDecodeError> {
+    pub fn get_bool_array(&self, name: &str) -> Result<Option<NvArray<'_, bool>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1643,10 +1640,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i8_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, i8>>, NvDecodeError> {
+    pub fn get_i8_array(&self, name: &str) -> Result<Option<NvArray<'_, i8>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1678,10 +1672,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i16_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, i16>>, NvDecodeError> {
+    pub fn get_i16_array(&self, name: &str) -> Result<Option<NvArray<'_, i16>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1713,10 +1704,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i32_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, i32>>, NvDecodeError> {
+    pub fn get_i32_array(&self, name: &str) -> Result<Option<NvArray<'_, i32>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1748,10 +1736,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_i64_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, i64>>, NvDecodeError> {
+    pub fn get_i64_array(&self, name: &str) -> Result<Option<NvArray<'_, i64>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1792,7 +1777,7 @@ impl NvDecoder<'_> {
     pub fn get_nv_list_array(
         &self,
         name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, NvDecoder<'_>>>, NvDecodeError> {
+    ) -> Result<Option<NvArray<'_, NvDecoder<'_>>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1860,10 +1845,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u8_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, u8>>, NvDecodeError> {
+    pub fn get_u8_array(&self, name: &str) -> Result<Option<NvArray<'_, u8>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1895,10 +1877,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u16_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, u16>>, NvDecodeError> {
+    pub fn get_u16_array(&self, name: &str) -> Result<Option<NvArray<'_, u16>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1930,10 +1909,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u32_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, u32>>, NvDecodeError> {
+    pub fn get_u32_array(&self, name: &str) -> Result<Option<NvArray<'_, u32>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1965,10 +1941,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_u64_array(
-        &self,
-        name: &str,
-    ) -> Result<Option<NvArrayDecoder<'_, u64>>, NvDecodeError> {
+    pub fn get_u64_array(&self, name: &str) -> Result<Option<NvArray<'_, u64>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
