@@ -692,7 +692,7 @@ fn dump_dsl_dataset(
                         // TODO: handle multiple blocks
                         assert!(nv_list_bytes.len() >= nv_list_size);
 
-                        let nv_decoder = phys::NvDecoder::from_bytes(&nv_list_bytes)?;
+                        let nv_decoder = phys::NvList::from_bytes(&nv_list_bytes)?;
                         dump_nv_list(&nv_decoder, depth + 4)?;
                     } else if let phys::DmuType::SpaceMap = dnode.dmu {
                         let decoder = phys::EndianDecoder::from_bytes(dnode.bonus_used(), order);
@@ -842,7 +842,7 @@ fn dump_dsl_dataset(
 
 fn dump_root(
     blk_devs: &[userspace::BlockDevice],
-    nv: &phys::NvDecoder,
+    nv: &phys::NvList,
     uberblock: &phys::UberBlock,
 ) -> Result<(), Box<dyn Error>> {
     ////////////////////////////////////
@@ -879,7 +879,7 @@ fn dump_root(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn Error>> {
+fn dump_nv_list(decoder: &phys::NvList, depth: usize) -> Result<(), Box<dyn Error>> {
     loop {
         let nv_pair_opt = decoder.next_pair()?;
         let nv_pair = match nv_pair_opt {
@@ -1138,7 +1138,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
             &mut sha256,
         )?;
 
-        let nv_decoder = phys::NvDecoder::from_bytes(&nv_pairs.payload)?;
+        let nv_decoder = phys::NvList::from_bytes(&nv_pairs.payload)?;
         dump_nv_list(&nv_decoder, 0)?;
 
         ////////////////////////////////
