@@ -7,7 +7,7 @@ use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{NvDecodeError, NvDecoder};
+use crate::phys::{NvDecodeError, NvList};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -639,7 +639,7 @@ impl FeatureSet {
      * Returns [`FeatureSetDecodeError`] in case of decoding error.
      */
     pub fn from_decoder<'a>(
-        decoder: &'a NvDecoder<'_>,
+        decoder: &'a NvList<'_>,
     ) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
         FeatureSet::from_decoder_direct(decoder, decoder.data())
     }
@@ -651,7 +651,7 @@ impl FeatureSet {
      * Returns [`FeatureSetDecodeError`] in case of decoding error.
      */
     pub fn from_decoder_direct<'a>(
-        decoder: &NvDecoder<'_>,
+        decoder: &NvList<'_>,
         data: &'a [u8],
     ) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
         // Bitmap of features.
@@ -730,7 +730,7 @@ pub enum FeatureSetDecodeError<'a> {
         err: FeatureDecodeError,
     },
 
-    /// [`crate::phys::nv::NvDecoder`] decode error.
+    /// [`crate::phys::nv::NvList`] decode error.
     Nv {
         /// Error.
         err: NvDecodeError,

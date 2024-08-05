@@ -519,34 +519,6 @@ pub enum NvDataValue<'a> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Name Value Pair.
-#[derive(Debug)]
-pub struct NvPair<'a> {
-    /// The name of the pair.
-    pub name: &'a str,
-
-    /// The value of the pair.
-    pub value: NvDataValue<'a>,
-}
-
-/// Name Value List.
-#[derive(Debug)]
-pub struct NvList<'a> {
-    /// Encoding [`NvPair`].
-    pub encoding: NvEncoding,
-
-    /// The endianness of the encoded data.
-    pub order: EndianOrder,
-
-    /// List of [`NvPair`].
-    pub pairs: &'a [NvPair<'a>],
-
-    /// Uniqueness of [`NvPair`].
-    pub unique: NvUnique,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 /// Decoded Name Value Pair Data Value.
 #[derive(Debug)]
 pub enum NvDecodedDataValue<'a> {
@@ -605,10 +577,10 @@ pub enum NvDecodedDataValue<'a> {
     HrTime(i64),
 
     /// A [`NvList`].
-    NvList(NvDecoder<'a>),
+    NvList(NvList<'a>),
 
     /// An array of nested [`NvList`].
-    NvListArray(NvArray<'a, NvDecoder<'a>>),
+    NvListArray(NvArray<'a, NvList<'a>>),
 
     /// A [bool].
     BooleanValue(bool),
@@ -634,7 +606,7 @@ pub enum NvDecodedDataValue<'a> {
 
 /// A name value pair list decoder.
 #[derive(Debug)]
-pub struct NvDecoder<'a> {
+pub struct NvList<'a> {
     /// Decoder.
     decoder: XdrDecoder<'a>,
 
@@ -653,7 +625,7 @@ pub struct NvDecoder<'a> {
 /// A decoder of an array of [`NvPair`] entries.
 #[derive(Debug)]
 pub struct NvArray<'a, T> {
-    /// Full [`NvDecoder`] data.
+    /// Full [`NvList`] data.
     data: &'a [u8],
 
     /// Offset into `data`.
@@ -713,9 +685,9 @@ impl<'a, T: GetFromXdrDecoder> IntoIterator for &'a NvArray<'_, T> {
     }
 }
 
-impl<'a> IntoIterator for &'a NvArray<'_, NvDecoder<'_>> {
-    type Item = Result<NvDecoder<'a>, NvDecodeError>;
-    type IntoIter = NvArrayIterator<'a, NvDecoder<'a>>;
+impl<'a> IntoIterator for &'a NvArray<'_, NvList<'_>> {
+    type Item = Result<NvList<'a>, NvDecodeError>;
+    type IntoIter = NvArrayIterator<'a, NvList<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -810,17 +782,14 @@ impl<'a> Iterator for &'a mut NvArrayIterator<'a, &str> {
     }
 }
 
-impl NvArrayIterator<'_, NvDecoder<'_>> {
-    /** Gets the next [`NvDecoder`].
+impl NvArrayIterator<'_, NvList<'_>> {
+    /** Gets the next [`NvList`].
      *
      * The same as [`NvArrayIterator`] [`Iterator::next`] but returns a value,
      * whose lifetime is tied to the input `data`, which must be the same `data`
      * as was used to create the [`NvArray`].
      */
-    pub fn next_direct<'a>(
-        &mut self,
-        data: &'a [u8],
-    ) -> Option<Result<NvDecoder<'a>, NvDecodeError>> {
+    pub fn next_direct<'a>(&mut self, data: &'a [u8]) -> Option<Result<NvList<'a>, NvDecodeError>> {
         // The length of the array is not actually known, so decode the array,
         // in order to increment offset of the outer decoder.
         if self.index < self.array.count {
@@ -835,7 +804,7 @@ impl NvArrayIterator<'_, NvDecoder<'_>> {
 
             // Create a temporary decoder.
             let starting_offset = self.decoder.offset();
-            let decoder = match NvDecoder::from_partial(
+            let decoder = match NvList::from_partial(
                 self.decoder.data(),
                 self.decoder.offset(),
                 self.decoder.len(),
@@ -866,7 +835,7 @@ impl NvArrayIterator<'_, NvDecoder<'_>> {
             }
 
             // Return decoder.
-            Some(NvDecoder::from_partial(
+            Some(NvList::from_partial(
                 data,
                 starting_offset,
                 bytes_used,
@@ -879,8 +848,8 @@ impl NvArrayIterator<'_, NvDecoder<'_>> {
     }
 }
 
-impl<'a> Iterator for NvArrayIterator<'a, NvDecoder<'_>> {
-    type Item = Result<NvDecoder<'a>, NvDecodeError>;
+impl<'a> Iterator for NvArrayIterator<'a, NvList<'_>> {
+    type Item = Result<NvList<'a>, NvDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         self.next_direct(self.array.data)
@@ -1160,7 +1129,7 @@ impl NvDecodedPair<'_> {
     }
 }
 
-impl NvDecoder<'_> {
+impl NvList<'_> {
     /// Header byte size.
     const HEADER_SIZE: usize = 4;
 
@@ -1174,25 +1143,25 @@ impl NvDecoder<'_> {
         self.unique
     }
 
-    /** Create a [`NvDecoder`] from a slice of bytes.
+    /** Create a [`NvList`] from a slice of bytes.
      *
      * # Errors.
      *
      * Returns [`NvDecodeError`] on error.
      */
-    pub fn from_bytes(data: &[u8]) -> Result<NvDecoder<'_>, NvDecodeError> {
+    pub fn from_bytes(data: &[u8]) -> Result<NvList<'_>, NvDecodeError> {
         // Check that NvList header is not truncated.
-        if data.len() < NvDecoder::HEADER_SIZE {
+        if data.len() < NvList::HEADER_SIZE {
             return Err(NvDecodeError::EndOfInput {
                 offset: 0,
                 capacity: data.len(),
-                count: NvDecoder::HEADER_SIZE,
+                count: NvList::HEADER_SIZE,
                 detail: "NV List header is truncated",
             });
         }
 
         // Get the first four bytes.
-        let header = &data[0..NvDecoder::HEADER_SIZE];
+        let header = &data[0..NvList::HEADER_SIZE];
 
         let encoding = NvEncoding::try_from(header[0])?;
         let endian = EndianOrder::from(NvEndianOrder::try_from(header[1])?);
@@ -1209,10 +1178,10 @@ impl NvDecoder<'_> {
         let start = header.len();
         let length = data.len() - start;
 
-        NvDecoder::from_partial(data, start, length, encoding, endian)
+        NvList::from_partial(data, start, length, encoding, endian)
     }
 
-    /** Instantiates a nested NV list [`NvDecoder`] from a slice of bytes.
+    /** Instantiates a nested NV list [`NvList`] from a slice of bytes.
      *
      * - Encoding, and endian must be the same as the parent list.
      *
@@ -1226,7 +1195,7 @@ impl NvDecoder<'_> {
         length: usize,
         encoding: NvEncoding,
         order: EndianOrder,
-    ) -> Result<NvDecoder<'_>, NvDecodeError> {
+    ) -> Result<NvList<'_>, NvDecodeError> {
         // Check encoding.
         match encoding {
             NvEncoding::Native => todo!("Implement Native decoding"),
@@ -1255,7 +1224,7 @@ impl NvDecoder<'_> {
         // Decode unique flags.
         let unique = NvUnique::try_from(unique_flags as u8)?;
 
-        Ok(NvDecoder {
+        Ok(NvList {
             decoder,
             encoding,
             order,
@@ -1277,9 +1246,9 @@ impl NvDecoder<'_> {
 
     /** Gets the next [`NvDecodedPair`].
      *
-     * The same as [`NvDecoder::next_pair`], but returns a value, whose lifetime
+     * The same as [`NvList::next_pair`], but returns a value, whose lifetime
      * is tied to the input `data`, which must be the same `data` as was used to
-     * create the [`NvDecoder`].
+     * create the [`NvList`].
      *
      * - Returns [`None`] at end of list.
      *
@@ -1459,7 +1428,7 @@ impl NvDecoder<'_> {
                 // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
-                NvDecoder::from_partial(data, value_offset, bytes_rem, self.encoding, self.order)?
+                NvList::from_partial(data, value_offset, bytes_rem, self.encoding, self.order)?
             }),
             NvDataType::NvListArray => NvDecodedDataValue::NvListArray({
                 // Decode bytes, but discard because data will be used.
@@ -1565,9 +1534,9 @@ impl NvDecoder<'_> {
 
     /** Finds the name value pair by name.
      *
-     * The same as [`NvDecoder::find`], but returns a value, whose lifetime is
+     * The same as [`NvList::find`], but returns a value, whose lifetime is
      * tied to the input `data`, which must be the same `data` as was used to
-     * create the [`NvDecoder`].
+     * create the [`NvList`].
      *
      * Returns [`None`] if the pair is not found.
      * Resets the decoder prior to searching.
@@ -1667,9 +1636,9 @@ impl NvDecoder<'_> {
 
     /** Get [`u8`] byte array with the specified name.
      *
-     * The same as [`NvDecoder::get_byte_array`], but returns a value, whose
+     * The same as [`NvList::get_byte_array`], but returns a value, whose
      * lifetime is tied to the input `data`, which must be the same `data` as
-     * was used to create the [`NvDecoder`].
+     * was used to create the [`NvList`].
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1851,7 +1820,7 @@ impl NvDecoder<'_> {
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
-    pub fn get_nv_list(&self, name: &str) -> Result<Option<NvDecoder<'_>>, NvDecodeError> {
+    pub fn get_nv_list(&self, name: &str) -> Result<Option<NvList<'_>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1873,7 +1842,7 @@ impl NvDecoder<'_> {
     pub fn get_nv_list_array(
         &self,
         name: &str,
-    ) -> Result<Option<NvArray<'_, NvDecoder<'_>>>, NvDecodeError> {
+    ) -> Result<Option<NvArray<'_, NvList<'_>>>, NvDecodeError> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
@@ -1898,9 +1867,9 @@ impl NvDecoder<'_> {
 
     /** Get [`str`] with the specified name.
      *
-     * The same as [`NvDecoder::get_str`], but returns a value, whose lifetime
+     * The same as [`NvList::get_str`], but returns a value, whose lifetime
      * is tied to the input `data`, which must be the same `data` as was used to
-     * create the [`NvDecoder`].
+     * create the [`NvList`].
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -2054,7 +2023,7 @@ impl NvDecoder<'_> {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/// [`NvDecoder`] error.
+/// [`NvList`] decode error.
 #[derive(Debug)]
 pub enum NvDecodeError {
     /// [`NvDataType`] mismatch.
