@@ -48,7 +48,6 @@
  * - [`NvDataType::BooleanValue`] has a count of 1, and an actual value that can
  *   be [`true`] or [`false`]
  */
-use core::cell::Cell;
 use core::fmt;
 use core::fmt::Display;
 use core::marker::PhantomData;
@@ -654,14 +653,17 @@ pub struct NvDecoder<'a> {
 /// A decoder of an array of [`NvPair`] entries.
 #[derive(Debug)]
 pub struct NvArray<'a, T> {
-    /// The decoder for this array.
-    decoder: XdrDecoder<'a>,
+    /// Full [`NvDecoder`] data.
+    data: &'a [u8],
+
+    /// Offset into `data`.
+    offset: usize,
+
+    /// Byte length of array.
+    length: usize,
 
     /// Number of entries in the array.
     count: usize,
-
-    /// Current index into array.
-    index: Cell<usize>,
 
     /// Inherited encoding.
     encoding: NvEncoding,
@@ -674,100 +676,175 @@ pub struct NvArray<'a, T> {
 }
 
 impl<T> NvArray<'_, T> {
-    /// Returns the number of elements in the entire array.
-    pub fn capacity(&self) -> usize {
+    /// Number of elements in the array.
+    pub fn len(&self) -> usize {
         self.count
     }
 
-    /// Returns number of elements still to be decoded.
-    pub fn len(&self) -> usize {
-        self.count.saturating_sub(self.index.get())
-    }
-
-    /// Resets the decoder to the start of the data.
-    pub fn reset(&self) {
-        self.decoder.reset();
-        self.index.set(0);
-    }
-}
-
-impl NvArray<'_, &str> {
-    /** Returns the next element.
-     *
-     * - Call while [`NvArray::len`] is greater than 0.
-     *
-     * # Errors.
-     *
-     * Returns [`NvDecodeError`] on error.
-     */
-    pub fn get(&self) -> Result<&str, NvDecodeError> {
-        let index = self.index.get();
-
-        if index < self.count {
-            self.index.set(index + 1);
-            match self.decoder.get_str() {
-                Ok(v) => {
-                    self.index.set(index + 1);
-                    Ok(v)
+    /// Returns an iterator over the [`NvArray`].
+    pub fn iter(&self) -> NvArrayIterator<'_, T> {
+        // iter() cannot return an error, so have the Iterator return the error
+        // in case byte clamp fails.
+        let (decoder, clamp_err) =
+            match XdrDecoder::from_bytes_clamped(self.data, self.offset, self.length) {
+                Ok(decoder) => (decoder, None),
+                Err(err) => {
+                    // Use a decoder that cannot fail to avoid Option.
+                    (XdrDecoder::from_bytes(self.data), Some(err))
                 }
-                Err(err) => Err(NvDecodeError::Xdr { err }),
-            }
-        } else {
-            Err(NvDecodeError::EndOfArray {})
+            };
+
+        NvArrayIterator::<T> {
+            array: self,
+            decoder,
+            index: 0,
+            phantom: PhantomData,
+            clamp_err,
         }
     }
 }
 
-impl<T: GetFromXdrDecoder> NvArray<'_, T> {
-    /** Returns the next element.
-     *
-     * - Call while [`NvArray::len`] is greater than 0.
-     *
-     * # Errors.
-     *
-     * Returns [`NvDecodeError`] on error.
-     */
-    pub fn get(&self) -> Result<T, NvDecodeError> {
-        let index = self.index.get();
+impl<'a, T: GetFromXdrDecoder> IntoIterator for &'a NvArray<'_, T> {
+    type Item = Result<T, NvDecodeError>;
+    type IntoIter = NvArrayIterator<'a, T>;
 
-        if index < self.count {
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a NvArray<'_, NvDecoder<'_>> {
+    type Item = Result<NvDecoder<'a>, NvDecodeError>;
+    type IntoIter = NvArrayIterator<'a, NvDecoder<'a>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// [`NvArray`] iterator.
+#[derive(Debug)]
+pub struct NvArrayIterator<'a, T> {
+    /// Array.
+    array: &'a NvArray<'a, T>,
+
+    /// Decoder.
+    decoder: XdrDecoder<'a>,
+
+    /// Element index into array.
+    index: usize,
+
+    /// Phantom data for type correctness.
+    phantom: PhantomData<T>,
+
+    /// Error from creating the iterator decoder.
+    clamp_err: Option<XdrDecodeError>,
+}
+
+impl<T> NvArrayIterator<'_, T> {
+    /// Resets the iterator to the start of the data.
+    pub fn reset(&mut self) {
+        self.index = 0;
+    }
+}
+
+impl<T: GetFromXdrDecoder> Iterator for NvArrayIterator<'_, T> {
+    type Item = Result<T, NvDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        if self.index < self.array.count {
+            // Check for clamp error.
+            if let Some(err) = self.clamp_err {
+                // Finish iteration.
+                self.index = self.array.count;
+                return Some(Err(NvDecodeError::Xdr { err }));
+            }
+
+            self.index += 1;
+
             match self.decoder.get() {
-                Ok(v) => {
-                    self.index.set(index + 1);
-                    Ok(v)
-                }
-                Err(err) => Err(NvDecodeError::Xdr { err }),
+                Ok(v) => Some(Ok(v)),
+                Err(err) => Some(Err(NvDecodeError::Xdr { err })),
             }
         } else {
-            Err(NvDecodeError::EndOfArray {})
+            None
         }
     }
 }
 
-impl NvArray<'_, NvDecoder<'_>> {
-    /** Returns the next element.
+impl NvArrayIterator<'_, &str> {
+    /** Gets the next [str].
      *
-     * - Call while [`NvArray::len`] is greater than 0.
-     *
-     * # Errors.
-     *
-     * Returns [`NvDecodeError`] on error.
+     * The same as [`NvArrayIterator`] [`Iterator::next`] but returns a value,
+     * whose lifetime is tied to the input `data`, which must be the same `data`
+     * as was used to create the [`NvArray`].
      */
-    pub fn get(&self) -> Result<NvDecoder<'_>, NvDecodeError> {
-        let index = self.index.get();
+    pub fn next_direct<'a>(&mut self, data: &'a [u8]) -> Option<Result<&'a str, NvDecodeError>> {
+        if self.index < self.array.count {
+            // Check for clamp error.
+            if let Some(err) = self.clamp_err {
+                // Finish iteration.
+                self.index = self.array.count;
+                return Some(Err(NvDecodeError::Xdr { err }));
+            }
 
+            self.index += 1;
+
+            match self.decoder.get_str_direct(data) {
+                Ok(v) => Some(Ok(v)),
+                Err(err) => Some(Err(NvDecodeError::Xdr { err })),
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> Iterator for &'a mut NvArrayIterator<'a, &str> {
+    type Item = Result<&'a str, NvDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        self.next_direct(self.array.data)
+    }
+}
+
+impl NvArrayIterator<'_, NvDecoder<'_>> {
+    /** Gets the next [`NvDecoder`].
+     *
+     * The same as [`NvArrayIterator`] [`Iterator::next`] but returns a value,
+     * whose lifetime is tied to the input `data`, which must be the same `data`
+     * as was used to create the [`NvArray`].
+     */
+    pub fn next_direct<'a>(
+        &mut self,
+        data: &'a [u8],
+    ) -> Option<Result<NvDecoder<'a>, NvDecodeError>> {
         // The length of the array is not actually known, so decode the array,
         // in order to increment offset of the outer decoder.
-        if index < self.count {
+        if self.index < self.array.count {
+            // Check for clamp error.
+            if let Some(err) = self.clamp_err {
+                // Finish iteration.
+                self.index = self.array.count;
+                return Some(Err(NvDecodeError::Xdr { err }));
+            }
+
+            self.index += 1;
+
             // Create a temporary decoder.
             let starting_offset = self.decoder.offset();
-            let decoder = NvDecoder::from_partial(
+            let decoder = match NvDecoder::from_partial(
                 self.decoder.data(),
                 self.decoder.offset(),
                 self.decoder.len(),
-                self.encoding,
-                self.order,
-            )?;
+                self.array.encoding,
+                self.array.order,
+            ) {
+                Ok(decoder) => decoder,
+                Err(err) => return Some(Err(err)),
+            };
 
             // Decode until end of list or error.
             loop {
@@ -776,7 +853,7 @@ impl NvArray<'_, NvDecoder<'_>> {
                         Some(_) => continue,
                         None => break,
                     },
-                    Err(v) => return Err(v),
+                    Err(v) => return Some(Err(v)),
                 }
             }
 
@@ -784,22 +861,29 @@ impl NvArray<'_, NvDecoder<'_>> {
             let bytes_used = decoder.decoder.offset() - starting_offset;
 
             // Decode bytes, but discard because data will be used.
-            self.decoder.get_bytes(bytes_used)?;
-
-            // Increment index.
-            self.index.set(index + 1);
+            if let Err(err) = self.decoder.get_bytes(bytes_used) {
+                return Some(Err(NvDecodeError::Xdr { err }));
+            }
 
             // Return decoder.
-            NvDecoder::from_partial(
-                self.decoder.data(),
+            Some(NvDecoder::from_partial(
+                data,
                 starting_offset,
                 bytes_used,
-                self.encoding,
-                self.order,
-            )
+                self.array.encoding,
+                self.array.order,
+            ))
         } else {
-            Err(NvDecodeError::EndOfArray {})
+            None
         }
+    }
+}
+
+impl<'a> Iterator for NvArrayIterator<'a, NvDecoder<'_>> {
+    type Item = Result<NvDecoder<'a>, NvDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        self.next_direct(self.array.data)
     }
 }
 
@@ -1281,21 +1365,24 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
                 }
             }),
+
             NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1305,9 +1392,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1317,9 +1405,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1329,9 +1418,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1341,9 +1431,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1354,9 +1445,10 @@ impl NvDecoder<'_> {
 
                 NvArray {
                     // TODO(cybojanek): Verify length of strings at this point?
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, bytes_rem)?,
+                    data,
+                    offset: value_offset,
+                    length: bytes_rem,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1375,9 +1467,10 @@ impl NvDecoder<'_> {
 
                 NvArray {
                     // TODO(cybojanek): Verify length of list at this point?
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, bytes_rem)?,
+                    data,
+                    offset: value_offset,
+                    length: bytes_rem,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1390,9 +1483,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1402,9 +1496,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
@@ -1414,9 +1509,10 @@ impl NvDecoder<'_> {
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
-                    decoder: XdrDecoder::from_bytes_clamped(data, value_offset, array_value_size)?,
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
                     count: element_count,
-                    index: Cell::new(0),
                     order: self.order,
                     encoding: self.encoding,
                     phantom: PhantomData,
