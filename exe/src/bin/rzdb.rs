@@ -901,9 +901,9 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
             phys::NvDecodedDataValue::Int64(v) => println!(": {v}"),
             phys::NvDecodedDataValue::Uint64(v) => println!(": {v}"),
             phys::NvDecodedDataValue::String(v) => println!(": {v}"),
-            phys::NvDecodedDataValue::ByteArray(v) => {
+            phys::NvDecodedDataValue::ByteArray(array) => {
                 print!(": [");
-                for (idx, b) in v.iter().enumerate() {
+                for (idx, b) in array.iter().enumerate() {
                     if idx != 0 {
                         print!(", {b:#02x}");
                     } else {
@@ -912,10 +912,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Int16Array(v) => {
+            phys::NvDecodedDataValue::Int16Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -924,10 +924,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Uint16Array(v) => {
+            phys::NvDecodedDataValue::Uint16Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -936,10 +936,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Int32Array(v) => {
+            phys::NvDecodedDataValue::Int32Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -948,10 +948,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Uint32Array(v) => {
+            phys::NvDecodedDataValue::Uint32Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -960,10 +960,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Int64Array(v) => {
+            phys::NvDecodedDataValue::Int64Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -972,10 +972,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Uint64Array(v) => {
+            phys::NvDecodedDataValue::Uint64Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -984,10 +984,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::StringArray(v) => {
+            phys::NvDecodedDataValue::StringArray(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -1001,19 +1001,20 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 println!();
                 dump_nv_list(&v, depth + 4)?;
             }
-            phys::NvDecodedDataValue::NvListArray(v) => {
+            phys::NvDecodedDataValue::NvListArray(array) => {
                 println!();
-                for _idx in 0..v.capacity() {
-                    dump_nv_list(&v.get()?, depth + 4)?;
+                for res in &array {
+                    let list = res?;
+                    dump_nv_list(&list, depth + 4)?;
                 }
             }
             phys::NvDecodedDataValue::BooleanValue(v) => println!(": {v}"),
             phys::NvDecodedDataValue::Int8(v) => println!(": {v}"),
             phys::NvDecodedDataValue::Uint8(v) => println!(": {v}"),
-            phys::NvDecodedDataValue::BooleanArray(v) => {
+            phys::NvDecodedDataValue::BooleanArray(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -1022,10 +1023,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Int8Array(v) => {
+            phys::NvDecodedDataValue::Int8Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {
@@ -1034,10 +1035,10 @@ fn dump_nv_list(decoder: &phys::NvDecoder, depth: usize) -> Result<(), Box<dyn E
                 }
                 println!("]");
             }
-            phys::NvDecodedDataValue::Uint8Array(v) => {
+            phys::NvDecodedDataValue::Uint8Array(array) => {
                 print!(": [");
-                for idx in 0..v.capacity() {
-                    let n = v.get()?;
+                for (idx, res) in array.iter().enumerate() {
+                    let n = res?;
                     if idx != 0 {
                         print!(", {n}");
                     } else {

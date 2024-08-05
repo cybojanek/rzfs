@@ -1488,7 +1488,7 @@ impl GetFromXdrDecoder for usize {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`XdrDecoder`] error.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum XdrDecodeError {
     /// Data mismatch
     DataMismatch {},
