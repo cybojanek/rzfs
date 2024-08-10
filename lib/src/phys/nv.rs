@@ -432,96 +432,11 @@ fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<usize, N
     }
 }
 
-/// Name Value Pair Data Value.
-#[derive(Debug)]
-pub enum NvDataValue<'a> {
-    /// A boolean flag (no value).
-    Boolean(),
-
-    /// A [u8] byte.
-    Byte(u8),
-
-    /// A [i16].
-    Int16(i16),
-
-    /// A [u16].
-    Uint16(u16),
-
-    /// A [i32].
-    Int32(i32),
-
-    /// A [u32].
-    Uint32(u32),
-
-    /// A [i64].
-    Int64(i64),
-
-    /// A [u64].
-    Uint64(u64),
-
-    /// A string.
-    String(&'a str),
-
-    /// An array of [i16].
-    ByteArray(&'a [u8]),
-
-    /// An array of [i16].
-    Int16Array(&'a [i16]),
-
-    /// An array of [u16].
-    Uint16Array(&'a [u16]),
-
-    /// An array of [i32].
-    Int32Array(&'a [i32]),
-
-    /// An array of [u32].
-    Uint32Array(&'a [u32]),
-
-    /// An array of [i64].
-    Int64Array(&'a [i64]),
-
-    /// An array of [u64].
-    Uint64Array(&'a [u64]),
-
-    /// An array of strings.
-    StringArray(&'a [&'a str]),
-
-    /// High resolution time in nanoseconds.
-    HrTime(i64),
-
-    /// A nested [`NvList`].
-    NvList(NvList<'a>),
-
-    /// An array of nested [`NvList`].
-    NvListArray(&'a [NvList<'a>]),
-
-    /// An actual boolean value (true / false).
-    BooleanValue(bool),
-
-    /// A [i8].
-    Int8(i8),
-
-    /// A [u8].
-    Uint8(u8),
-
-    /// An array of [bool] values (true / false).
-    BooleanArray(&'a [bool]),
-
-    /// An array of [i8].
-    Int8Array(&'a [i8]),
-
-    /// An array of [u8].
-    Uint8Array(&'a [u8]),
-
-    /// An [f64].
-    Double(f64),
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Decoded Name Value Pair Data Value.
 #[derive(Clone, Copy, Debug)]
-pub enum NvDecodedDataValue<'a> {
+pub enum NvDataValue<'a> {
     /// A boolean flag (no value).
     Boolean(),
 
@@ -672,10 +587,7 @@ impl NvListIterator<'_> {
 
 impl NvListIterator<'_> {
     /// Get the next pair result.
-    fn next_pair_result<'a>(
-        &self,
-        data: &'a [u8],
-    ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
+    fn next_pair_result<'a>(&self, data: &'a [u8]) -> Result<Option<NvPair<'a>>, NvDecodeError> {
         // Check for end of list.
         if self.decoder.is_empty() {
             return Ok(None);
@@ -734,19 +646,19 @@ impl NvListIterator<'_> {
 
         // Decode data value.
         let value = match data_type {
-            NvDataType::Boolean => NvDecodedDataValue::Boolean(),
-            NvDataType::Byte => NvDecodedDataValue::Byte(self.decoder.get_u8()?),
-            NvDataType::Int16 => NvDecodedDataValue::Int16(self.decoder.get_i16()?),
-            NvDataType::Uint16 => NvDecodedDataValue::Uint16(self.decoder.get_u16()?),
-            NvDataType::Int32 => NvDecodedDataValue::Int32(self.decoder.get_i32()?),
-            NvDataType::Uint32 => NvDecodedDataValue::Uint32(self.decoder.get_u32()?),
-            NvDataType::Int64 => NvDecodedDataValue::Int64(self.decoder.get_i64()?),
-            NvDataType::Uint64 => NvDecodedDataValue::Uint64(self.decoder.get_u64()?),
-            NvDataType::String => NvDecodedDataValue::String(self.decoder.get_str_direct(data)?),
+            NvDataType::Boolean => NvDataValue::Boolean(),
+            NvDataType::Byte => NvDataValue::Byte(self.decoder.get_u8()?),
+            NvDataType::Int16 => NvDataValue::Int16(self.decoder.get_i16()?),
+            NvDataType::Uint16 => NvDataValue::Uint16(self.decoder.get_u16()?),
+            NvDataType::Int32 => NvDataValue::Int32(self.decoder.get_i32()?),
+            NvDataType::Uint32 => NvDataValue::Uint32(self.decoder.get_u32()?),
+            NvDataType::Int64 => NvDataValue::Int64(self.decoder.get_i64()?),
+            NvDataType::Uint64 => NvDataValue::Uint64(self.decoder.get_u64()?),
+            NvDataType::String => NvDataValue::String(self.decoder.get_str_direct(data)?),
             NvDataType::ByteArray => {
-                NvDecodedDataValue::ByteArray(self.decoder.get_byte_array_direct(data)?)
+                NvDataValue::ByteArray(self.decoder.get_byte_array_direct(data)?)
             }
-            NvDataType::Int16Array => NvDecodedDataValue::Int16Array({
+            NvDataType::Int16Array => NvDataValue::Int16Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -760,7 +672,7 @@ impl NvListIterator<'_> {
                 }
             }),
 
-            NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
+            NvDataType::Uint16Array => NvDataValue::Uint16Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -773,7 +685,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Int32Array => NvDecodedDataValue::Int32Array({
+            NvDataType::Int32Array => NvDataValue::Int32Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -786,7 +698,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array({
+            NvDataType::Uint32Array => NvDataValue::Uint32Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -799,7 +711,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Int64Array => NvDecodedDataValue::Int64Array({
+            NvDataType::Int64Array => NvDataValue::Int64Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -812,7 +724,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array({
+            NvDataType::Uint64Array => NvDataValue::Uint64Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -825,7 +737,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::StringArray => NvDecodedDataValue::StringArray({
+            NvDataType::StringArray => NvDataValue::StringArray({
                 self.decoder.skip(bytes_rem)?;
 
                 NvArray {
@@ -839,8 +751,8 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::HrTime => NvDecodedDataValue::HrTime(self.decoder.get_i64()?),
-            NvDataType::NvList => NvDecodedDataValue::NvList({
+            NvDataType::HrTime => NvDataValue::HrTime(self.decoder.get_i64()?),
+            NvDataType::NvList => NvDataValue::NvList({
                 // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
@@ -852,7 +764,7 @@ impl NvListIterator<'_> {
                     self.list.order,
                 )?
             }),
-            NvDataType::NvListArray => NvDecodedDataValue::NvListArray({
+            NvDataType::NvListArray => NvDataValue::NvListArray({
                 // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
@@ -867,10 +779,10 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::BooleanValue => NvDecodedDataValue::BooleanValue(self.decoder.get_bool()?),
-            NvDataType::Int8 => NvDecodedDataValue::Int8(self.decoder.get_i8()?),
-            NvDataType::Uint8 => NvDecodedDataValue::Uint8(self.decoder.get_u8()?),
-            NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray({
+            NvDataType::BooleanValue => NvDataValue::BooleanValue(self.decoder.get_bool()?),
+            NvDataType::Int8 => NvDataValue::Int8(self.decoder.get_i8()?),
+            NvDataType::Uint8 => NvDataValue::Uint8(self.decoder.get_u8()?),
+            NvDataType::BooleanArray => NvDataValue::BooleanArray({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -883,7 +795,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Int8Array => NvDecodedDataValue::Int8Array({
+            NvDataType::Int8Array => NvDataValue::Int8Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -896,7 +808,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array({
+            NvDataType::Uint8Array => NvDataValue::Uint8Array({
                 self.decoder.skip(array_value_size)?;
 
                 NvArray {
@@ -909,7 +821,7 @@ impl NvListIterator<'_> {
                     phantom: PhantomData,
                 }
             }),
-            NvDataType::Double => NvDecodedDataValue::Double(self.decoder.get_f64()?),
+            NvDataType::Double => NvDataValue::Double(self.decoder.get_f64()?),
         };
 
         // Number of bytes remaining.
@@ -933,19 +845,16 @@ impl NvListIterator<'_> {
             });
         }
 
-        Ok(Some(NvDecodedPair { name, value }))
+        Ok(Some(NvPair { name, value }))
     }
 
-    /** Gets the next [`NvDecodedPair`].
+    /** Gets the next [`NvPair`].
      *
      * The same as [`NvListIterator`] [`Iterator::next`] but returns a value,
      * whose lifetime is tied to the input `data`, which must be the same `data`
      * as was used to create the [`NvList`].
      */
-    pub fn next_direct<'a>(
-        &mut self,
-        data: &'a [u8],
-    ) -> Option<Result<NvDecodedPair<'a>, NvDecodeError>> {
+    pub fn next_direct<'a>(&mut self, data: &'a [u8]) -> Option<Result<NvPair<'a>, NvDecodeError>> {
         // Check for clamp error.
         if let Some(err) = self.clamp_err {
             // Finish iteration by skipping the rest of the input.
@@ -962,7 +871,7 @@ impl NvListIterator<'_> {
 }
 
 impl<'a> Iterator for NvListIterator<'a> {
-    type Item = Result<NvDecodedPair<'a>, NvDecodeError>;
+    type Item = Result<NvPair<'a>, NvDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         self.next_direct(self.list.data)
@@ -970,7 +879,7 @@ impl<'a> Iterator for NvListIterator<'a> {
 }
 
 impl<'a> IntoIterator for &'a NvList<'_> {
-    type Item = Result<NvDecodedPair<'a>, NvDecodeError>;
+    type Item = Result<NvPair<'a>, NvDecodeError>;
     type IntoIter = NvListIterator<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -1220,45 +1129,45 @@ impl<'a> Iterator for NvArrayIterator<'a, NvList<'_>> {
 
 /// Decoded [`NvPair`].
 #[derive(Debug)]
-pub struct NvDecodedPair<'a> {
+pub struct NvPair<'a> {
     /// Name.
     pub name: &'a str,
 
     /// Value.
-    pub value: NvDecodedDataValue<'a>,
+    pub value: NvDataValue<'a>,
 }
 
-impl NvDecodedPair<'_> {
+impl NvPair<'_> {
     /// Gets the data type of the decoded pair.
     pub fn data_type(&self) -> NvDataType {
         match self.value {
-            NvDecodedDataValue::Boolean() => NvDataType::Boolean,
-            NvDecodedDataValue::Byte(_) => NvDataType::Byte,
-            NvDecodedDataValue::Int16(_) => NvDataType::Int16,
-            NvDecodedDataValue::Uint16(_) => NvDataType::Uint16,
-            NvDecodedDataValue::Int32(_) => NvDataType::Int32,
-            NvDecodedDataValue::Uint32(_) => NvDataType::Uint32,
-            NvDecodedDataValue::Int64(_) => NvDataType::Int64,
-            NvDecodedDataValue::Uint64(_) => NvDataType::Uint64,
-            NvDecodedDataValue::String(_) => NvDataType::String,
-            NvDecodedDataValue::ByteArray(_) => NvDataType::ByteArray,
-            NvDecodedDataValue::Int16Array(_) => NvDataType::Int16Array,
-            NvDecodedDataValue::Uint16Array(_) => NvDataType::Uint16Array,
-            NvDecodedDataValue::Int32Array(_) => NvDataType::Int32Array,
-            NvDecodedDataValue::Uint32Array(_) => NvDataType::Uint32Array,
-            NvDecodedDataValue::Int64Array(_) => NvDataType::Int64Array,
-            NvDecodedDataValue::Uint64Array(_) => NvDataType::Uint64Array,
-            NvDecodedDataValue::StringArray(_) => NvDataType::StringArray,
-            NvDecodedDataValue::HrTime(_) => NvDataType::HrTime,
-            NvDecodedDataValue::NvList(_) => NvDataType::NvList,
-            NvDecodedDataValue::NvListArray(_) => NvDataType::NvListArray,
-            NvDecodedDataValue::BooleanValue(_) => NvDataType::BooleanValue,
-            NvDecodedDataValue::Int8(_) => NvDataType::Int8,
-            NvDecodedDataValue::Uint8(_) => NvDataType::Uint8,
-            NvDecodedDataValue::BooleanArray(_) => NvDataType::BooleanArray,
-            NvDecodedDataValue::Int8Array(_) => NvDataType::Int8Array,
-            NvDecodedDataValue::Uint8Array(_) => NvDataType::Uint8Array,
-            NvDecodedDataValue::Double(_) => NvDataType::Double,
+            NvDataValue::Boolean() => NvDataType::Boolean,
+            NvDataValue::Byte(_) => NvDataType::Byte,
+            NvDataValue::Int16(_) => NvDataType::Int16,
+            NvDataValue::Uint16(_) => NvDataType::Uint16,
+            NvDataValue::Int32(_) => NvDataType::Int32,
+            NvDataValue::Uint32(_) => NvDataType::Uint32,
+            NvDataValue::Int64(_) => NvDataType::Int64,
+            NvDataValue::Uint64(_) => NvDataType::Uint64,
+            NvDataValue::String(_) => NvDataType::String,
+            NvDataValue::ByteArray(_) => NvDataType::ByteArray,
+            NvDataValue::Int16Array(_) => NvDataType::Int16Array,
+            NvDataValue::Uint16Array(_) => NvDataType::Uint16Array,
+            NvDataValue::Int32Array(_) => NvDataType::Int32Array,
+            NvDataValue::Uint32Array(_) => NvDataType::Uint32Array,
+            NvDataValue::Int64Array(_) => NvDataType::Int64Array,
+            NvDataValue::Uint64Array(_) => NvDataType::Uint64Array,
+            NvDataValue::StringArray(_) => NvDataType::StringArray,
+            NvDataValue::HrTime(_) => NvDataType::HrTime,
+            NvDataValue::NvList(_) => NvDataType::NvList,
+            NvDataValue::NvListArray(_) => NvDataType::NvListArray,
+            NvDataValue::BooleanValue(_) => NvDataType::BooleanValue,
+            NvDataValue::Int8(_) => NvDataType::Int8,
+            NvDataValue::Uint8(_) => NvDataType::Uint8,
+            NvDataValue::BooleanArray(_) => NvDataType::BooleanArray,
+            NvDataValue::Int8Array(_) => NvDataType::Int8Array,
+            NvDataValue::Uint8Array(_) => NvDataType::Uint8Array,
+            NvDataValue::Double(_) => NvDataType::Double,
         }
     }
 
@@ -1269,7 +1178,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_bool_flag(&self) -> Result<bool, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Boolean() => Ok(true),
+            NvDataValue::Boolean() => Ok(true),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Boolean,
                 actual: self.data_type(),
@@ -1283,7 +1192,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_bool(&self) -> Result<bool, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::BooleanValue(v) => Ok(v),
+            NvDataValue::BooleanValue(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::BooleanValue,
                 actual: self.data_type(),
@@ -1297,7 +1206,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_byte(&self) -> Result<u8, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Byte(v) => Ok(v),
+            NvDataValue::Byte(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Byte,
                 actual: self.data_type(),
@@ -1311,7 +1220,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_byte_array(&self) -> Result<&[u8], NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::ByteArray(v) => Ok(v),
+            NvDataValue::ByteArray(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::ByteArray,
                 actual: self.data_type(),
@@ -1325,7 +1234,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_f64(&self) -> Result<f64, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Double(v) => Ok(v),
+            NvDataValue::Double(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Double,
                 actual: self.data_type(),
@@ -1339,7 +1248,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_hr_time(&self) -> Result<i64, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::HrTime(v) => Ok(v),
+            NvDataValue::HrTime(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::HrTime,
                 actual: self.data_type(),
@@ -1353,7 +1262,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_i8(&self) -> Result<i8, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Int8(v) => Ok(v),
+            NvDataValue::Int8(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Int8,
                 actual: self.data_type(),
@@ -1367,7 +1276,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_i16(&self) -> Result<i16, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Int16(v) => Ok(v),
+            NvDataValue::Int16(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Int16,
                 actual: self.data_type(),
@@ -1381,7 +1290,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_i32(&self) -> Result<i32, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Int32(v) => Ok(v),
+            NvDataValue::Int32(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Int32,
                 actual: self.data_type(),
@@ -1395,7 +1304,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_i64(&self) -> Result<i64, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Int64(v) => Ok(v),
+            NvDataValue::Int64(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Int64,
                 actual: self.data_type(),
@@ -1409,7 +1318,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_str(&self) -> Result<&str, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::String(v) => Ok(v),
+            NvDataValue::String(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::String,
                 actual: self.data_type(),
@@ -1423,7 +1332,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_u8(&self) -> Result<u8, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Uint8(v) => Ok(v),
+            NvDataValue::Uint8(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Uint8,
                 actual: self.data_type(),
@@ -1437,7 +1346,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_u16(&self) -> Result<u16, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Uint16(v) => Ok(v),
+            NvDataValue::Uint16(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Uint16,
                 actual: self.data_type(),
@@ -1451,7 +1360,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_u32(&self) -> Result<u32, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Uint32(v) => Ok(v),
+            NvDataValue::Uint32(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Uint32,
                 actual: self.data_type(),
@@ -1465,7 +1374,7 @@ impl NvDecodedPair<'_> {
      */
     pub fn get_u64(&self) -> Result<u64, NvDecodeError> {
         match self.value {
-            NvDecodedDataValue::Uint64(v) => Ok(v),
+            NvDataValue::Uint64(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Uint64,
                 actual: self.data_type(),
@@ -1584,7 +1493,7 @@ impl NvList<'_> {
      * Returns [`None`] if the pair is not found.
      * Resets the decoder prior to searching.
      */
-    pub fn find(&self, name: &str) -> Result<Option<NvDecodedPair<'_>>, NvDecodeError> {
+    pub fn find(&self, name: &str) -> Result<Option<NvPair<'_>>, NvDecodeError> {
         self.find_direct(name, self.data)
     }
 
@@ -1601,7 +1510,7 @@ impl NvList<'_> {
         &self,
         name: &str,
         data: &'a [u8],
-    ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
+    ) -> Result<Option<NvPair<'a>>, NvDecodeError> {
         let mut iter = self.iter();
         while let Some(pair_res) = iter.next_direct(data) {
             let pair = pair_res?;
@@ -1651,7 +1560,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::BooleanArray(v) => Ok(Some(v)),
+                NvDataValue::BooleanArray(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::BooleanArray,
                     actual: nv_pair.data_type(),
@@ -1700,7 +1609,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find_direct(name, data)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::ByteArray(v) => Ok(Some(v)),
+                NvDataValue::ByteArray(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::ByteArray,
                     actual: nv_pair.data_type(),
@@ -1758,7 +1667,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Int8Array(v) => Ok(Some(v)),
+                NvDataValue::Int8Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Int8Array,
                     actual: nv_pair.data_type(),
@@ -1790,7 +1699,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Int16Array(v) => Ok(Some(v)),
+                NvDataValue::Int16Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Int16Array,
                     actual: nv_pair.data_type(),
@@ -1822,7 +1731,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Int32Array(v) => Ok(Some(v)),
+                NvDataValue::Int32Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Int32Array,
                     actual: nv_pair.data_type(),
@@ -1854,7 +1763,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Int64Array(v) => Ok(Some(v)),
+                NvDataValue::Int64Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Int64Array,
                     actual: nv_pair.data_type(),
@@ -1873,7 +1782,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::NvList(v) => Ok(Some(v)),
+                NvDataValue::NvList(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::NvList,
                     actual: nv_pair.data_type(),
@@ -1895,7 +1804,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::NvListArray(v) => Ok(Some(v)),
+                NvDataValue::NvListArray(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::NvListArray,
                     actual: nv_pair.data_type(),
@@ -1931,7 +1840,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find_direct(name, data)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::String(v) => Ok(Some(v)),
+                NvDataValue::String(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::String,
                     actual: nv_pair.data_type(),
@@ -1963,7 +1872,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Uint8Array(v) => Ok(Some(v)),
+                NvDataValue::Uint8Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Uint8Array,
                     actual: nv_pair.data_type(),
@@ -1995,7 +1904,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Uint16Array(v) => Ok(Some(v)),
+                NvDataValue::Uint16Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Uint16Array,
                     actual: nv_pair.data_type(),
@@ -2027,7 +1936,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Uint32Array(v) => Ok(Some(v)),
+                NvDataValue::Uint32Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Uint32Array,
                     actual: nv_pair.data_type(),
@@ -2059,7 +1968,7 @@ impl NvList<'_> {
         let nv_pair_opt = self.find(name)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
-                NvDecodedDataValue::Uint64Array(v) => Ok(Some(v)),
+                NvDataValue::Uint64Array(v) => Ok(Some(v)),
                 _ => Err(NvDecodeError::DataTypeMismatch {
                     expected: NvDataType::Uint64Array,
                     actual: nv_pair.data_type(),
