@@ -64,8 +64,8 @@ pub use label::{
 
 pub(crate) mod nv;
 pub use nv::{
-    NvArray, NvArrayIterator, NvDataType, NvDataValue, NvDecodeError, NvDecodedDataValue,
-    NvDecodedPair, NvEncoding, NvEndianOrder, NvList, NvUnique,
+    NvArray, NvArrayIterator, NvDataType, NvDataValue, NvDecodeError, NvEncoding, NvEndianOrder,
+    NvList, NvPair, NvUnique,
 };
 
 pub(crate) mod object_set;
