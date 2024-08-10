@@ -772,8 +772,8 @@ impl fmt::Display for FeatureSetDecodeError<'_> {
     }
 }
 
-#[cfg(featureSet = "std")]
-impl error::Error for FeatureSetDecodeError {
+#[cfg(feature = "std")]
+impl error::Error for FeatureSetDecodeError<'_> {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             FeatureSetDecodeError::Feature { err } => Some(err),
