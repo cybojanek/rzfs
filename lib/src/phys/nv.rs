@@ -380,23 +380,28 @@ impl TryFrom<u32> for NvDataType {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Checks the [`NvDataType`] and count are valid.
+/** Checks the [`NvDataType`] and count are valid, and computes the array size.
  *
- * Returns the size of an element in a numerical array.
+ * NOTE: The array size will be 0 for non-array types, as well as
+ *       [`NvDataType::ByteArray`], [`NvDataType::StringArray`], and
+ *       [`NvDataType::NvListArray`].
  *
  * # Errors
  *
  * Returns [`NvDecodeError::InvalidCount`] if count is invalid.
  */
-fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<usize, NvDecodeError> {
-    match data_type {
-        // Boolean has no value.
+fn check_data_type_count_and_get_array_size(
+    data_type: NvDataType,
+    count: usize,
+) -> Result<usize, NvDecodeError> {
+    let array_element_size = match data_type {
+        // Boolean has no value, and it is not an array, so the array size is 0.
         NvDataType::Boolean => match count {
-            0 => Ok(0),
-            _ => Err(NvDecodeError::InvalidCount { data_type, count }),
+            0 => 0,
+            _ => return Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
-        // Non arrays have only one.
+        // Non arrays have only one, and the array size is 0.
         NvDataType::Byte
         | NvDataType::Int16
         | NvDataType::Uint16
@@ -411,24 +416,30 @@ fn check_data_type_count(data_type: NvDataType, count: usize) -> Result<usize, N
         | NvDataType::Int8
         | NvDataType::Uint8
         | NvDataType::Double => match count {
-            1 => Ok(0),
-            _ => Err(NvDecodeError::InvalidCount { data_type, count }),
+            1 => 0,
+            _ => return Err(NvDecodeError::InvalidCount { data_type, count }),
         },
 
-        // Arrays have from 0 to N values.
+        // Arrays have from 0 to N values, and these types are 4 bytes per element.
         NvDataType::BooleanArray
         | NvDataType::Int16Array
         | NvDataType::Uint16Array
         | NvDataType::Int32Array
         | NvDataType::Uint32Array
         | NvDataType::Int8Array
-        | NvDataType::Uint8Array => Ok(4),
+        | NvDataType::Uint8Array => 4,
 
-        // Arrays have from 0 to N values.
-        NvDataType::Int64Array | NvDataType::Uint64Array => Ok(8),
+        // Arrays have from 0 to N values, and these types have 8 bytes per element.
+        NvDataType::Int64Array | NvDataType::Uint64Array => 8,
 
-        // Arrays have from 0 to N values.
-        NvDataType::ByteArray | NvDataType::StringArray | NvDataType::NvListArray => Ok(0),
+        // Arrays have from 0 to N values, and the bytes per element is unknown.
+        NvDataType::ByteArray | NvDataType::StringArray | NvDataType::NvListArray => 0,
+    };
+
+    // Compute array size.
+    match count.checked_mul(array_element_size) {
+        Some(v) => Ok(v),
+        None => Err(NvDecodeError::InvalidCount { data_type, count }),
     }
 }
 
@@ -528,7 +539,7 @@ pub struct NvList<'a> {
     /// Offset into `data`.
     offset: usize,
 
-    /// Byte length of array.
+    /// Byte length of list.
     length: usize,
 
     /// Encoding.
@@ -583,10 +594,8 @@ impl NvListIterator<'_> {
     pub fn reset(&self) {
         self.decoder.reset()
     }
-}
 
-impl NvListIterator<'_> {
-    /// Get the next pair result.
+    /// Gets the next pair result.
     fn next_pair_result<'a>(&self, data: &'a [u8]) -> Result<Option<NvPair<'a>>, NvDecodeError> {
         // Check for end of list.
         if self.decoder.is_empty() {
@@ -630,19 +639,8 @@ impl NvListIterator<'_> {
             }
         };
 
-        // Check count.
-        // NOTE: array_element_size will be 0 for non-array types, as well as
-        //       ByteArray, StringArray, and NvListArray.
-        let array_element_size = check_data_type_count(data_type, element_count)?;
-        let array_value_size = match element_count.checked_mul(array_element_size) {
-            Some(v) => v,
-            None => {
-                return Err(NvDecodeError::InvalidCount {
-                    data_type,
-                    count: element_count,
-                })
-            }
-        };
+        // Check count and get array size.
+        let array_value_size = check_data_type_count_and_get_array_size(data_type, element_count)?;
 
         // Decode data value.
         let value = match data_type {
@@ -741,7 +739,6 @@ impl NvListIterator<'_> {
                 self.decoder.skip(bytes_rem)?;
 
                 NvArray {
-                    // TODO(cybojanek): Verify length of strings at this point?
                     data,
                     offset: value_offset,
                     length: bytes_rem,
@@ -753,7 +750,6 @@ impl NvListIterator<'_> {
             }),
             NvDataType::HrTime => NvDataValue::HrTime(self.decoder.get_i64()?),
             NvDataType::NvList => NvDataValue::NvList({
-                // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
                 NvList::from_partial(
@@ -765,11 +761,9 @@ impl NvListIterator<'_> {
                 )?
             }),
             NvDataType::NvListArray => NvDataValue::NvListArray({
-                // Decode bytes, but discard because data will be used.
                 self.decoder.skip(bytes_rem)?;
 
                 NvArray {
-                    // TODO(cybojanek): Verify length of list at this point?
                     data,
                     offset: value_offset,
                     length: bytes_rem,
@@ -855,6 +849,11 @@ impl NvListIterator<'_> {
      * as was used to create the [`NvList`].
      */
     pub fn next_direct<'a>(&mut self, data: &'a [u8]) -> Option<Result<NvPair<'a>, NvDecodeError>> {
+        // Check that the data is the same.
+        if !core::ptr::eq(self.list.data, data) {
+            return Some(Err(NvDecodeError::DataMismatch {}));
+        }
+
         // Check for clamp error.
         if let Some(err) = self.clamp_err {
             // Finish iteration by skipping the rest of the input.
@@ -915,6 +914,11 @@ pub struct NvArray<'a, T> {
 }
 
 impl<T> NvArray<'_, T> {
+    /// Is the array empty.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
     /// Number of elements in the array.
     pub fn len(&self) -> usize {
         self.count
@@ -1171,10 +1175,20 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`bool`] value for a [`NvDataType::Boolean`].
-     * If found, the returned value is always [`true`].
+    /// Gets [`bool`] value for a [`NvDataType::BooleanValue`].
+    pub fn get_bool(&self) -> Result<bool, NvDecodeError> {
+        match self.value {
+            NvDataValue::BooleanValue(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::BooleanValue,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /** Gets [`bool`] value for a [`NvDataType::Boolean`].
      *
-     * Returns [`None`] if not found.
+     * If type matches, the returned value is always [`true`].
      */
     pub fn get_bool_flag(&self) -> Result<bool, NvDecodeError> {
         match self.value {
@@ -1186,24 +1200,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`bool`] value for a [`NvDataType::BooleanValue`].
-     *
-     * Returns [`None`] if not found.
-     */
-    pub fn get_bool(&self) -> Result<bool, NvDecodeError> {
+    /// Gets [`bool`] array value.
+    pub fn get_bool_array(&self) -> Result<NvArray<'_, bool>, NvDecodeError> {
         match self.value {
-            NvDataValue::BooleanValue(v) => Ok(v),
+            NvDataValue::BooleanArray(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
-                expected: NvDataType::BooleanValue,
+                expected: NvDataType::BooleanArray,
                 actual: self.data_type(),
             }),
         }
     }
 
-    /** Get [`u8`] byte value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`u8`] byte value.
     pub fn get_byte(&self) -> Result<u8, NvDecodeError> {
         match self.value {
             NvDataValue::Byte(v) => Ok(v),
@@ -1214,10 +1222,7 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`u8`] byte array value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`u8`] byte array value.
     pub fn get_byte_array(&self) -> Result<&[u8], NvDecodeError> {
         match self.value {
             NvDataValue::ByteArray(v) => Ok(v),
@@ -1228,10 +1233,7 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`f64`] byte value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`f64`] byte value.
     pub fn get_f64(&self) -> Result<f64, NvDecodeError> {
         match self.value {
             NvDataValue::Double(v) => Ok(v),
@@ -1242,10 +1244,7 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`i64`] high resolution nanosecond time value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i64`] high resolution nanosecond time value.
     pub fn get_hr_time(&self) -> Result<i64, NvDecodeError> {
         match self.value {
             NvDataValue::HrTime(v) => Ok(v),
@@ -1256,10 +1255,7 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`i8`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i8`] value.
     pub fn get_i8(&self) -> Result<i8, NvDecodeError> {
         match self.value {
             NvDataValue::Int8(v) => Ok(v),
@@ -1270,10 +1266,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`i16`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i8`] array value.
+    pub fn get_i8_array(&self) -> Result<NvArray<'_, i8>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Int8Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Int8Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`i16`] value.
     pub fn get_i16(&self) -> Result<i16, NvDecodeError> {
         match self.value {
             NvDataValue::Int16(v) => Ok(v),
@@ -1284,10 +1288,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`i32`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i16`] array value.
+    pub fn get_i16_array(&self) -> Result<NvArray<'_, i16>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Int16Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Int16Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`i32`] value.
     pub fn get_i32(&self) -> Result<i32, NvDecodeError> {
         match self.value {
             NvDataValue::Int32(v) => Ok(v),
@@ -1298,10 +1310,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`i64`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i32`] array value.
+    pub fn get_i32_array(&self) -> Result<NvArray<'_, i32>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Int32Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Int32Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`i64`] value.
     pub fn get_i64(&self) -> Result<i64, NvDecodeError> {
         match self.value {
             NvDataValue::Int64(v) => Ok(v),
@@ -1312,10 +1332,40 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`str`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`i64`] array value.
+    pub fn get_i64_array(&self) -> Result<NvArray<'_, i64>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Int64Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Int64Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`NvList`] value.
+    pub fn get_nv_list(&self) -> Result<NvList<'_>, NvDecodeError> {
+        match self.value {
+            NvDataValue::NvList(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::NvList,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`NvList`] array value.
+    pub fn get_nv_list_array(&self) -> Result<NvArray<'_, NvList<'_>>, NvDecodeError> {
+        match self.value {
+            NvDataValue::NvListArray(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::NvListArray,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`str`] value.
     pub fn get_str(&self) -> Result<&str, NvDecodeError> {
         match self.value {
             NvDataValue::String(v) => Ok(v),
@@ -1326,10 +1376,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`u8`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`str`] array value.
+    pub fn get_str_array(&self) -> Result<NvArray<'_, &str>, NvDecodeError> {
+        match self.value {
+            NvDataValue::StringArray(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::StringArray,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`u8`] value.
     pub fn get_u8(&self) -> Result<u8, NvDecodeError> {
         match self.value {
             NvDataValue::Uint8(v) => Ok(v),
@@ -1340,10 +1398,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`u16`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`u8`] array value.
+    pub fn get_u8_array(&self) -> Result<NvArray<'_, u8>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Uint8Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Uint8Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`u16`] value.
     pub fn get_u16(&self) -> Result<u16, NvDecodeError> {
         match self.value {
             NvDataValue::Uint16(v) => Ok(v),
@@ -1354,10 +1420,18 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`u32`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`u16`] array value.
+    pub fn get_u16_array(&self) -> Result<NvArray<'_, u16>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Uint16Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Uint16Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`u32`] value.
     pub fn get_u32(&self) -> Result<u32, NvDecodeError> {
         match self.value {
             NvDataValue::Uint32(v) => Ok(v),
@@ -1368,15 +1442,34 @@ impl NvPair<'_> {
         }
     }
 
-    /** Get [`u64`] value.
-     *
-     * Returns [`None`] if not found.
-     */
+    /// Gets [`u32`] array value.
+    pub fn get_u32_array(&self) -> Result<NvArray<'_, u32>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Uint32Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Uint32Array,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`u64`] value.
     pub fn get_u64(&self) -> Result<u64, NvDecodeError> {
         match self.value {
             NvDataValue::Uint64(v) => Ok(v),
             _ => Err(NvDecodeError::DataTypeMismatch {
                 expected: NvDataType::Uint64,
+                actual: self.data_type(),
+            }),
+        }
+    }
+
+    /// Gets [`u64`] array value.
+    pub fn get_u64_array(&self) -> Result<NvArray<'_, u64>, NvDecodeError> {
+        match self.value {
+            NvDataValue::Uint64Array(v) => Ok(v),
+            _ => Err(NvDecodeError::DataTypeMismatch {
+                expected: NvDataType::Uint64Array,
                 actual: self.data_type(),
             }),
         }
@@ -1524,7 +1617,20 @@ impl NvList<'_> {
         Ok(None)
     }
 
-    /** Get [`bool`] with the specified name for a [`NvDataType::Boolean`].
+    /** Gets [`bool`] with the specified name for a [`NvDataType::BooleanValue`].
+     *
+     * Does not check for uniqueness.
+     * Returns [`None`] if not found.
+     */
+    pub fn get_bool(&self, name: &str) -> Result<Option<bool>, NvDecodeError> {
+        let nv_pair_opt = self.find(name)?;
+        match nv_pair_opt {
+            Some(nv_pair) => Ok(Some(nv_pair.get_bool()?)),
+            None => Ok(None),
+        }
+    }
+
+    /** Gets [`bool`] with the specified name for a [`NvDataType::Boolean`].
      * If found, the returned value is always [`true`].
      *
      * Does not check for uniqueness.
@@ -1538,20 +1644,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`bool`] with the specified name for a [`NvDataType::BooleanValue`].
-     *
-     * Does not check for uniqueness.
-     * Returns [`None`] if not found.
-     */
-    pub fn get_bool(&self, name: &str) -> Result<Option<bool>, NvDecodeError> {
-        let nv_pair_opt = self.find(name)?;
-        match nv_pair_opt {
-            Some(nv_pair) => Ok(Some(nv_pair.get_bool()?)),
-            None => Ok(None),
-        }
-    }
-
-    /** Get [`bool`] array with the specified name.
+    /** Gets [`bool`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1570,7 +1663,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u8`] byte with the specified name.
+    /** Gets [`u8`] byte with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1583,7 +1676,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u8`] byte array with the specified name.
+    /** Gets [`u8`] byte array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1592,7 +1685,7 @@ impl NvList<'_> {
         self.get_byte_array_direct(name, self.data)
     }
 
-    /** Get [`u8`] byte array with the specified name.
+    /** Gets [`u8`] byte array with the specified name.
      *
      * The same as [`NvList::get_byte_array`], but returns a value, whose
      * lifetime is tied to the input `data`, which must be the same `data` as
@@ -1619,7 +1712,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`f64`] byte with the specified name.
+    /** Gets [`f64`] byte with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1632,7 +1725,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i64`] high resolution nanosecond time with the specified name.
+    /** Gets [`i64`] high resolution nanosecond time with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1645,7 +1738,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i8`] with the specified name.
+    /** Gets [`i8`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1658,7 +1751,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i8`] array with the specified name.
+    /** Gets [`i8`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1677,7 +1770,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i16`] with the specified name.
+    /** Gets [`i16`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1690,7 +1783,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i16`] array with the specified name.
+    /** Gets [`i16`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1709,7 +1802,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i32`] with the specified name.
+    /** Gets [`i32`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1722,7 +1815,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i32`] array with the specified name.
+    /** Gets [`i32`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1741,7 +1834,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i64`] with the specified name.
+    /** Gets [`i64`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1754,7 +1847,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`i64`] array with the specified name.
+    /** Gets [`i64`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1773,7 +1866,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`NvList`] with the specified name.
+    /** Gets [`NvList`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1792,7 +1885,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`NvList`] array with the specified name.
+    /** Gets [`NvList`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1814,7 +1907,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`str`] with the specified name.
+    /** Gets [`str`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1823,7 +1916,7 @@ impl NvList<'_> {
         self.get_str_direct(name, self.data)
     }
 
-    /** Get [`str`] with the specified name.
+    /** Gets [`str`] with the specified name.
      *
      * The same as [`NvList::get_str`], but returns a value, whose lifetime
      * is tied to the input `data`, which must be the same `data` as was used to
@@ -1850,7 +1943,26 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u8`] with the specified name.
+    /** Gets [`str`] array with the specified name.
+     *
+     * Does not check for uniqueness.
+     * Returns [`None`] if not found.
+     */
+    pub fn get_str_array(&self, name: &str) -> Result<Option<NvArray<'_, &str>>, NvDecodeError> {
+        let nv_pair_opt = self.find(name)?;
+        match nv_pair_opt {
+            Some(nv_pair) => match nv_pair.value {
+                NvDataValue::StringArray(v) => Ok(Some(v)),
+                _ => Err(NvDecodeError::DataTypeMismatch {
+                    expected: NvDataType::StringArray,
+                    actual: nv_pair.data_type(),
+                }),
+            },
+            None => Ok(None),
+        }
+    }
+
+    /** Gets [`u8`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1863,7 +1975,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u8`] array with the specified name.
+    /** Gets [`u8`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1882,7 +1994,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u16`] with the specified name.
+    /** Gets [`u16`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1895,7 +2007,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u16`] array with the specified name.
+    /** Gets [`u16`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1914,7 +2026,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u32`] with the specified name.
+    /** Gets [`u32`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1927,7 +2039,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u32`] array with the specified name.
+    /** Gets [`u32`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1946,7 +2058,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u64`] with the specified name.
+    /** Gets [`u64`] with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
@@ -1959,7 +2071,7 @@ impl NvList<'_> {
         }
     }
 
-    /** Get [`u64`] array with the specified name.
+    /** Gets [`u64`] array with the specified name.
      *
      * Does not check for uniqueness.
      * Returns [`None`] if not found.
