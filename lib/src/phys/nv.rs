@@ -520,7 +520,7 @@ pub enum NvDataValue<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Decoded Name Value Pair Data Value.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum NvDecodedDataValue<'a> {
     /// A boolean flag (no value).
     Boolean(),
@@ -604,11 +604,17 @@ pub enum NvDecodedDataValue<'a> {
     Double(f64),
 }
 
-/// A name value pair list decoder.
-#[derive(Debug)]
+/// A name value pair list.
+#[derive(Clone, Copy, Debug)]
 pub struct NvList<'a> {
-    /// Decoder.
-    decoder: XdrDecoder<'a>,
+    /// Full [`NvList`] data.
+    data: &'a [u8],
+
+    /// Offset into `data`.
+    offset: usize,
+
+    /// Byte length of array.
+    length: usize,
 
     /// Encoding.
     encoding: NvEncoding,
@@ -620,10 +626,362 @@ pub struct NvList<'a> {
     unique: NvUnique,
 }
 
+impl NvList<'_> {
+    /// Returns an iterator over the [`NvList`].
+    pub fn iter(&self) -> NvListIterator<'_> {
+        // iter() cannot return an error, so have the Iterator return the error
+        // in case byte clamp fails.
+        let (decoder, clamp_err) =
+            match XdrDecoder::from_bytes_clamped(self.data, self.offset, self.length) {
+                Ok(decoder) => (decoder, None),
+                Err(err) => {
+                    // Use a decoder that cannot fail to avoid Option.
+                    (XdrDecoder::from_bytes(self.data), Some(err))
+                }
+            };
+
+        NvListIterator {
+            list: self,
+            decoder,
+            clamp_err,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// [`NvList`] iterator.
+#[derive(Debug)]
+pub struct NvListIterator<'a> {
+    /// List.
+    list: &'a NvList<'a>,
+
+    /// Decoder.
+    decoder: XdrDecoder<'a>,
+
+    /// Error from creating the iterator decoder.
+    clamp_err: Option<XdrDecodeError>,
+}
+
+impl NvListIterator<'_> {
+    /// Resets the iterator to the start of the data.
+    pub fn reset(&self) {
+        self.decoder.reset()
+    }
+}
+
+impl NvListIterator<'_> {
+    /// Get the next pair result.
+    fn next_pair_result<'a>(
+        &self,
+        data: &'a [u8],
+    ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
+        // Check for end of list.
+        if self.decoder.is_empty() {
+            return Ok(None);
+        }
+
+        // Keep track of starting offset, to verify encoded_size, and
+        // construct nested NV List structures.
+        let starting_offset = self.decoder.offset();
+
+        // Encoded and decoded sizes.
+        let encoded_size = self.decoder.get_usize()?;
+        let decoded_size = self.decoder.get_usize()?;
+
+        // Check for end of list.
+        if encoded_size == 0 && decoded_size == 0 {
+            return Ok(None);
+        }
+
+        // Name.
+        let name = self.decoder.get_str_direct(data)?;
+
+        // Data type.
+        let data_type = self.decoder.get_u32()?;
+        let data_type = NvDataType::try_from(data_type)?;
+
+        // Number of elements.
+        let element_count = self.decoder.get_usize()?;
+
+        // Number of bytes remaining.
+        let value_offset = self.decoder.offset();
+        let bytes_used = value_offset - starting_offset;
+        let bytes_rem = match encoded_size.checked_sub(bytes_used) {
+            Some(v) => v,
+            None => {
+                // Consumed too many bytes.
+                return Err(NvDecodeError::InvalidEncodedSize {
+                    encoded_size,
+                    used: bytes_used,
+                });
+            }
+        };
+
+        // Check count.
+        // NOTE: array_element_size will be 0 for non-array types, as well as
+        //       ByteArray, StringArray, and NvListArray.
+        let array_element_size = check_data_type_count(data_type, element_count)?;
+        let array_value_size = match element_count.checked_mul(array_element_size) {
+            Some(v) => v,
+            None => {
+                return Err(NvDecodeError::InvalidCount {
+                    data_type,
+                    count: element_count,
+                })
+            }
+        };
+
+        // Decode data value.
+        let value = match data_type {
+            NvDataType::Boolean => NvDecodedDataValue::Boolean(),
+            NvDataType::Byte => NvDecodedDataValue::Byte(self.decoder.get_u8()?),
+            NvDataType::Int16 => NvDecodedDataValue::Int16(self.decoder.get_i16()?),
+            NvDataType::Uint16 => NvDecodedDataValue::Uint16(self.decoder.get_u16()?),
+            NvDataType::Int32 => NvDecodedDataValue::Int32(self.decoder.get_i32()?),
+            NvDataType::Uint32 => NvDecodedDataValue::Uint32(self.decoder.get_u32()?),
+            NvDataType::Int64 => NvDecodedDataValue::Int64(self.decoder.get_i64()?),
+            NvDataType::Uint64 => NvDecodedDataValue::Uint64(self.decoder.get_u64()?),
+            NvDataType::String => NvDecodedDataValue::String(self.decoder.get_str_direct(data)?),
+            NvDataType::ByteArray => {
+                NvDecodedDataValue::ByteArray(self.decoder.get_byte_array_direct(data)?)
+            }
+            NvDataType::Int16Array => NvDecodedDataValue::Int16Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+
+            NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Int32Array => NvDecodedDataValue::Int32Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Int64Array => NvDecodedDataValue::Int64Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::StringArray => NvDecodedDataValue::StringArray({
+                self.decoder.skip(bytes_rem)?;
+
+                NvArray {
+                    // TODO(cybojanek): Verify length of strings at this point?
+                    data,
+                    offset: value_offset,
+                    length: bytes_rem,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::HrTime => NvDecodedDataValue::HrTime(self.decoder.get_i64()?),
+            NvDataType::NvList => NvDecodedDataValue::NvList({
+                // Decode bytes, but discard because data will be used.
+                self.decoder.skip(bytes_rem)?;
+
+                NvList::from_partial(
+                    data,
+                    value_offset,
+                    bytes_rem,
+                    self.list.encoding,
+                    self.list.order,
+                )?
+            }),
+            NvDataType::NvListArray => NvDecodedDataValue::NvListArray({
+                // Decode bytes, but discard because data will be used.
+                self.decoder.skip(bytes_rem)?;
+
+                NvArray {
+                    // TODO(cybojanek): Verify length of list at this point?
+                    data,
+                    offset: value_offset,
+                    length: bytes_rem,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::BooleanValue => NvDecodedDataValue::BooleanValue(self.decoder.get_bool()?),
+            NvDataType::Int8 => NvDecodedDataValue::Int8(self.decoder.get_i8()?),
+            NvDataType::Uint8 => NvDecodedDataValue::Uint8(self.decoder.get_u8()?),
+            NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Int8Array => NvDecodedDataValue::Int8Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array({
+                self.decoder.skip(array_value_size)?;
+
+                NvArray {
+                    data,
+                    offset: value_offset,
+                    length: array_value_size,
+                    count: element_count,
+                    order: self.list.order,
+                    encoding: self.list.encoding,
+                    phantom: PhantomData,
+                }
+            }),
+            NvDataType::Double => NvDecodedDataValue::Double(self.decoder.get_f64()?),
+        };
+
+        // Number of bytes remaining.
+        let bytes_used = self.decoder.offset() - starting_offset;
+        let bytes_rem = match encoded_size.checked_sub(bytes_used) {
+            Some(v) => v,
+            None => {
+                // Consumed too many bytes.
+                return Err(NvDecodeError::InvalidEncodedSize {
+                    encoded_size,
+                    used: bytes_used,
+                });
+            }
+        };
+
+        // Some bytes left.
+        if bytes_rem > 0 {
+            return Err(NvDecodeError::InvalidEncodedSize {
+                encoded_size,
+                used: bytes_used,
+            });
+        }
+
+        Ok(Some(NvDecodedPair { name, value }))
+    }
+
+    /** Gets the next [`NvDecodedPair`].
+     *
+     * The same as [`NvListIterator`] [`Iterator::next`] but returns a value,
+     * whose lifetime is tied to the input `data`, which must be the same `data`
+     * as was used to create the [`NvList`].
+     */
+    pub fn next_direct<'a>(
+        &mut self,
+        data: &'a [u8],
+    ) -> Option<Result<NvDecodedPair<'a>, NvDecodeError>> {
+        // Check for clamp error.
+        if let Some(err) = self.clamp_err {
+            // Finish iteration by skipping the rest of the input.
+            let _ = self.decoder.skip(self.decoder.len());
+            return Some(Err(NvDecodeError::Xdr { err }));
+        }
+
+        // Get the next pair result, and convert it to an option response.
+        match self.next_pair_result(data) {
+            Ok(v) => v.map(Ok),
+            Err(err) => Some(Err(err)),
+        }
+    }
+}
+
+impl<'a> Iterator for NvListIterator<'a> {
+    type Item = Result<NvDecodedPair<'a>, NvDecodeError>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        self.next_direct(self.list.data)
+    }
+}
+
+impl<'a> IntoIterator for &'a NvList<'_> {
+    type Item = Result<NvDecodedPair<'a>, NvDecodeError>;
+    type IntoIter = NvListIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A decoder of an array of [`NvPair`] entries.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct NvArray<'a, T> {
     /// Full [`NvList`] data.
     data: &'a [u8],
@@ -790,6 +1148,11 @@ impl NvArrayIterator<'_, NvList<'_>> {
      * as was used to create the [`NvArray`].
      */
     pub fn next_direct<'a>(&mut self, data: &'a [u8]) -> Option<Result<NvList<'a>, NvDecodeError>> {
+        // Check that the data is the same.
+        if !core::ptr::eq(self.array.data, data) {
+            return Some(Err(NvDecodeError::DataMismatch {}));
+        }
+
         // The length of the array is not actually known, so decode the array,
         // in order to increment offset of the outer decoder.
         if self.index < self.array.count {
@@ -804,30 +1167,27 @@ impl NvArrayIterator<'_, NvList<'_>> {
 
             // Create a temporary decoder.
             let starting_offset = self.decoder.offset();
-            let decoder = match NvList::from_partial(
+            let list = match NvList::from_partial(
                 self.decoder.data(),
                 self.decoder.offset(),
                 self.decoder.len(),
                 self.array.encoding,
                 self.array.order,
             ) {
-                Ok(decoder) => decoder,
+                Ok(list) => list,
                 Err(err) => return Some(Err(err)),
             };
 
             // Decode until end of list or error.
-            loop {
-                match decoder.next_pair() {
-                    Ok(v) => match v {
-                        Some(_) => continue,
-                        None => break,
-                    },
-                    Err(v) => return Some(Err(v)),
+            let mut iter = list.iter();
+            for pair_res in iter.by_ref() {
+                if let Err(err) = pair_res {
+                    return Some(Err(err));
                 }
             }
 
             // Compute number of bytes used for this list.
-            let bytes_used = decoder.decoder.offset() - starting_offset;
+            let bytes_used = iter.decoder.offset() - starting_offset;
 
             // Decode bytes, but discard because data will be used.
             if let Err(err) = self.decoder.get_bytes(bytes_used) {
@@ -905,7 +1265,6 @@ impl NvDecodedPair<'_> {
     /** Get [`bool`] value for a [`NvDataType::Boolean`].
      * If found, the returned value is always [`true`].
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_bool_flag(&self) -> Result<bool, NvDecodeError> {
@@ -920,7 +1279,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`bool`] value for a [`NvDataType::BooleanValue`].
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_bool(&self) -> Result<bool, NvDecodeError> {
@@ -935,7 +1293,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u8`] byte value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_byte(&self) -> Result<u8, NvDecodeError> {
@@ -950,7 +1307,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u8`] byte array value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_byte_array(&self) -> Result<&[u8], NvDecodeError> {
@@ -965,7 +1321,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`f64`] byte value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_f64(&self) -> Result<f64, NvDecodeError> {
@@ -980,7 +1335,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`i64`] high resolution nanosecond time value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_hr_time(&self) -> Result<i64, NvDecodeError> {
@@ -995,7 +1349,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`i8`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_i8(&self) -> Result<i8, NvDecodeError> {
@@ -1010,7 +1363,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`i16`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_i16(&self) -> Result<i16, NvDecodeError> {
@@ -1025,7 +1377,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`i32`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_i32(&self) -> Result<i32, NvDecodeError> {
@@ -1040,7 +1391,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`i64`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_i64(&self) -> Result<i64, NvDecodeError> {
@@ -1055,7 +1405,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`str`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_str(&self) -> Result<&str, NvDecodeError> {
@@ -1070,7 +1419,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u8`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_u8(&self) -> Result<u8, NvDecodeError> {
@@ -1085,7 +1433,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u16`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_u16(&self) -> Result<u16, NvDecodeError> {
@@ -1100,7 +1447,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u32`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_u32(&self) -> Result<u32, NvDecodeError> {
@@ -1115,7 +1461,6 @@ impl NvDecodedPair<'_> {
 
     /** Get [`u64`] value.
      *
-     * Does not check for uniqueness.
      * Returns [`None`] if not found.
      */
     pub fn get_u64(&self) -> Result<u64, NvDecodeError> {
@@ -1135,7 +1480,7 @@ impl NvList<'_> {
 
     /// Gets the `data` value for this decoder.
     pub fn data(&self) -> &[u8] {
-        self.decoder.data()
+        self.data
     }
 
     /// Gets the [`NvUnique`] value for this decoder.
@@ -1225,302 +1570,13 @@ impl NvList<'_> {
         let unique = NvUnique::try_from(unique_flags as u8)?;
 
         Ok(NvList {
-            decoder,
+            data,
+            offset: decoder.offset(),
+            length: decoder.len(),
             encoding,
             order,
             unique,
         })
-    }
-
-    /** Gets the next [`NvDecodedPair`].
-     *
-     * - Returns [`None`] at end of list.
-     *
-     * # Errors.
-     *
-     * Returns [`NvDecodeError`] on error.
-     */
-    pub fn next_pair(&self) -> Result<Option<NvDecodedPair<'_>>, NvDecodeError> {
-        self.next_pair_direct(self.decoder.data())
-    }
-
-    /** Gets the next [`NvDecodedPair`].
-     *
-     * The same as [`NvList::next_pair`], but returns a value, whose lifetime
-     * is tied to the input `data`, which must be the same `data` as was used to
-     * create the [`NvList`].
-     *
-     * - Returns [`None`] at end of list.
-     *
-     * # Errors.
-     *
-     * Returns [`NvDecodeError`] on error.
-     */
-    pub fn next_pair_direct<'a>(
-        &self,
-        data: &'a [u8],
-    ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
-        // Check for end of list.
-        if self.decoder.is_empty() {
-            return Ok(None);
-        }
-
-        // Keep track of starting offset, to verify encoded_size, and
-        // construct nested NV List structures.
-        let starting_offset = self.decoder.offset();
-
-        // Encoded and decoded sizes.
-        let encoded_size = self.decoder.get_usize()?;
-        let decoded_size = self.decoder.get_usize()?;
-
-        // Check for end of list.
-        if encoded_size == 0 && decoded_size == 0 {
-            return Ok(None);
-        }
-
-        // Name.
-        let name = self.decoder.get_str_direct(data)?;
-
-        // Data type.
-        let data_type = self.decoder.get_u32()?;
-        let data_type = NvDataType::try_from(data_type)?;
-
-        // Number of elements.
-        let element_count = self.decoder.get_usize()?;
-
-        // Number of bytes remaining.
-        let value_offset = self.decoder.offset();
-        let bytes_used = value_offset - starting_offset;
-        let bytes_rem = match encoded_size.checked_sub(bytes_used) {
-            Some(v) => v,
-            None => {
-                // Consumed too many bytes.
-                return Err(NvDecodeError::InvalidEncodedSize {
-                    encoded_size,
-                    used: bytes_used,
-                });
-            }
-        };
-
-        // Check count.
-        // NOTE: array_element_size will be 0 for non-array types, as well as
-        //       ByteArray, StringArray, and NvListArray.
-        let array_element_size = check_data_type_count(data_type, element_count)?;
-        let array_value_size = match element_count.checked_mul(array_element_size) {
-            Some(v) => v,
-            None => {
-                return Err(NvDecodeError::InvalidCount {
-                    data_type,
-                    count: element_count,
-                })
-            }
-        };
-
-        // Decode data value.
-        let value = match data_type {
-            NvDataType::Boolean => NvDecodedDataValue::Boolean(),
-            NvDataType::Byte => NvDecodedDataValue::Byte(self.decoder.get_u8()?),
-            NvDataType::Int16 => NvDecodedDataValue::Int16(self.decoder.get_i16()?),
-            NvDataType::Uint16 => NvDecodedDataValue::Uint16(self.decoder.get_u16()?),
-            NvDataType::Int32 => NvDecodedDataValue::Int32(self.decoder.get_i32()?),
-            NvDataType::Uint32 => NvDecodedDataValue::Uint32(self.decoder.get_u32()?),
-            NvDataType::Int64 => NvDecodedDataValue::Int64(self.decoder.get_i64()?),
-            NvDataType::Uint64 => NvDecodedDataValue::Uint64(self.decoder.get_u64()?),
-            NvDataType::String => NvDecodedDataValue::String(self.decoder.get_str_direct(data)?),
-            NvDataType::ByteArray => {
-                NvDecodedDataValue::ByteArray(self.decoder.get_byte_array_direct(data)?)
-            }
-            NvDataType::Int16Array => NvDecodedDataValue::Int16Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-
-            NvDataType::Uint16Array => NvDecodedDataValue::Uint16Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Int32Array => NvDecodedDataValue::Int32Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Uint32Array => NvDecodedDataValue::Uint32Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Int64Array => NvDecodedDataValue::Int64Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Uint64Array => NvDecodedDataValue::Uint64Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::StringArray => NvDecodedDataValue::StringArray({
-                self.decoder.skip(bytes_rem)?;
-
-                NvArray {
-                    // TODO(cybojanek): Verify length of strings at this point?
-                    data,
-                    offset: value_offset,
-                    length: bytes_rem,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::HrTime => NvDecodedDataValue::HrTime(self.decoder.get_i64()?),
-            NvDataType::NvList => NvDecodedDataValue::NvList({
-                // Decode bytes, but discard because data will be used.
-                self.decoder.skip(bytes_rem)?;
-
-                NvList::from_partial(data, value_offset, bytes_rem, self.encoding, self.order)?
-            }),
-            NvDataType::NvListArray => NvDecodedDataValue::NvListArray({
-                // Decode bytes, but discard because data will be used.
-                self.decoder.skip(bytes_rem)?;
-
-                NvArray {
-                    // TODO(cybojanek): Verify length of list at this point?
-                    data,
-                    offset: value_offset,
-                    length: bytes_rem,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::BooleanValue => NvDecodedDataValue::BooleanValue(self.decoder.get_bool()?),
-            NvDataType::Int8 => NvDecodedDataValue::Int8(self.decoder.get_i8()?),
-            NvDataType::Uint8 => NvDecodedDataValue::Uint8(self.decoder.get_u8()?),
-            NvDataType::BooleanArray => NvDecodedDataValue::BooleanArray({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Int8Array => NvDecodedDataValue::Int8Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Uint8Array => NvDecodedDataValue::Uint8Array({
-                self.decoder.skip(array_value_size)?;
-
-                NvArray {
-                    data,
-                    offset: value_offset,
-                    length: array_value_size,
-                    count: element_count,
-                    order: self.order,
-                    encoding: self.encoding,
-                    phantom: PhantomData,
-                }
-            }),
-            NvDataType::Double => NvDecodedDataValue::Double(self.decoder.get_f64()?),
-        };
-
-        // Number of bytes remaining.
-        let bytes_used = self.decoder.offset() - starting_offset;
-        let bytes_rem = match encoded_size.checked_sub(bytes_used) {
-            Some(v) => v,
-            None => {
-                // Consumed too many bytes.
-                return Err(NvDecodeError::InvalidEncodedSize {
-                    encoded_size,
-                    used: bytes_used,
-                });
-            }
-        };
-
-        // Some bytes left.
-        if bytes_rem > 0 {
-            return Err(NvDecodeError::InvalidEncodedSize {
-                encoded_size,
-                used: bytes_used,
-            });
-        }
-
-        Ok(Some(NvDecodedPair { name, value }))
-    }
-
-    /// Reset the decoder to the start of the data.
-    pub fn reset(&self) {
-        self.decoder.reset();
-
-        // Skip version and flags.
-        // NOTE(cybojanek): Ignore return.
-        let _ = self.decoder.skip(8);
     }
 
     /** Finds the name value pair by name.
@@ -1529,7 +1585,7 @@ impl NvList<'_> {
      * Resets the decoder prior to searching.
      */
     pub fn find(&self, name: &str) -> Result<Option<NvDecodedPair<'_>>, NvDecodeError> {
-        self.find_direct(name, self.decoder.data())
+        self.find_direct(name, self.data)
     }
 
     /** Finds the name value pair by name.
@@ -1546,24 +1602,17 @@ impl NvList<'_> {
         name: &str,
         data: &'a [u8],
     ) -> Result<Option<NvDecodedPair<'a>>, NvDecodeError> {
-        // Reset decoder to start.
-        self.reset();
-
-        loop {
-            // Get next pair.
-            let pair = self.next_pair_direct(data)?;
-
-            // Check if its the end of the list.
-            let pair = match pair {
-                Some(v) => v,
-                None => return Ok(None),
-            };
+        let mut iter = self.iter();
+        while let Some(pair_res) = iter.next_direct(data) {
+            let pair = pair_res?;
 
             // Return if name matches.
             if pair.name == name {
                 return Ok(Some(pair));
             }
         }
+
+        Ok(None)
     }
 
     /** Get [`bool`] with the specified name for a [`NvDataType::Boolean`].
@@ -1631,7 +1680,7 @@ impl NvList<'_> {
      * Returns [`None`] if not found.
      */
     pub fn get_byte_array(&self, name: &str) -> Result<Option<&[u8]>, NvDecodeError> {
-        self.get_byte_array_direct(name, self.decoder.data())
+        self.get_byte_array_direct(name, self.data)
     }
 
     /** Get [`u8`] byte array with the specified name.
@@ -1862,7 +1911,7 @@ impl NvList<'_> {
      * Returns [`None`] if not found.
      */
     pub fn get_str(&self, name: &str) -> Result<Option<&str>, NvDecodeError> {
-        self.get_str_direct(name, self.decoder.data())
+        self.get_str_direct(name, self.data)
     }
 
     /** Get [`str`] with the specified name.
@@ -2026,6 +2075,9 @@ impl NvList<'_> {
 /// [`NvList`] decode error.
 #[derive(Debug)]
 pub enum NvDecodeError {
+    /// Data mismatch
+    DataMismatch {},
+
     /// [`NvDataType`] mismatch.
     DataTypeMismatch {
         /// Expected.
@@ -2129,6 +2181,10 @@ impl From<XdrDecodeError> for NvDecodeError {
 impl fmt::Display for NvDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            NvDecodeError::DataMismatch {} => write!(
+                f,
+                "NV decode error, provided data slice does not match decoder data slice"
+            ),
             NvDecodeError::DataTypeMismatch { expected, actual } => {
                 write!(
                     f,

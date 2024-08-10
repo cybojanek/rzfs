@@ -879,13 +879,9 @@ fn dump_root(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-fn dump_nv_list(decoder: &phys::NvList, depth: usize) -> Result<(), Box<dyn Error>> {
-    loop {
-        let nv_pair_opt = decoder.next_pair()?;
-        let nv_pair = match nv_pair_opt {
-            Some(v) => v,
-            None => break,
-        };
+fn dump_nv_list(list: &phys::NvList, depth: usize) -> Result<(), Box<dyn Error>> {
+    for nv_pair_res in list {
+        let nv_pair = nv_pair_res?;
 
         print!("{:width$}", "", width = depth);
 
