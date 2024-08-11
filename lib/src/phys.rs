@@ -99,6 +99,9 @@ pub use uberblock::{
     UberBlockMmpEncodeError,
 };
 
+pub(crate) mod vdev;
+pub use vdev::{VdevTree, VdevTreeKey, VdevTreeKeyDecodeError, VdevType, VdevTypeDecodeError};
+
 pub(crate) mod xdr;
 pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
 
