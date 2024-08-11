@@ -1872,7 +1872,24 @@ impl NvList<'_> {
      * Returns [`None`] if not found.
      */
     pub fn get_nv_list(&self, name: &str) -> Result<Option<NvList<'_>>, NvDecodeError> {
-        let nv_pair_opt = self.find(name)?;
+        self.get_nv_list_direct(name, self.data)
+    }
+
+    /** Gets [`NvList`] with the specified name.
+     *
+     * The same as [`NvList::get_nv_list`], but returns a value, whose lifetime
+     * is tied to the input `data`, which must be the same `data` as was used to
+     * create the [`NvList`].
+     *
+     * Does not check for uniqueness.
+     * Returns [`None`] if not found.
+     */
+    pub fn get_nv_list_direct<'a>(
+        &self,
+        name: &str,
+        data: &'a [u8],
+    ) -> Result<Option<NvList<'a>>, NvDecodeError> {
+        let nv_pair_opt = self.find_direct(name, data)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
                 NvDataValue::NvList(v) => Ok(Some(v)),
@@ -1894,7 +1911,20 @@ impl NvList<'_> {
         &self,
         name: &str,
     ) -> Result<Option<NvArray<'_, NvList<'_>>>, NvDecodeError> {
-        let nv_pair_opt = self.find(name)?;
+        self.get_nv_list_array_direct(name, self.data)
+    }
+
+    /** Gets [`NvList`] array with the specified name.
+     *
+     * Does not check for uniqueness.
+     * Returns [`None`] if not found.
+     */
+    pub fn get_nv_list_array_direct<'a>(
+        &self,
+        name: &str,
+        data: &'a [u8],
+    ) -> Result<Option<NvArray<'a, NvList<'a>>>, NvDecodeError> {
+        let nv_pair_opt = self.find_direct(name, data)?;
         match nv_pair_opt {
             Some(nv_pair) => match nv_pair.value {
                 NvDataValue::NvListArray(v) => Ok(Some(v)),
