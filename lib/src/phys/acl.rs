@@ -865,7 +865,7 @@ impl AceV1Iterator<'_> {
      * Returns [`AceDecodeError`] on error.
      */
     pub fn from_decoder<'a>(
-        decoder: &'a EndianDecoder<'_>,
+        decoder: &EndianDecoder<'a>,
     ) -> Result<AceV1Iterator<'a>, AceDecodeError> {
         // Get the rest of the bytes as the entries.
         let aces = decoder.get_bytes(decoder.len())?;
@@ -881,7 +881,7 @@ impl AceV1Iterator<'_> {
     }
 }
 
-impl Iterator for AceV1Iterator<'_> {
+impl<'a> Iterator for AceV1Iterator<'a> {
     type Item = Result<AceV1, AceDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
