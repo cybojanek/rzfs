@@ -44,11 +44,17 @@ impl Compatibility<'_> {
             _ => Compatibility::Files(compatibility),
         }
     }
+}
 
+impl<'a> Compatibility<'a> {
     /// Returns an iterator over the [`Compatibility`].
-    pub fn iter(&self) -> CompatibilityIterator<'_> {
+    pub fn iter(&self) -> CompatibilityIterator<'a> {
         CompatibilityIterator {
-            compatibility: self,
+            compatibility: match self {
+                Compatibility::Off => Compatibility::Off,
+                Compatibility::Legacy => Compatibility::Legacy,
+                Compatibility::Files(files) => Compatibility::Files(files),
+            },
             index: 0,
         }
     }
@@ -81,13 +87,13 @@ impl Display for Compatibility<'_> {
 #[derive(Debug)]
 pub struct CompatibilityIterator<'a> {
     /// [`Compatibility`] set.
-    compatibility: &'a Compatibility<'a>,
+    compatibility: Compatibility<'a>,
 
     /// Current index.
     index: usize,
 }
 
-impl<'a> IntoIterator for &'a Compatibility<'_> {
+impl<'a> IntoIterator for Compatibility<'a> {
     type Item = &'a str;
     type IntoIter = CompatibilityIterator<'a>;
 
@@ -638,26 +644,12 @@ impl FeatureSet {
      *
      * Returns [`FeatureSetDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(list: &'a NvList<'_>) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
-        FeatureSet::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`FeatureSet`].
-     *
-     * # Errors
-     *
-     * Returns [`FeatureSetDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
-    ) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
+    pub fn from_list<'a>(list: &NvList<'a>) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
         // Bitmap of features.
         let mut features = 0;
 
         // Decode the next pair.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Check the pair is a bool flag.

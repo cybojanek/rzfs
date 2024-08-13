@@ -366,7 +366,7 @@ fn dnode_dump_zap(
             decoder.reset();
             let zap_micro_iter = phys::ZapMicroIterator::from_decoder(&decoder)?;
 
-            for entry_res in &zap_micro_iter {
+            for entry_res in zap_micro_iter {
                 let entry = entry_res?;
                 println!(
                     "{:width$}{} -> {}",
@@ -1150,8 +1150,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
         if let Some(children) = pool.vdev_tree.vdev_type.children() {
             for nv_child in &children {
                 let nv_child = nv_child?;
-                let child =
-                    phys::LabelVdevChild::from_list_direct(&nv_child, nv_child.data()).unwrap();
+                let child = phys::LabelVdevChild::from_list(&nv_child).unwrap();
                 println!("Child: {child:#?}");
             }
         }

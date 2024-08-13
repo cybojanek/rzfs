@@ -718,22 +718,7 @@ impl LabelConfig<'_> {
      *
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(
-        list: &'a NvList<'_>,
-    ) -> Result<LabelConfig<'a>, LabelConfigDecodeError<'a>> {
-        LabelConfig::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`LabelConfig`].
-     *
-     * # Errors
-     *
-     * Returns [`LabelConfigDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
-    ) -> Result<LabelConfig<'a>, LabelConfigDecodeError<'a>> {
+    pub fn from_list<'a>(list: &NvList<'a>) -> Result<LabelConfig<'a>, LabelConfigDecodeError<'a>> {
         // State.
         let state_str = PoolConfigKey::State.into();
         let state = PoolState::try_from(match list.get_u64(state_str)? {
@@ -742,15 +727,11 @@ impl LabelConfig<'_> {
         })?;
 
         match state {
-            PoolState::Active | PoolState::Exported | PoolState::Destroyed => Ok(
-                LabelConfig::Storage(LabelConfigStorage::from_list_direct(list, data)?),
-            ),
-            PoolState::Spare => Ok(LabelConfig::Spare(LabelConfigSpare::from_list_direct(
-                list, data,
-            )?)),
-            PoolState::L2Cache => Ok(LabelConfig::L2Cache(LabelConfigL2Cache::from_list_direct(
-                list, data,
-            )?)),
+            PoolState::Active | PoolState::Exported | PoolState::Destroyed => {
+                Ok(LabelConfig::Storage(LabelConfigStorage::from_list(list)?))
+            }
+            PoolState::Spare => Ok(LabelConfig::Spare(LabelConfigSpare::from_list(list)?)),
+            PoolState::L2Cache => Ok(LabelConfig::L2Cache(LabelConfigL2Cache::from_list(list)?)),
         }
     }
 }
@@ -786,20 +767,7 @@ impl LabelConfigL2Cache {
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
     pub fn from_list<'a>(
-        list: &'a NvList<'_>,
-    ) -> Result<LabelConfigL2Cache, LabelConfigDecodeError<'a>> {
-        LabelConfigL2Cache::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`LabelConfigL2Cache`].
-     *
-     * # Errors
-     *
-     * Returns [`LabelConfigDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+        list: &NvList<'a>,
     ) -> Result<LabelConfigL2Cache, LabelConfigDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
@@ -842,8 +810,7 @@ impl LabelConfigL2Cache {
 
         ////////////////////////////////
         // Check for unknown values.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Value is unknown.
@@ -895,20 +862,7 @@ impl LabelConfigSpare {
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
     pub fn from_list<'a>(
-        list: &'a NvList<'_>,
-    ) -> Result<LabelConfigSpare, LabelConfigDecodeError<'a>> {
-        LabelConfigSpare::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`LabelConfigSpare`].
-     *
-     * # Errors
-     *
-     * Returns [`LabelConfigDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+        list: &NvList<'a>,
     ) -> Result<LabelConfigSpare, LabelConfigDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
@@ -940,8 +894,7 @@ impl LabelConfigSpare {
 
         ////////////////////////////////
         // Check for unknown values.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Value is unknown.
@@ -1058,20 +1011,7 @@ impl LabelConfigStorage<'_> {
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
     pub fn from_list<'a>(
-        list: &'a NvList<'_>,
-    ) -> Result<LabelConfigStorage<'a>, LabelConfigDecodeError<'a>> {
-        LabelConfigStorage::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`LabelConfigStorage`].
-     *
-     * # Errors
-     *
-     * Returns [`LabelConfigDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+        list: &NvList<'a>,
     ) -> Result<LabelConfigStorage<'a>, LabelConfigDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
@@ -1082,7 +1022,7 @@ impl LabelConfigStorage<'_> {
         };
 
         let name_str = PoolConfigKey::Name.into();
-        let name = match list.get_str_direct(name_str, data)? {
+        let name = match list.get_str(name_str)? {
             Some(v) => v,
             None => return Err(LabelConfigDecodeError::Missing { name: name_str }),
         };
@@ -1129,7 +1069,7 @@ impl LabelConfigStorage<'_> {
                 })
             }
         };
-        let vdev_tree = LabelVdevTree::from_list_direct(&vdev_tree_list, data)?;
+        let vdev_tree = LabelVdevTree::from_list(&vdev_tree_list)?;
 
         let version_str = PoolConfigKey::Version.into();
         let version = SpaVersion::try_from(match list.get_u64(version_str)? {
@@ -1139,11 +1079,11 @@ impl LabelConfigStorage<'_> {
 
         ////////////////////////////////
         // Decode optional values.
-        let comment = list.get_str_direct(PoolConfigKey::Comment.into(), data)?;
+        let comment = list.get_str(PoolConfigKey::Comment.into())?;
 
         let compatibility = list
-            .get_str_direct(PoolConfigKey::Compatibility.into(), data)?
-            .map(|v| Compatibility::from(v));
+            .get_str(PoolConfigKey::Compatibility.into())?
+            .map(Compatibility::from);
 
         let errata = match list.get_u64(PoolConfigKey::Errata.into())? {
             Some(v) => Some(PoolErrata::try_from(v)?),
@@ -1151,14 +1091,14 @@ impl LabelConfigStorage<'_> {
         };
 
         let host_id = list.get_u64(PoolConfigKey::HostId.into())?;
-        let host_name = list.get_str_direct(PoolConfigKey::HostName.into(), data)?;
+        let host_name = list.get_str(PoolConfigKey::HostName.into())?;
 
         let is_log = list.get_u64(PoolConfigKey::IsLog.into())?.map(|v| v != 0);
 
         let is_spare = list.get_u64(PoolConfigKey::IsSpare.into())?.map(|v| v != 0);
 
         let features_for_read = match list.get_nv_list(PoolConfigKey::FeaturesForRead.into())? {
-            Some(v) => Some(FeatureSet::from_list_direct(&v, data)?),
+            Some(v) => Some(FeatureSet::from_list(&v)?),
             None => None,
         };
 
@@ -1169,8 +1109,7 @@ impl LabelConfigStorage<'_> {
 
         ////////////////////////////////
         // Check for unknown values.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Value is unknown.
@@ -1382,9 +1321,9 @@ pub enum LabelVdevTreeType<'a> {
     RaidZ(LabelVdevTreeRaidZ<'a>),
 }
 
-impl LabelVdevTreeType<'_> {
+impl<'a> LabelVdevTreeType<'a> {
     /// Gets the children from the vdev tree.
-    pub fn children(&self) -> Option<NvArray<'_, NvList<'_>>> {
+    pub fn children(&self) -> Option<NvArray<'a, NvList<'a>>> {
         match self {
             LabelVdevTreeType::Disk(_) | LabelVdevTreeType::File(_) => None,
             LabelVdevTreeType::Mirror(mirror) => Some(mirror.children),
@@ -1444,9 +1383,8 @@ impl LabelVdevTree<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+    pub fn from_list<'a>(
+        list: &NvList<'a>,
     ) -> Result<LabelVdevTree<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
@@ -1511,7 +1449,7 @@ impl LabelVdevTree<'_> {
         ////////////////////////////////
         // Decode type.
         let vdev_type_str = VdevTreeKey::VdevType.into();
-        let vdev_type = match list.get_str_direct(vdev_type_str, data)? {
+        let vdev_type = match list.get_str(vdev_type_str)? {
             Some(v) => match VdevType::try_from(v) {
                 Ok(v) => v,
                 Err(_) => return Err(LabelVdevTreeDecodeError::UnknownVdevType { vdev_type: v }),
@@ -1528,27 +1466,26 @@ impl LabelVdevTree<'_> {
         let vdev_type = match vdev_type {
             VdevType::Disk => {
                 vdev_type_expected_fields = &LabelVdevTreeDisk::EXPECTED;
-                LabelVdevTreeType::Disk(LabelVdevTreeDisk::from_list_direct(list, data)?)
+                LabelVdevTreeType::Disk(LabelVdevTreeDisk::from_list(list)?)
             }
             VdevType::File => {
                 vdev_type_expected_fields = &LabelVdevTreeFile::EXPECTED;
-                LabelVdevTreeType::File(LabelVdevTreeFile::from_list_direct(list, data)?)
+                LabelVdevTreeType::File(LabelVdevTreeFile::from_list(list)?)
             }
             VdevType::Mirror => {
                 vdev_type_expected_fields = &LabelVdevTreeMirror::EXPECTED;
-                LabelVdevTreeType::Mirror(LabelVdevTreeMirror::from_list_direct(list, data)?)
+                LabelVdevTreeType::Mirror(LabelVdevTreeMirror::from_list(list)?)
             }
             VdevType::RaidZ => {
                 vdev_type_expected_fields = &LabelVdevTreeRaidZ::EXPECTED;
-                LabelVdevTreeType::RaidZ(LabelVdevTreeRaidZ::from_list_direct(list, data)?)
+                LabelVdevTreeType::RaidZ(LabelVdevTreeRaidZ::from_list(list)?)
             }
             _ => return Err(LabelVdevTreeDecodeError::UnsupportedVdevType { vdev_type }),
         };
 
         ////////////////////////////////
         // Check for unknown values.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Value is unknown.
@@ -1614,22 +1551,21 @@ impl LabelVdevTreeDisk<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+    pub fn from_list<'a>(
+        list: &NvList<'a>,
     ) -> Result<LabelVdevTreeDisk<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
         let path_str = VdevTreeKey::Path.into();
-        let path = match list.get_str_direct(path_str, data)? {
+        let path = match list.get_str(path_str)? {
             Some(v) => v,
             None => return Err(LabelVdevTreeDecodeError::Missing { name: path_str }),
         };
 
         ////////////////////////////////
         // Decode optional values.
-        let dev_id = list.get_str_direct(VdevTreeKey::DevId.into(), data)?;
-        let phys_path = list.get_str_direct(VdevTreeKey::PhysPath.into(), data)?;
+        let dev_id = list.get_str(VdevTreeKey::DevId.into())?;
+        let phys_path = list.get_str(VdevTreeKey::PhysPath.into())?;
 
         let whole_disk = list.get_u64(VdevTreeKey::WholeDisk.into())?.map(|v| v != 0);
 
@@ -1663,14 +1599,13 @@ impl LabelVdevTreeFile<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+    pub fn from_list<'a>(
+        list: &NvList<'a>,
     ) -> Result<LabelVdevTreeFile<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
         let path_str = VdevTreeKey::Path.into();
-        let path = match list.get_str_direct(path_str, data)? {
+        let path = match list.get_str(path_str)? {
             Some(v) => v,
             None => return Err(LabelVdevTreeDecodeError::Missing { name: path_str }),
         };
@@ -1708,14 +1643,13 @@ impl LabelVdevTreeMirror<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+    pub fn from_list<'a>(
+        list: &NvList<'a>,
     ) -> Result<LabelVdevTreeMirror<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
         let children_str = VdevTreeKey::Children.into();
-        let children = match list.get_nv_list_array_direct(children_str, data)? {
+        let children = match list.get_nv_list_array(children_str)? {
             Some(v) => v,
             None => return Err(LabelVdevTreeDecodeError::Missing { name: children_str }),
         };
@@ -1757,14 +1691,13 @@ impl LabelVdevTreeRaidZ<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+    pub fn from_list<'a>(
+        list: &NvList<'a>,
     ) -> Result<LabelVdevTreeRaidZ<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
         let children_str = VdevTreeKey::Children.into();
-        let children = match list.get_nv_list_array_direct(children_str, data)? {
+        let children = match list.get_nv_list_array(children_str)? {
             Some(v) => v,
             None => return Err(LabelVdevTreeDecodeError::Missing { name: children_str }),
         };
@@ -1817,20 +1750,7 @@ impl LabelVdevChild<'_> {
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
     pub fn from_list<'a>(
-        list: &'a NvList<'_>,
-    ) -> Result<LabelVdevChild<'a>, LabelVdevTreeDecodeError<'a>> {
-        LabelVdevChild::from_list_direct(list, list.data())
-    }
-
-    /** Decodes a [`LabelVdevChild`].
-     *
-     * # Errors
-     *
-     * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
-     */
-    pub fn from_list_direct<'a>(
-        list: &NvList<'_>,
-        data: &'a [u8],
+        list: &NvList<'a>,
     ) -> Result<LabelVdevChild<'a>, LabelVdevTreeDecodeError<'a>> {
         ////////////////////////////////
         // Decode required values.
@@ -1847,13 +1767,13 @@ impl LabelVdevChild<'_> {
         };
 
         let path_str = VdevTreeKey::Path.into();
-        let path = match list.get_str_direct(path_str, data)? {
+        let path = match list.get_str(path_str)? {
             Some(v) => v,
             None => return Err(LabelVdevTreeDecodeError::Missing { name: path_str }),
         };
 
         let vdev_type_str = VdevTreeKey::VdevType.into();
-        let vdev_type = match list.get_str_direct(vdev_type_str, data)? {
+        let vdev_type = match list.get_str(vdev_type_str)? {
             Some(v) => match VdevType::try_from(v) {
                 Ok(v) => v,
                 Err(_) => return Err(LabelVdevTreeDecodeError::UnknownVdevType { vdev_type: v }),
@@ -1871,8 +1791,7 @@ impl LabelVdevChild<'_> {
 
         ////////////////////////////////
         // Check for unknown values.
-        let mut iter = list.iter();
-        while let Some(pair_res) = iter.next_direct(data) {
+        for pair_res in list {
             let pair = pair_res?;
 
             // Value is unknown.
