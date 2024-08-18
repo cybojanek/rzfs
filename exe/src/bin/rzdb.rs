@@ -1077,16 +1077,8 @@ fn dump() -> Result<(), Box<dyn Error>> {
     let boot_block_bytes = &mut vec![0; phys::BootBlock::SIZE];
     block_device.read(boot_block_bytes, phys::BootBlock::BLOCK_DEVICE_OFFSET)?;
 
-    // Causes stack overflow in debug release.
-    // let boot_block = phys::BootBlock::from_bytes(
-    //     boot_block_bytes[0..phys::BootBlock::SIZE]
-    //         .try_into()
-    //         .unwrap(),
-    // )?;
-    // if !is_array_empty(boot_block.payload) {
-    //     println!("BootBlock is not empty");
-    // }
-    if !is_array_empty(boot_block_bytes) {
+    let boot_block = phys::BootBlock::from_bytes(boot_block_bytes)?;
+    if !is_array_empty(boot_block.payload) {
         println!("BootBlock is not empty");
     }
 
@@ -1105,8 +1097,8 @@ fn dump() -> Result<(), Box<dyn Error>> {
         // Read blank.
         let blank_bytes = &mut vec![0; phys::LabelBlank::SIZE];
         block_device.read(blank_bytes, label_offset + phys::LabelBlank::LABEL_OFFSET)?;
-        let blank = phys::LabelBlank::from_bytes(&blank_bytes[..].try_into().unwrap())?;
-        if !is_array_empty(&blank.payload) {
+        let blank = phys::LabelBlank::from_bytes(blank_bytes)?;
+        if !is_array_empty(blank.payload) {
             println!("Blank is not empty");
         }
 
@@ -1115,12 +1107,9 @@ fn dump() -> Result<(), Box<dyn Error>> {
         let boot_header_bytes = &mut vec![0; phys::LabelBootHeader::SIZE];
         let boot_header_offset = label_offset + phys::LabelBootHeader::LABEL_OFFSET;
         block_device.read(boot_header_bytes, boot_header_offset)?;
-        let boot_header = phys::LabelBootHeader::from_bytes(
-            &boot_header_bytes[..].try_into().unwrap(),
-            boot_header_offset,
-            &mut sha256,
-        )?;
-        if !is_array_empty(&boot_header.payload) {
+        let boot_header =
+            phys::LabelBootHeader::from_bytes(boot_header_bytes, boot_header_offset, &mut sha256)?;
+        if !is_array_empty(boot_header.payload) {
             println!("LabelBootHeader is not empty");
         }
 
@@ -1129,13 +1118,10 @@ fn dump() -> Result<(), Box<dyn Error>> {
         let nv_pairs_bytes = &mut vec![0; phys::LabelNvPairs::SIZE];
         let nv_pairs_offset = label_offset + phys::LabelNvPairs::LABEL_OFFSET;
         block_device.read(nv_pairs_bytes, nv_pairs_offset)?;
-        let nv_pairs = phys::LabelNvPairs::from_bytes(
-            &nv_pairs_bytes[..].try_into().unwrap(),
-            nv_pairs_offset,
-            &mut sha256,
-        )?;
+        let nv_pairs =
+            phys::LabelNvPairs::from_bytes(nv_pairs_bytes, nv_pairs_offset, &mut sha256)?;
 
-        let nv_list = phys::NvList::from_bytes(&nv_pairs.payload)?;
+        let nv_list = phys::NvList::from_bytes(nv_pairs.payload)?;
         dump_nv_list(&nv_list, 0)?;
 
         let pool = phys::LabelConfig::from_list(&nv_list).unwrap();
