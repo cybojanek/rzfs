@@ -49,7 +49,7 @@ impl BootBlock {
     pub const BLOCK_DEVICE_OFFSET: u64 = 2 * Label::SECTORS;
 
     /// Byte size of the payload (3670016).
-    pub const PAYLOAD_SIZE: usize = BootBlock::SIZE - ChecksumTail::SIZE;
+    pub const PAYLOAD_SIZE: usize = BootBlock::SIZE;
 
     /// Size of an encoded [`BootBlock] in sectors.
     pub const SECTORS: u64 = (BootBlock::SIZE >> SECTOR_SHIFT) as u64;
@@ -139,8 +139,8 @@ impl LabelBlank {
     /// Offset in sectors from the start of a [`Label`].
     pub const LABEL_OFFSET: u64 = 0;
 
-    /// Byte size of the blank payload (8152).
-    pub const PAYLOAD_SIZE: usize = LabelBlank::SIZE - ChecksumTail::SIZE;
+    /// Byte size of the blank payload (8192).
+    pub const PAYLOAD_SIZE: usize = LabelBlank::SIZE;
 
     /** Decodes a [`LabelBlank`].
      *
