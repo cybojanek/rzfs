@@ -454,7 +454,7 @@ pub enum LabelBootHeaderDecodeError {
         size: usize,
     },
     /// Label error.
-    Label {
+    LabelVerify {
         /// Error.
         err: LabelVerifyError,
     },
@@ -462,7 +462,7 @@ pub enum LabelBootHeaderDecodeError {
 
 impl From<LabelVerifyError> for LabelBootHeaderDecodeError {
     fn from(err: LabelVerifyError) -> Self {
-        LabelBootHeaderDecodeError::Label { err }
+        LabelBootHeaderDecodeError::LabelVerify { err }
     }
 }
 
@@ -472,7 +472,7 @@ impl fmt::Display for LabelBootHeaderDecodeError {
             LabelBootHeaderDecodeError::InvalidSize { size } => {
                 write!(f, "LabelBootHeader decode error, invalid size {size}")
             }
-            LabelBootHeaderDecodeError::Label { err } => {
+            LabelBootHeaderDecodeError::LabelVerify { err } => {
                 write!(f, "LabelBootHeader decode error | {err}")
             }
         }
@@ -483,7 +483,7 @@ impl fmt::Display for LabelBootHeaderDecodeError {
 impl error::Error for LabelBootHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            LabelBootHeaderDecodeError::Label { err } => Some(err),
+            LabelBootHeaderDecodeError::LabelVerify { err } => Some(err),
             _ => None,
         }
     }
@@ -503,7 +503,7 @@ pub enum LabelBootHeaderEncodeError {
         size: usize,
     },
     /// Label error.
-    Label {
+    LabelChecksum {
         /// Error.
         err: LabelChecksumError,
     },
@@ -511,7 +511,7 @@ pub enum LabelBootHeaderEncodeError {
 
 impl From<LabelChecksumError> for LabelBootHeaderEncodeError {
     fn from(err: LabelChecksumError) -> Self {
-        LabelBootHeaderEncodeError::Label { err }
+        LabelBootHeaderEncodeError::LabelChecksum { err }
     }
 }
 
@@ -527,7 +527,7 @@ impl fmt::Display for LabelBootHeaderEncodeError {
             LabelBootHeaderEncodeError::InvalidSize { size } => {
                 write!(f, "LabelBootHeader encode error, invalid size {size}")
             }
-            LabelBootHeaderEncodeError::Label { err } => {
+            LabelBootHeaderEncodeError::LabelChecksum { err } => {
                 write!(f, "LabelBootHeader encode error | {err}")
             }
         }
@@ -538,7 +538,7 @@ impl fmt::Display for LabelBootHeaderEncodeError {
 impl error::Error for LabelBootHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            LabelBootHeaderEncodeError::Label { err } => Some(err),
+            LabelBootHeaderEncodeError::LabelChecksum { err } => Some(err),
             _ => None,
         }
     }
@@ -707,7 +707,7 @@ pub enum LabelNvPairsDecodeError {
         size: usize,
     },
     /// Label error.
-    Label {
+    LabelVerify {
         /// Error.
         err: LabelVerifyError,
     },
@@ -715,7 +715,7 @@ pub enum LabelNvPairsDecodeError {
 
 impl From<LabelVerifyError> for LabelNvPairsDecodeError {
     fn from(err: LabelVerifyError) -> Self {
-        LabelNvPairsDecodeError::Label { err }
+        LabelNvPairsDecodeError::LabelVerify { err }
     }
 }
 
@@ -725,7 +725,7 @@ impl fmt::Display for LabelNvPairsDecodeError {
             LabelNvPairsDecodeError::InvalidSize { size } => {
                 write!(f, "LabelNvPairs decode error, invalid size {size}")
             }
-            LabelNvPairsDecodeError::Label { err } => {
+            LabelNvPairsDecodeError::LabelVerify { err } => {
                 write!(f, "LabelNvPairs decode error | {err}")
             }
         }
@@ -736,7 +736,7 @@ impl fmt::Display for LabelNvPairsDecodeError {
 impl error::Error for LabelNvPairsDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            LabelNvPairsDecodeError::Label { err } => Some(err),
+            LabelNvPairsDecodeError::LabelVerify { err } => Some(err),
             _ => None,
         }
     }
@@ -756,7 +756,7 @@ pub enum LabelNvPairsEncodeError {
         size: usize,
     },
     /// Label error.
-    Label {
+    LabelChecksum {
         /// Error.
         err: LabelChecksumError,
     },
@@ -764,7 +764,7 @@ pub enum LabelNvPairsEncodeError {
 
 impl From<LabelChecksumError> for LabelNvPairsEncodeError {
     fn from(err: LabelChecksumError) -> Self {
-        LabelNvPairsEncodeError::Label { err }
+        LabelNvPairsEncodeError::LabelChecksum { err }
     }
 }
 
@@ -777,7 +777,7 @@ impl fmt::Display for LabelNvPairsEncodeError {
             LabelNvPairsEncodeError::InvalidSize { size } => {
                 write!(f, "LabelNvPairs encode error, invalid size {size}")
             }
-            LabelNvPairsEncodeError::Label { err } => {
+            LabelNvPairsEncodeError::LabelChecksum { err } => {
                 write!(f, "LabelNvPairs encode error | {err}")
             }
         }
@@ -788,7 +788,7 @@ impl fmt::Display for LabelNvPairsEncodeError {
 impl error::Error for LabelNvPairsEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            LabelNvPairsEncodeError::Label { err } => Some(err),
+            LabelNvPairsEncodeError::LabelChecksum { err } => Some(err),
             _ => None,
         }
     }
