@@ -927,11 +927,20 @@ impl LabelConfig<'_> {
         })?;
 
         match state {
+            PoolState::L2Cache => Ok(LabelConfig::L2Cache(LabelConfigL2Cache::from_list(list)?)),
+            PoolState::Spare => Ok(LabelConfig::Spare(LabelConfigSpare::from_list(list)?)),
             PoolState::Active | PoolState::Exported | PoolState::Destroyed => {
                 Ok(LabelConfig::Storage(LabelConfigStorage::from_list(list)?))
             }
-            PoolState::Spare => Ok(LabelConfig::Spare(LabelConfigSpare::from_list(list)?)),
-            PoolState::L2Cache => Ok(LabelConfig::L2Cache(LabelConfigL2Cache::from_list(list)?)),
+        }
+    }
+
+    /// Gets the [`PoolState`].
+    pub fn state(&self) -> PoolState {
+        match self {
+            LabelConfig::L2Cache(_) => PoolState::L2Cache,
+            LabelConfig::Spare(_) => PoolState::Spare,
+            LabelConfig::Storage(storage) => storage.state,
         }
     }
 }
