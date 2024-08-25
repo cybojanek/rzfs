@@ -5,7 +5,9 @@ use core::fmt;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder};
+use crate::phys::{
+    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, SECTOR_SHIFT,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,7 +60,7 @@ pub struct Dva {
      * - A [`Dva`] must have at least one allocated sector.
      * - This includes sectors for for RAIDZ parity data, and gang block headers.
      * - The encoded value is limited to 24 bits. When shifted by
-     *   [`crate::phys::SECTOR_SHIFT`], this computes to 512 bytes short of 8 GiB.
+     *   [`SECTOR_SHIFT`], this computes to 512 bytes short of 8 GiB.
      */
     pub allocated: u32,
 
@@ -75,8 +77,8 @@ pub struct Dva {
      *   the child virtual devices.
      * * For a stripped RAIDZ (RAID50, RAID60, RAID70), this is the number of
      *   sectors from the start of the child virtual RAIDZ device.
-     * - The value is limited to 63 bits. With a [`crate::phys::SECTOR_SHIFT`],
-     *   this computes to 512 bytes short of 4 ZiB.
+     * - The value is limited to 63 bits. With a [`SECTOR_SHIFT`], this computes
+     *   to 512 bytes short of 4 ZiB.
      */
     pub offset: u64,
 
@@ -143,6 +145,15 @@ impl Dva {
 
     /// Mask for offset field.
     const OFFSET_MASK: u64 = (1 << 63) - 1;
+
+    /// Gets the byte size of the [`Dva`], or [None] if the size is larger than [usize].
+    pub fn get_size(&self) -> Option<usize> {
+        if let Ok(size) = usize::try_from(self.allocated) {
+            return size.checked_shl(SECTOR_SHIFT);
+        }
+
+        None
+    }
 
     /** Decodes a [`Dva`]. Returns [`None`] if [`Dva`] is empty.
      *

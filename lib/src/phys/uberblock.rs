@@ -94,8 +94,11 @@ pub struct UberBlock {
 }
 
 impl UberBlock {
-    /// Total byte size of all encoded [`UberBlock`] in bytes in a [`crate::phys::Label`].
+    /// Total byte size of all encoded [`UberBlock`] in a [`crate::phys::Label`].
     pub const TOTAL_SIZE: usize = 131072;
+
+    /// Total number of secotrs of all encoded [`UberBlock`] in a [`crate::phys::Label`].
+    pub const TOTAL_SECTORS: u32 = (UberBlock::TOTAL_SIZE >> SECTOR_SHIFT) as u32;
 
     /// Offset in sectors from the start of a [`crate::phys::Label`] of first [`UberBlock`].
     pub const LABEL_OFFSET: u64 =
@@ -104,8 +107,20 @@ impl UberBlock {
     /// Magic value for an encoded [`UberBlock`].
     pub const MAGIC: u64 = 0x0000000000bab10c;
 
+    /** Is the current [`UberBlock`] newer than the other [`UberBlock`].
+     *
+     * The [`UberBlock`] is newer, if it has a larger `txg`, or if it has the
+     * same `txg`, but a larger (more recent) `timestamp`.
+     *
+     * The `txg` may be the same, in the event of the first transaction group
+     * after an unexpected shutdown occurs. To resolve conflicts, use the timestamp.
+     */
+    pub fn is_newer_than(&self, other: &UberBlock) -> bool {
+        self.txg > other.txg || (self.txg == other.txg && self.timestamp > other.timestamp)
+    }
+
     /** Gets the shift of an [`UberBlock`], depending on the `version` and
-     * `ashift` values.
+     * [`crate::phys::VdevTreeKey::AllocateShift`] values.
      *
      * The byte size is `1 << shift`.
      */
