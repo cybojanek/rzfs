@@ -1084,7 +1084,7 @@ fn dump() -> Result<(), Box<dyn Error>> {
 
     ////////////////////////////////////
     // Get label sectors.
-    let label_sectors = phys::Label::sectors(block_device.sectors)?;
+    let label_sectors = phys::Label::offsets(block_device.sectors)?;
 
     ////////////////////////////////////
     // Parse each label.
