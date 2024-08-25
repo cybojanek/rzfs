@@ -839,13 +839,13 @@ impl Label {
     /// Size of and encoded [`Label`] in sectors.
     pub const SECTORS: u64 = (Self::SIZE >> SECTOR_SHIFT) as u64;
 
-    /** Gets label sector offsets for a virtual device size in sectors.
+    /** Gets label offsets for a virtual device size in sectors.
      *
      * # Errors
      *
      * Returns [`LabelSectorsError`] if vdev_sectors is too small.
      */
-    pub fn sectors(vdev_sectors: u64) -> Result<[u64; 4], LabelSectorsError> {
+    pub fn offsets(vdev_sectors: u64) -> Result<[u64; 4], LabelSectorsError> {
         debug_assert!(is_multiple_of_sector_size(Label::SIZE));
 
         // Check if vdev is too small.
@@ -871,7 +871,7 @@ impl Label {
 /// [`Label`] offset error.
 #[derive(Debug)]
 pub enum LabelSectorsError {
-    /// Not enough sectors for [`Label::sectors`].
+    /// Not enough sectors for [`Label::offsets`].
     TooSmall {
         /// Sectors.
         sectors: u64,
