@@ -24,3 +24,6 @@ pub mod phys;
 /// Userspace components.
 #[cfg(feature = "userspace")]
 pub mod userspace;
+
+/// Utility functions.
+pub mod util;
