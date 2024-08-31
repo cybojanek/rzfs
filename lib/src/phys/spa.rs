@@ -15,7 +15,7 @@ use std::error;
  * only available through Oracle Solaris. Since [`SpaVersion::V5000`], changes are
  * indicated using [`crate::phys::Feature`].
  */
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SpaVersion {
     /// SPA version 1.
     V1 = 1,

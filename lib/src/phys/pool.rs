@@ -203,7 +203,7 @@ impl error::Error for PoolErrataDecodeError {
  * - This enum type has a lowercase string representation, and is used in NV
  *   lists. It does not have a numerical representation.
  */
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PoolConfigKey {
     /** [`crate::phys::VdevTreeKey::AllocateShift`] stored in pool config.
      *
