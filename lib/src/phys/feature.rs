@@ -8,6 +8,7 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{NvDecodeError, NvList};
+use crate::util::Fstr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -644,7 +645,7 @@ impl FeatureSet {
      *
      * Returns [`FeatureSetDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(list: &NvList<'a>) -> Result<FeatureSet, FeatureSetDecodeError<'a>> {
+    pub fn from_list(list: &NvList<'_>) -> Result<FeatureSet, FeatureSetDecodeError> {
         // Bitmap of features.
         let mut features = 0;
 
@@ -658,7 +659,11 @@ impl FeatureSet {
             // Enable the bit.
             let feature = match Feature::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(FeatureSetDecodeError::Unknown { feature: pair.name }),
+                Err(_) => {
+                    return Err(FeatureSetDecodeError::Unknown {
+                        feature: pair.name.into(),
+                    })
+                }
             };
             features |= 1 << FeatureSet::feature_to_bit_shift(feature);
         }
@@ -716,7 +721,7 @@ impl FeatureSet {
 
 /// [`FeatureSet`] decode error.
 #[derive(Debug)]
-pub enum FeatureSetDecodeError<'a> {
+pub enum FeatureSetDecodeError {
     /// [`Feature`] decode error.
     Feature {
         /// Error.
@@ -732,23 +737,23 @@ pub enum FeatureSetDecodeError<'a> {
     /// Unknown feature.
     Unknown {
         /// Unknown feature.
-        feature: &'a str,
+        feature: Fstr<16>,
     },
 }
 
-impl From<NvDecodeError> for FeatureSetDecodeError<'_> {
+impl From<NvDecodeError> for FeatureSetDecodeError {
     fn from(err: NvDecodeError) -> Self {
         FeatureSetDecodeError::Nv { err }
     }
 }
 
-impl From<FeatureDecodeError> for FeatureSetDecodeError<'_> {
+impl From<FeatureDecodeError> for FeatureSetDecodeError {
     fn from(err: FeatureDecodeError) -> Self {
         FeatureSetDecodeError::Feature { err }
     }
 }
 
-impl fmt::Display for FeatureSetDecodeError<'_> {
+impl fmt::Display for FeatureSetDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FeatureSetDecodeError::Feature { err } => {
@@ -765,7 +770,7 @@ impl fmt::Display for FeatureSetDecodeError<'_> {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for FeatureSetDecodeError<'_> {
+impl error::Error for FeatureSetDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             FeatureSetDecodeError::Feature { err } => Some(err),

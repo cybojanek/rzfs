@@ -12,6 +12,7 @@ use crate::phys::{
     PoolErrataDecodeError, PoolState, PoolStateDecodeError, SpaVersion, SpaVersionError, UberBlock,
     VdevTreeKey, VdevType, SECTOR_SHIFT,
 };
+use crate::util::Fstr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -918,7 +919,7 @@ impl LabelConfig<'_> {
      *
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(list: &NvList<'a>) -> Result<LabelConfig<'a>, LabelConfigDecodeError<'a>> {
+    pub fn from_list<'a>(list: &NvList<'a>) -> Result<LabelConfig<'a>, LabelConfigDecodeError> {
         // State.
         let state_str = PoolConfigKey::State.into();
         let state = PoolState::try_from(match list.get_u64(state_str)? {
@@ -975,9 +976,7 @@ impl LabelConfigL2Cache {
      *
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(
-        list: &NvList<'a>,
-    ) -> Result<LabelConfigL2Cache, LabelConfigDecodeError<'a>> {
+    pub fn from_list(list: &NvList<'_>) -> Result<LabelConfigL2Cache, LabelConfigDecodeError> {
         ////////////////////////////////
         // Decode required values.
 
@@ -1025,7 +1024,11 @@ impl LabelConfigL2Cache {
             // Value is unknown.
             let pool_nv_name = match PoolConfigKey::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelConfigDecodeError::UnknownField { name: pair.name }),
+                Err(_) => {
+                    return Err(LabelConfigDecodeError::UnknownField {
+                        name: pair.name.into(),
+                    })
+                }
             };
 
             // Value is known, but not expected.
@@ -1070,9 +1073,7 @@ impl LabelConfigSpare {
      *
      * Returns [`LabelConfigDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(
-        list: &NvList<'a>,
-    ) -> Result<LabelConfigSpare, LabelConfigDecodeError<'a>> {
+    pub fn from_list(list: &NvList<'_>) -> Result<LabelConfigSpare, LabelConfigDecodeError> {
         ////////////////////////////////
         // Decode required values.
 
@@ -1109,7 +1110,11 @@ impl LabelConfigSpare {
             // Value is unknown.
             let pool_nv_name = match PoolConfigKey::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelConfigDecodeError::UnknownField { name: pair.name }),
+                Err(_) => {
+                    return Err(LabelConfigDecodeError::UnknownField {
+                        name: pair.name.into(),
+                    })
+                }
             };
 
             // Value is known, but not expected.
@@ -1221,7 +1226,7 @@ impl LabelConfigStorage<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelConfigStorage<'a>, LabelConfigDecodeError<'a>> {
+    ) -> Result<LabelConfigStorage<'a>, LabelConfigDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let guid_str = PoolConfigKey::Guid.into();
@@ -1324,7 +1329,11 @@ impl LabelConfigStorage<'_> {
             // Value is unknown.
             let pool_nv_name = match PoolConfigKey::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelConfigDecodeError::UnknownField { name: pair.name }),
+                Err(_) => {
+                    return Err(LabelConfigDecodeError::UnknownField {
+                        name: pair.name.into(),
+                    })
+                }
             };
 
             // Value is known, but not expected.
@@ -1360,17 +1369,17 @@ impl LabelConfigStorage<'_> {
 
 /// [`LabelConfig`] decode error.
 #[derive(Debug)]
-pub enum LabelConfigDecodeError<'a> {
+pub enum LabelConfigDecodeError {
     /// [`FeatureSet`] decode error.
     FeatureSet {
         /// Error.
-        err: FeatureSetDecodeError<'a>,
+        err: FeatureSetDecodeError,
     },
 
     /// Missing expected value.
     Missing {
         /// Name of missing key.
-        name: &'a str,
+        name: &'static str,
     },
 
     /// [`PoolErrata`] decode error.
@@ -1406,13 +1415,13 @@ pub enum LabelConfigDecodeError<'a> {
     /// Unknown field.
     UnknownField {
         /// Unknown field.
-        name: &'a str,
+        name: Fstr<16>,
     },
 
     /// [`LabelVdevTree`] decode error.
     VdevTree {
         /// Error.
-        err: LabelVdevTreeDecodeError<'a>,
+        err: LabelVdevTreeDecodeError,
     },
 
     /// Unknown verison.
@@ -1422,43 +1431,43 @@ pub enum LabelConfigDecodeError<'a> {
     },
 }
 
-impl<'a> From<FeatureSetDecodeError<'a>> for LabelConfigDecodeError<'a> {
-    fn from(err: FeatureSetDecodeError<'a>) -> Self {
+impl From<FeatureSetDecodeError> for LabelConfigDecodeError {
+    fn from(err: FeatureSetDecodeError) -> Self {
         LabelConfigDecodeError::FeatureSet { err }
     }
 }
 
-impl From<NvDecodeError> for LabelConfigDecodeError<'_> {
+impl From<NvDecodeError> for LabelConfigDecodeError {
     fn from(err: NvDecodeError) -> Self {
         LabelConfigDecodeError::Nv { err }
     }
 }
 
-impl From<PoolErrataDecodeError> for LabelConfigDecodeError<'_> {
+impl From<PoolErrataDecodeError> for LabelConfigDecodeError {
     fn from(err: PoolErrataDecodeError) -> Self {
         LabelConfigDecodeError::PoolErrata { err }
     }
 }
 
-impl From<PoolStateDecodeError> for LabelConfigDecodeError<'_> {
+impl From<PoolStateDecodeError> for LabelConfigDecodeError {
     fn from(err: PoolStateDecodeError) -> Self {
         LabelConfigDecodeError::PoolState { err }
     }
 }
 
-impl From<SpaVersionError> for LabelConfigDecodeError<'_> {
+impl From<SpaVersionError> for LabelConfigDecodeError {
     fn from(err: SpaVersionError) -> Self {
         LabelConfigDecodeError::Version { err }
     }
 }
 
-impl<'a> From<LabelVdevTreeDecodeError<'a>> for LabelConfigDecodeError<'a> {
-    fn from(err: LabelVdevTreeDecodeError<'a>) -> Self {
+impl From<LabelVdevTreeDecodeError> for LabelConfigDecodeError {
+    fn from(err: LabelVdevTreeDecodeError) -> Self {
         LabelConfigDecodeError::VdevTree { err }
     }
 }
 
-impl fmt::Display for LabelConfigDecodeError<'_> {
+impl fmt::Display for LabelConfigDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LabelConfigDecodeError::FeatureSet { err } => {
@@ -1496,16 +1505,14 @@ impl fmt::Display for LabelConfigDecodeError<'_> {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for LabelConfigDecodeError<'_> {
+impl error::Error for LabelConfigDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            // TODO(cybojanek): Is there a workaround for non-static lifetime?
-            // LabelConfigDecodeError::FeatureSet { err } => Some(err),
+            LabelConfigDecodeError::FeatureSet { err } => Some(err),
             LabelConfigDecodeError::Nv { err } => Some(err),
             LabelConfigDecodeError::PoolErrata { err } => Some(err),
             LabelConfigDecodeError::PoolState { err } => Some(err),
-            // TODO(cybojanek): Is there a workaround for non-static lifetime?
-            // LabelConfigDecodeError::VdevTree { err } => Some(err),
+            LabelConfigDecodeError::VdevTree { err } => Some(err),
             LabelConfigDecodeError::Version { err } => Some(err),
             _ => None,
         }
@@ -1592,9 +1599,7 @@ impl LabelVdevTree<'_> {
      *
      * Returns [`LabelVdevTreeDecodeError`] in case of decoding error.
      */
-    pub fn from_list<'a>(
-        list: &NvList<'a>,
-    ) -> Result<LabelVdevTree<'a>, LabelVdevTreeDecodeError<'a>> {
+    pub fn from_list<'a>(list: &NvList<'a>) -> Result<LabelVdevTree<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let allocate_shift_str = VdevTreeKey::AllocateShift.into();
@@ -1661,7 +1666,11 @@ impl LabelVdevTree<'_> {
         let vdev_type = match list.get_str(vdev_type_str)? {
             Some(v) => match VdevType::try_from(v) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelVdevTreeDecodeError::UnknownVdevType { vdev_type: v }),
+                Err(_) => {
+                    return Err(LabelVdevTreeDecodeError::UnknownVdevType {
+                        vdev_type: v.into(),
+                    })
+                }
             },
             None => {
                 return Err(LabelVdevTreeDecodeError::Missing {
@@ -1700,7 +1709,11 @@ impl LabelVdevTree<'_> {
             // Value is unknown.
             let pool_nv_name = match VdevTreeKey::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelVdevTreeDecodeError::Unknown { name: pair.name }),
+                Err(_) => {
+                    return Err(LabelVdevTreeDecodeError::Unknown {
+                        name: pair.name.into(),
+                    })
+                }
             };
 
             // Value is known, but not expected.
@@ -1762,7 +1775,7 @@ impl LabelVdevTreeDisk<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelVdevTreeDisk<'a>, LabelVdevTreeDecodeError<'a>> {
+    ) -> Result<LabelVdevTreeDisk<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let path_str = VdevTreeKey::Path.into();
@@ -1810,7 +1823,7 @@ impl LabelVdevTreeFile<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelVdevTreeFile<'a>, LabelVdevTreeDecodeError<'a>> {
+    ) -> Result<LabelVdevTreeFile<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let path_str = VdevTreeKey::Path.into();
@@ -1854,7 +1867,7 @@ impl LabelVdevTreeMirror<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelVdevTreeMirror<'a>, LabelVdevTreeDecodeError<'a>> {
+    ) -> Result<LabelVdevTreeMirror<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let children_str = VdevTreeKey::Children.into();
@@ -1902,7 +1915,7 @@ impl LabelVdevTreeRaidZ<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelVdevTreeRaidZ<'a>, LabelVdevTreeDecodeError<'a>> {
+    ) -> Result<LabelVdevTreeRaidZ<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let children_str = VdevTreeKey::Children.into();
@@ -1960,7 +1973,7 @@ impl LabelVdevChild<'_> {
      */
     pub fn from_list<'a>(
         list: &NvList<'a>,
-    ) -> Result<LabelVdevChild<'a>, LabelVdevTreeDecodeError<'a>> {
+    ) -> Result<LabelVdevChild<'a>, LabelVdevTreeDecodeError> {
         ////////////////////////////////
         // Decode required values.
         let id_str = VdevTreeKey::Id.into();
@@ -1985,7 +1998,11 @@ impl LabelVdevChild<'_> {
         let vdev_type = match list.get_str(vdev_type_str)? {
             Some(v) => match VdevType::try_from(v) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelVdevTreeDecodeError::UnknownVdevType { vdev_type: v }),
+                Err(_) => {
+                    return Err(LabelVdevTreeDecodeError::UnknownVdevType {
+                        vdev_type: v.into(),
+                    })
+                }
             },
             None => {
                 return Err(LabelVdevTreeDecodeError::Missing {
@@ -2006,7 +2023,11 @@ impl LabelVdevChild<'_> {
             // Value is unknown.
             let pool_nv_name = match VdevTreeKey::try_from(pair.name) {
                 Ok(v) => v,
-                Err(_) => return Err(LabelVdevTreeDecodeError::Unknown { name: pair.name }),
+                Err(_) => {
+                    return Err(LabelVdevTreeDecodeError::Unknown {
+                        name: pair.name.into(),
+                    })
+                }
             };
 
             // Value is known, but not expected.
@@ -2031,7 +2052,7 @@ impl LabelVdevChild<'_> {
 
 /// [`LabelVdevTree`] decode error.
 #[derive(Debug)]
-pub enum LabelVdevTreeDecodeError<'a> {
+pub enum LabelVdevTreeDecodeError {
     /// Missing expected value.
     Missing {
         /// Name of missing key.
@@ -2053,13 +2074,13 @@ pub enum LabelVdevTreeDecodeError<'a> {
     /// Unknown field.
     Unknown {
         /// Unknown field.
-        name: &'a str,
+        name: Fstr<16>,
     },
 
     /// Unknown vdev type.
     UnknownVdevType {
         /// Unknown vdev type.
-        vdev_type: &'a str,
+        vdev_type: Fstr<16>,
     },
 
     /// Unsupported vdev type.
@@ -2069,13 +2090,13 @@ pub enum LabelVdevTreeDecodeError<'a> {
     },
 }
 
-impl From<NvDecodeError> for LabelVdevTreeDecodeError<'_> {
+impl From<NvDecodeError> for LabelVdevTreeDecodeError {
     fn from(err: NvDecodeError) -> Self {
         LabelVdevTreeDecodeError::Nv { err }
     }
 }
 
-impl fmt::Display for LabelVdevTreeDecodeError<'_> {
+impl fmt::Display for LabelVdevTreeDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LabelVdevTreeDecodeError::Missing { name } => {
@@ -2107,7 +2128,7 @@ impl fmt::Display for LabelVdevTreeDecodeError<'_> {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for LabelVdevTreeDecodeError<'_> {
+impl error::Error for LabelVdevTreeDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             LabelVdevTreeDecodeError::Nv { err } => Some(err),
