@@ -170,7 +170,7 @@ impl error::Error for VdevTypeDecodeError {
  * - This enum type has a lowercase string representation, and is used in NV
  *   lists. It does not have a numerical representation.
  */
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VdevTreeKey {
     /** Minimum allocated byte shift.
      *

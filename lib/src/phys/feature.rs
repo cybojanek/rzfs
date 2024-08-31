@@ -208,7 +208,7 @@ impl<'a> Iterator for CompatibilityIterator<'a> {
  *   lists. It does not have a numerical representation.
  * - Added in [`crate::phys::SpaVersion::V5000`].
  */
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Feature {
     /// ???
     AllocationClasses,
