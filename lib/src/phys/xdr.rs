@@ -48,91 +48,11 @@ impl fmt::Debug for XdrDecoder<'_> {
 }
 
 impl<'a> XdrDecoder<'a> {
-    /** Decodes bytes.
-     *
-     * Consumes padding bytes if length is not a multiple of 4.
-     *
-     * # Errors
-     *
-     * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
-     *
-     * # Examples
-     *
-     * Basic usage:
-     *
-     * ```
-     * use rzfs::phys::XdrDecoder;
-     *
-     * // Some bytes.
-     * let data = &[0x12, 0x34, 0x56, 0x78, 0x61, 0x62, 0x63, 0x00];
-     *
-     * // Create decoder.
-     * let decoder = XdrDecoder::from_bytes(data);
-     *
-     * // Decode values.
-     * let a = decoder.get_bytes(5).unwrap();
-     * let d = [0x12, 0x34, 0x56, 0x78, 0x61];
-     *
-     * assert_eq!(a, d);
-     *
-     * // Reset for next test.
-     * decoder.reset();
-     *
-     * // Need 1 more byte for data.
-     * assert!(decoder.get_bytes(9).is_err());
-     *
-     * // Some bytes.
-     * let data = &[0x12, 0x34, 0x56, 0x78, 0x61, 0x62, 0x63];
-     *
-     * // Create decoder.
-     * let decoder = XdrDecoder::from_bytes(data);
-     *
-     * // Need 1 more byte for padding.
-     * assert!(decoder.get_bytes(7).is_err());
-     * ```
-     */
-    pub fn get_bytes(&self, length: usize) -> Result<&'a [u8], XdrDecodeError> {
-        // Compute padding.
-        let remainder = length % 4;
-        let padding = if remainder == 0 { 0 } else { 4 - remainder };
-
-        // If this fails, length is too large.
-        let padded_length = match length.checked_add(padding) {
-            Some(v) => v,
-            None => {
-                return Err(XdrDecodeError::EndOfInput {
-                    offset: self.offset.get(),
-                    max_offset: self.max_offset,
-                    capacity: self.capacity(),
-                    count: length,
-                })
-            }
-        };
-
-        // Check bounds for length.
-        self.check_need(padded_length)?;
-
-        // Start and end of bytes.
-        let start = self.offset.get();
-        let end = start + length;
-
-        // Consume bytes.
-        let value = &self.data[start..end];
-        self.offset.set(start + padded_length);
-
-        // TODO(cybojanek): Check padding is zero?
-
-        // Return bytes.
-        Ok(value)
-    }
-
     /** Decodes a [`&[u8]`].
      *
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      *
      * Basic usage:
      *
@@ -150,34 +70,60 @@ impl<'a> XdrDecoder<'a> {
      * let decoder = XdrDecoder::from_bytes(data);
      *
      * // Decode values.
-     * let a = decoder.get_byte_array().unwrap();
+     * let a = decoder.get_bytes().unwrap();
      * let d = [0x61, 0x62, 0x63];
      *
      * assert_eq!(a, d);
      *
      * // Need 1 more byte for array.
-     * assert!(decoder.get_byte_array().is_err());
+     * assert!(decoder.get_bytes().is_err());
      * assert!(decoder.skip(8).is_ok());
      *
      * // Need 1 more byte for padding.
-     * assert!(decoder.get_byte_array().is_err());
+     * assert!(decoder.get_bytes().is_err());
      *
      * // Need 1 more for length.
      * let data = &[0x00, 0x00, 0x00];
      * let decoder = XdrDecoder::from_bytes(data);
-     * assert!(decoder.get_byte_array().is_err());
+     * assert!(decoder.get_bytes().is_err());
      * ```
      */
-    pub fn get_byte_array(&self) -> Result<&'a [u8], XdrDecodeError> {
+    pub fn get_bytes(&self) -> Result<&'a [u8], XdrDecodeError> {
         let offset = self.offset.get();
 
+        // Get length of bytes.
         let length = self.get_usize()?;
 
-        let res = self.get_bytes(length);
-        if res.is_err() {
-            self.offset.set(offset);
-        }
-        res
+        // Compute padding.
+        let remainder = length % 4;
+        let padding = if remainder == 0 { 0 } else { 4 - remainder };
+
+        // If this fails, length is too large.
+        let padded_length = match length.checked_add(padding) {
+            Some(v) => v,
+            None => {
+                self.offset.set(offset);
+                return Err(XdrDecodeError::EndOfInput {
+                    offset: self.offset.get(),
+                    max_offset: self.max_offset,
+                    capacity: self.capacity(),
+                    count: length,
+                });
+            }
+        };
+
+        // Check bounds for length.
+        self.check_need(padded_length)?;
+
+        // Start and end of bytes.
+        let start = self.offset.get();
+        let end = start + length;
+
+        // Consume bytes.
+        let value = &self.data[start..end];
+        self.offset.set(start + padded_length);
+
+        Ok(value)
     }
 
     /** Decodes a [`str`].
@@ -185,8 +131,7 @@ impl<'a> XdrDecoder<'a> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available, or
-     * the bytes are not a valid UTF8 string. In case of error, offset remains
-     * unchanged.
+     * the bytes are not a valid UTF8 string.
      *
      * Basic usage:
      *
@@ -239,16 +184,15 @@ impl<'a> XdrDecoder<'a> {
      */
     pub fn get_str(&self) -> Result<&'a str, XdrDecodeError> {
         let offset = self.offset.get();
-        let length = self.get_usize()?;
-        let data = self.get_bytes(length)?;
+        let value = self.get_bytes()?;
 
-        match core::str::from_utf8(data) {
+        match core::str::from_utf8(value) {
             Ok(v) => Ok(v),
             Err(err) => {
                 self.offset.set(offset);
                 Err(XdrDecodeError::InvalidStr {
                     offset,
-                    length,
+                    length: value.len(),
                     err,
                 })
             }
@@ -345,9 +289,11 @@ impl XdrDecoder<'_> {
      * assert_eq!(decoder.len(), 4);
      *
      * // Decode bytes.
-     * let a = decoder.get_bytes(4).unwrap();
-     * let d = [0x11, 0x22, 0x33, 0x44];
-     * assert_eq!(a, d);
+     * let a = decoder.get_u32().unwrap();
+     * assert_eq!(a, 0x11223344);
+     *
+     * // Will fail due to clamp.
+     * assert!(decoder.get_u32().is_err());
      * ```
      */
     pub fn from_bytes_clamped(
@@ -633,7 +579,6 @@ impl XdrDecoder<'_> {
      *
      * // Error seek past end.
      * assert!(decoder.seek(data.len() + 4).is_err());
-     *
      * ```
      */
     pub fn seek(&self, offset: usize) -> Result<(), XdrDecodeError> {
@@ -742,7 +687,7 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are enough bytes available, or the
-     * value is not 0 nor 1. In case of error, offset remains unchanged.
+     * value is not 0 nor 1.
      *
      * # Examples
      *
@@ -793,7 +738,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      */
     pub fn get_f32(&self) -> Result<f32, XdrDecodeError> {
         let bytes = self.get_4_bytes()?;
@@ -805,7 +749,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      */
     pub fn get_f64(&self) -> Result<f64, XdrDecodeError> {
         let bytes = self.get_8_bytes()?;
@@ -817,8 +760,7 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available, or
-     * casting would be out of range for [`i8`]. In case of error, offset
-     * remains unchanged.
+     * casting would be out of range for [`i8`].
      *
      * # Examples
      *
@@ -870,8 +812,7 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available, or
-     * casting would be out of range for [`i16`]. In case of error, offset
-     * remains unchanged.
+     * casting would be out of range for [`i16`].
      *
      * # Examples
      *
@@ -923,7 +864,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      *
      * # Examples
      *
@@ -962,7 +902,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      *
      * # Examples
      *
@@ -1002,8 +941,7 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available, or
-     * casting would be out of range for [`u8`]. In case of error, offset
-     * remains unchanged.
+     * casting would be out of range for [`u8`].
      *
      * # Examples
      *
@@ -1053,8 +991,7 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available, or
-     * casting would be out of range for [`u16`]. In case of error, offset
-     * remains unchanged.
+     * casting would be out of range for [`u16`].
      *
      * # Examples
      *
@@ -1104,7 +1041,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      *
      * # Examples
      *
@@ -1138,7 +1074,6 @@ impl XdrDecoder<'_> {
      * # Errors
      *
      * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
      *
      * # Examples
      *
@@ -1173,8 +1108,8 @@ impl XdrDecoder<'_> {
      *
      * # Errors
      *
-     * Returns [`XdrDecodeError`] if there are not enough bytes available.
-     * In case of error, offset remains unchanged.
+     * Returns [`XdrDecodeError`] if there are not enough bytes available, or
+     * value cannot be converted to [`usize`].
      *
      * Basic usage:
      *
@@ -1216,8 +1151,7 @@ impl XdrDecoder<'_> {
      *
      * # Errors
      *
-     * Returns [`XdrDecodeError`] in case of decoding errors. In case of error,
-     * offset remains unchanged.
+     * Returns [`XdrDecodeError`] in case of decoding errors.
      *
      * Basic usage:
      *
