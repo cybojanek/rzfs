@@ -648,7 +648,7 @@ impl<'a> NvListIterator<'a, '_> {
             NvDataType::Int64 => NvDataValue::Int64(self.decoder.get_i64()?),
             NvDataType::Uint64 => NvDataValue::Uint64(self.decoder.get_u64()?),
             NvDataType::String => NvDataValue::String(self.decoder.get_str()?),
-            NvDataType::ByteArray => NvDataValue::ByteArray(self.decoder.get_byte_array()?),
+            NvDataType::ByteArray => NvDataValue::ByteArray(self.decoder.get_bytes()?),
             NvDataType::Int16Array => NvDataValue::Int16Array({
                 self.decoder.skip(array_value_size)?;
 
@@ -1068,8 +1068,8 @@ impl<'a> Iterator for NvArrayIterator<'a, '_, NvList<'a>> {
             // Compute number of bytes used for this list.
             let bytes_used = iter.decoder.offset() - starting_offset;
 
-            // Decode bytes, but discard because data will be used.
-            if let Err(err) = self.decoder.get_bytes(bytes_used) {
+            // Skip bytes.
+            if let Err(err) = self.decoder.skip(bytes_used) {
                 return Some(Err(NvDecodeError::Xdr { err }));
             }
 
