@@ -106,7 +106,7 @@ pub(crate) mod vdev;
 pub use vdev::{VdevTree, VdevTreeKey, VdevTreeKeyDecodeError, VdevType, VdevTypeDecodeError};
 
 pub(crate) mod xdr;
-pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
+pub use xdr::{GetFromXdrDecoder, XdrDecodeError, XdrDecoder, XdrEncodeError, XdrEncoder};
 
 pub(crate) mod zap;
 pub use zap::{
