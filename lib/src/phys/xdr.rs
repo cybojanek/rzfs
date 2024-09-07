@@ -1562,3 +1562,854 @@ impl error::Error for XdrDecodeError {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// A binary encoder.
+pub struct XdrEncoder<'a> {
+    data: &'a mut [u8],
+    offset: usize,
+}
+
+impl fmt::Debug for XdrEncoder<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Change debug printing to print length instead of raw data.
+        f.debug_struct("XdrEncoder")
+            .field("length", &self.data.len())
+            .field("offset", &self.offset)
+            .finish()
+    }
+}
+
+impl<'a> XdrEncoder<'a> {
+    /** Returns the encoded bytes. Does not include unused bytes.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * let dest: &mut [u8; 16] = &mut [0; 16];
+     * let mut encoder = XdrEncoder::to_bytes(dest);
+     * let data = encoder .data();
+     * assert_eq!(data.len(), 0);
+     *
+     * // Data is truncated to what is actually used.
+     * let mut encoder = XdrEncoder::to_bytes(dest);
+     * encoder.put_u64(0x123456789abcdef0).unwrap();
+     * let data = encoder.data();
+     *
+     * let exp: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+     * assert_eq!(data.len(), 8);
+     * ```
+     */
+    pub fn data(self) -> &'a [u8] {
+        &self.data[0..self.offset]
+    }
+}
+
+impl XdrEncoder<'_> {
+    /** Initializes an [`XdrEncoder`].
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 8] = [0; 8];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put values.
+     * assert!(encoder.put_u64(0x123456789abcdef0).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_u8(23).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn to_bytes(data: &mut [u8]) -> XdrEncoder<'_> {
+        XdrEncoder { data, offset: 0 }
+    }
+
+    /** Checks if there is enough space in data slice to encode.
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     */
+    fn check_need(&self, count: usize) -> Result<(), XdrEncodeError> {
+        if self.available() >= count {
+            Ok(())
+        } else {
+            Err(XdrEncodeError::EndOfOutput {
+                offset: self.offset,
+                capacity: self.capacity(),
+                count,
+            })
+        }
+    }
+
+    /** Returns the number of bytes still available for encoding in data slice.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * // Initial available is length of data.
+     * assert_eq!(encoder.available(), 32);
+     *
+     * // Decreases by size of value.
+     * encoder.put_u64(0x0123456789abcdef).unwrap();
+     * assert_eq!(encoder.available(), 24);
+     *
+     * encoder.put_u64(0xfedcba9876543210).unwrap();
+     * assert_eq!(encoder.available(), 16);
+     * ```
+     */
+    pub fn available(&self) -> usize {
+        // Gracefully handle offset errors, and just return 0.
+        self.data.len().saturating_sub(self.offset)
+    }
+
+    /** Returns the destination data capacity.
+     *
+     * Remains unchanged while encoding values.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     * let data_length = data.len();
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * assert_eq!(encoder.capacity(), data_length);
+     *
+     * encoder.put_u64(0x0123456789abcdef).unwrap();
+     * assert_eq!(encoder.capacity(), data_length);
+     *
+     * encoder.put_u64(0xfedcba9876543210).unwrap();
+     * assert_eq!(encoder.capacity(), data_length);
+     * ```
+     */
+    pub fn capacity(&self) -> usize {
+        self.data.len()
+    }
+
+    /** Gets the current offset in bytes.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     * let data_length = data.len();
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * assert_eq!(encoder.offset(), 0);
+     *
+     * encoder.put_u64(0x0123456789abcdef).unwrap();
+     * assert_eq!(encoder.offset(), 8);
+     *
+     * encoder.put_u64(0xfedcba9876543210).unwrap();
+     * assert_eq!(encoder.offset(), 16);
+     * ```
+     */
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /** Returns true if there is output is empty.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * // Initially empty.
+     * assert!(encoder.is_empty());
+     *
+     * // Put value.
+     * encoder.put_u32(1).unwrap();
+     * assert!(!encoder.is_empty());
+     * ```
+     */
+    pub fn is_empty(&self) -> bool {
+        self.offset == 0
+    }
+
+    /** Returns true if there is no more space for values to be encoded.
+     *
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * // Encode values.
+     * let mut x = 0;
+     * while !encoder.is_full() {
+     *     encoder.put_u32(x);
+     *     x += 1;
+     * }
+     * ```
+     */
+    pub fn is_full(&self) -> bool {
+        self.offset >= self.data.len()
+    }
+
+    /** Returns the length of the encoded values.
+     * # Examples
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let data = &mut [0; 32];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(data);
+     *
+     * // Initial length is 0.
+     * assert_eq!(encoder.len(), 0);
+     *
+     * // Increases by size of value.
+     * encoder.put_u64(0x0123456789abcdef).unwrap();
+     * assert_eq!(encoder.len(), 8);
+     *
+     * encoder.put_u32(0xfedcba98).unwrap();
+     * assert_eq!(encoder.len(), 12);
+     * ```
+     */
+    pub fn len(&self) -> usize {
+        self.offset
+    }
+
+    /** Encodes 4 bytes.
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     */
+    fn put_4_bytes(&mut self, data: [u8; 4]) -> Result<(), XdrEncodeError> {
+        self.check_need(4)?;
+
+        let start = self.offset;
+        let end = start + 4;
+
+        self.offset = end;
+
+        self.data[start..end].copy_from_slice(&data);
+
+        Ok(())
+    }
+
+    /** Encodes 8 bytes.
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     */
+    fn put_8_bytes(&mut self, data: [u8; 8]) -> Result<(), XdrEncodeError> {
+        self.check_need(8)?;
+
+        let start = self.offset;
+        let end = start + 8;
+
+        self.offset = end;
+
+        self.data[start..end].copy_from_slice(&data);
+
+        Ok(())
+    }
+
+    /** Encodes a [`bool`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 8] = [3; 8];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_bool(true).is_ok());
+     * assert!(encoder.put_bool(false).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_bool(true).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 8] = [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
+     * assert_eq!(data, exp);
+     */
+    pub fn put_bool(&mut self, value: bool) -> Result<(), XdrEncodeError> {
+        self.put_u32(if value { 1 } else { 0 })
+    }
+
+    /** Encodes bytes.
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 16] = [1; 16];
+     * let src: [u8; 5] = [0xff, 0xfe, 0xfd, 0xfc, 0xfb];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_bytes(&src).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_bytes(&src).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 16] = [
+     *     0x00, 0x00, 0x00, 0x05,
+     *     0xff, 0xfe, 0xfd, 0xfc, 0xfb, 0x00, 0x00, 0x00,
+     *     1, 1, 1, 1
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_bytes(&mut self, data: &[u8]) -> Result<(), XdrEncodeError> {
+        let length = data.len();
+
+        // Compute padding.
+        let remainder = length % 4;
+        let padding = if remainder == 0 { 0 } else { 4 - remainder };
+
+        // If adding the padding fails, length is too large.
+        let padded_length = match length.checked_add(padding) {
+            Some(v) => v,
+            None => {
+                return Err(XdrEncodeError::LengthTooLarge {
+                    offset: self.offset,
+                    length,
+                });
+            }
+        };
+
+        // If adding the size fails, length is too large.
+        let total_length = match padded_length.checked_add(4) {
+            Some(v) => v,
+            None => {
+                return Err(XdrEncodeError::LengthTooLarge {
+                    offset: self.offset,
+                    length,
+                });
+            }
+        };
+
+        // Check the total length needed.
+        self.check_need(total_length)?;
+
+        // Put length. This should only fail if usize cannot be converted to
+        // u32, because the total length needed was already checked. Do this in
+        // this order, to prevent having to roll back the offset in case of
+        // put_usize error.
+        self.put_usize(length)?;
+
+        // Copy bytes.
+        let start = self.offset;
+        let end = start + length;
+        self.data[start..end].copy_from_slice(data);
+
+        // Pad with zeroes.
+        let start = end;
+        let end = start + padding;
+        self.data[start..end].fill(0);
+
+        // Final offset.
+        self.offset = end;
+
+        Ok(())
+    }
+
+    /** Encodes an [`f32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     */
+    pub fn put_f32(&mut self, value: f32) -> Result<(), XdrEncodeError> {
+        self.put_4_bytes(f32::to_be_bytes(value))
+    }
+
+    /** Encodes an [`f64`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     */
+    pub fn put_f64(&mut self, value: f64) -> Result<(), XdrEncodeError> {
+        self.put_8_bytes(f64::to_be_bytes(value))
+    }
+
+    /** Encodes an [`i8`] as an [`i32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 11] = [1; 11];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_i8(-128).is_ok());
+     * assert!(encoder.put_i8(127).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_i8(0).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 11] = [
+     *     0xff, 0xff, 0xff, 0x80,
+     *     0x00, 0x00, 0x00, 0x7f,
+     *     0x01, 0x01, 0x01,
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_i8(&mut self, value: i8) -> Result<(), XdrEncodeError> {
+        self.put_i32(i32::from(value))
+    }
+
+    /** Encodes an [`i16`] as an [`i32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 11] = [1; 11];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_i16(-32768).is_ok());
+     * assert!(encoder.put_i16(32767).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_i16(0).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 11] = [
+     *     0xff, 0xff, 0x80, 0x00,
+     *     0x00, 0x00, 0x7f, 0xff,
+     *     0x01, 0x01, 0x01,
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_i16(&mut self, value: i16) -> Result<(), XdrEncodeError> {
+        self.put_i32(i32::from(value))
+    }
+
+    /** Encodes an [`i32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 11] = [1; 11];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_i32(-2147483648).is_ok());
+     * assert!(encoder.put_i32(2147483647).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_i32(0).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 11] = [
+     *     0x80, 0x00, 0x00, 0x00,
+     *     0x7f, 0xff, 0xff, 0xff,
+     *     0x01, 0x01, 0x01,
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_i32(&mut self, value: i32) -> Result<(), XdrEncodeError> {
+        self.put_4_bytes(i32::to_be_bytes(value))
+    }
+
+    /** Encodes an [`i64`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 17] = [1; 17];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_i64(-9223372036854775808).is_ok());
+     * assert!(encoder.put_i64(9223372036854775807).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_i64(0).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 17] = [
+     *     0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+     *     0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+     *     0x01,
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_i64(&mut self, value: i64) -> Result<(), XdrEncodeError> {
+        self.put_8_bytes(i64::to_be_bytes(value))
+    }
+
+    /** Encodes an [`i64`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrDecodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 16] = [1; 16];
+     * let s = "hello";
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_str(&s).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_str(&s).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 16] = [
+     *     // Length.
+     *     0x00, 0x00, 0x00, 0x05,
+     *     // String with padding.
+     *     0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x00, 0x00,
+     *     // Not modified.
+     *     1, 1, 1, 1
+     * ];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_str(&mut self, value: &str) -> Result<(), XdrEncodeError> {
+        let bytes = value.as_bytes();
+        self.put_bytes(bytes)
+    }
+
+    /** Encodes a [`u8`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 4] = [0; 4];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_u8(0x12).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_u8(0x11).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 4] = [0x00, 0x00, 0x00, 0x12];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_u8(&mut self, value: u8) -> Result<(), XdrEncodeError> {
+        self.put_u32(u32::from(value))
+    }
+
+    /** Encodes a [`u16`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 4] = [0; 4];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_u16(0x1234).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_u16(0x1122).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 4] = [0x00, 0x00, 0x12, 0x34];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_u16(&mut self, value: u16) -> Result<(), XdrEncodeError> {
+        self.put_u32(u32::from(value))
+    }
+
+    /** Encodes a [`u32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 4] = [0; 4];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_u32(0x12345678).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_u32(0x11223344).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 4] = [0x12, 0x34, 0x56, 0x78];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_u32(&mut self, value: u32) -> Result<(), XdrEncodeError> {
+        self.put_4_bytes(u32::to_be_bytes(value))
+    }
+
+    /** Encodes a [`u64`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available.
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 8] = [0; 8];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_u64(0x123456789abcdef0).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_u64(0x1122334455667788).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 8] = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_u64(&mut self, value: u64) -> Result<(), XdrEncodeError> {
+        self.put_8_bytes(u64::to_be_bytes(value))
+    }
+
+    /** Encodes a [`usize`] as a [`u32`].
+     *
+     * # Errors
+     *
+     * Returns [`XdrEncodeError`] if there are not enough bytes available, or
+     * value cannot be converted to [`u32`].
+     *
+     * Basic usage:
+     *
+     * ```
+     * use rzfs::phys::XdrEncoder;
+     *
+     * // Destination.
+     * let mut data: [u8; 4] = [0; 4];
+     *
+     * // Create encoder.
+     * let mut encoder = XdrEncoder::to_bytes(&mut data);
+     *
+     * // Put value.
+     * assert!(encoder.put_usize(0x12345678).is_ok());
+     *
+     * // Error end of output.
+     * assert!(encoder.put_usize(0x11223344).is_err());
+     *
+     * // Expected result.
+     * let exp: [u8; 4] = [0x12, 0x34, 0x56, 0x78];
+     * assert_eq!(data, exp);
+     * ```
+     */
+    pub fn put_usize(&mut self, value: usize) -> Result<(), XdrEncodeError> {
+        match u32::try_from(value) {
+            Ok(v) => self.put_u32(v),
+            Err(_) => Err(XdrEncodeError::LengthTooLarge {
+                offset: self.offset,
+                length: value,
+            }),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// [`XdrEncoder`] error.
+#[derive(Debug)]
+pub enum XdrEncodeError {
+    /// End of output data.
+    EndOfOutput {
+        /// Byte offset of data.
+        offset: usize,
+        /// Total capacity of data.
+        capacity: usize,
+        /// Number of bytes needed.
+        count: usize,
+    },
+
+    /// Length is larger than 32 bit limit.
+    LengthTooLarge {
+        /// Byte offset of data.
+        offset: usize,
+        /// Length.
+        length: usize,
+    },
+}
+
+impl fmt::Display for XdrEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            XdrEncodeError::EndOfOutput {
+                offset,
+                capacity,
+                count,
+            } => {
+                write!(
+                    f,
+                    "Endian end of output at offset {offset} capacity {capacity} count {count}"
+                )
+            }
+            XdrEncodeError::LengthTooLarge { offset, length } => {
+                write!(f, "Endian length too large {offset} length {length}")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl error::Error for XdrEncodeError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
