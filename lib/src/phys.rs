@@ -6,6 +6,9 @@ pub use acl::{
     AceV1Header, AceV1Iterator, AceV1Object, Acl, AclDecodeError, AclEncodeError, AclV0, AclV1,
 };
 
+pub(crate) mod binary;
+pub use binary::{BinaryDecodeError, BinaryDecoder};
+
 pub(crate) mod block_pointer;
 pub use block_pointer::{
     BlockPointer, BlockPointerDecodeError, BlockPointerEmbedded, BlockPointerEmbeddedType,
