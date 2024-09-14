@@ -5,7 +5,7 @@ use core::fmt;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder};
+use crate::phys::{BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,7 +77,7 @@ impl SpaceMapHeader {
      * Returns [`SpaceMapHeaderDecodeError`] in case of decoding error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<SpaceMapHeader, SpaceMapHeaderDecodeError> {
         ////////////////////////////////
         // Decode values.
@@ -94,7 +94,7 @@ impl SpaceMapHeader {
         let mut histogram = None;
         if !decoder.is_empty() {
             // Skip padding.
-            decoder.skip_zero_padding(SpaceMapHeader::SIZE_EXT_HISTOGRAM_PADDING)?;
+            decoder.skip_zeros(SpaceMapHeader::SIZE_EXT_HISTOGRAM_PADDING)?;
 
             // Decode histogram values.
             let mut counts: [u64; SpaceMapHeader::HISTOGRAM_BUCKETS_COUNT] = [0; 32];
@@ -123,7 +123,7 @@ impl SpaceMapHeader {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), SpaceMapHeaderEncodeError> {
         ////////////////////////////////
         // Encode values.
@@ -136,7 +136,7 @@ impl SpaceMapHeader {
         encoder.put_u64(self.allocated_bytes)?;
 
         if let Some(histogram) = &self.histogram {
-            encoder.put_zero_padding(SpaceMapHeader::SIZE_EXT_HISTOGRAM_PADDING)?;
+            encoder.put_zeros(SpaceMapHeader::SIZE_EXT_HISTOGRAM_PADDING)?;
 
             for v in histogram {
                 encoder.put_u64(*v)?;
@@ -152,10 +152,10 @@ impl SpaceMapHeader {
 /// [`SpaceMapHeader`] decode error.
 #[derive(Debug)]
 pub enum SpaceMapHeaderDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Object number is zero,
@@ -165,16 +165,16 @@ pub enum SpaceMapHeaderDecodeError {
     NonZeroPadding {},
 }
 
-impl From<EndianDecodeError> for SpaceMapHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        SpaceMapHeaderDecodeError::Endian { err }
+impl From<BinaryDecodeError> for SpaceMapHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        SpaceMapHeaderDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for SpaceMapHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SpaceMapHeaderDecodeError::Endian { err } => {
+            SpaceMapHeaderDecodeError::Binary { err } => {
                 write!(f, "SpaceMapHeader decode error | {err}")
             }
             SpaceMapHeaderDecodeError::MissingObject {} => {
@@ -191,7 +191,7 @@ impl fmt::Display for SpaceMapHeaderDecodeError {
 impl error::Error for SpaceMapHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            SpaceMapHeaderDecodeError::Endian { err } => Some(err),
+            SpaceMapHeaderDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -200,26 +200,26 @@ impl error::Error for SpaceMapHeaderDecodeError {
 /// [`SpaceMapHeader`] encode error.
 #[derive(Debug)]
 pub enum SpaceMapHeaderEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Object number is zero,
     MissingObject {},
 }
 
-impl From<EndianEncodeError> for SpaceMapHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        SpaceMapHeaderEncodeError::Endian { err }
+impl From<BinaryEncodeError> for SpaceMapHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        SpaceMapHeaderEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for SpaceMapHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SpaceMapHeaderEncodeError::Endian { err } => {
+            SpaceMapHeaderEncodeError::Binary { err } => {
                 write!(f, "SpaceMapHeader encode error | {err}")
             }
             SpaceMapHeaderEncodeError::MissingObject {} => {
@@ -233,7 +233,7 @@ impl fmt::Display for SpaceMapHeaderEncodeError {
 impl error::Error for SpaceMapHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            SpaceMapHeaderEncodeError::Endian { err } => Some(err),
+            SpaceMapHeaderEncodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -502,7 +502,7 @@ impl SpaceMapEntry {
      * Returns [`SpaceMapEntryDecodeError`] in case of decoding error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<SpaceMapEntry, SpaceMapEntryDecodeError> {
         let a = decoder.get_u64()?;
 
@@ -612,10 +612,10 @@ pub enum SpaceMapEntryDecodeError {
         err: SpaceMapActionError,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Non-zero padding.
@@ -631,9 +631,9 @@ impl From<SpaceMapActionError> for SpaceMapEntryDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for SpaceMapEntryDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        SpaceMapEntryDecodeError::Endian { err }
+impl From<BinaryDecodeError> for SpaceMapEntryDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        SpaceMapEntryDecodeError::Binary { err }
     }
 }
 
@@ -643,7 +643,7 @@ impl fmt::Display for SpaceMapEntryDecodeError {
             SpaceMapEntryDecodeError::Action { err } => {
                 write!(f, "SpaceMapEntry decode error | {err}")
             }
-            SpaceMapEntryDecodeError::Endian { err } => {
+            SpaceMapEntryDecodeError::Binary { err } => {
                 write!(f, "SpaceMapEntry decode error | {err}")
             }
             SpaceMapEntryDecodeError::Padding { padding } => {
@@ -658,7 +658,7 @@ impl error::Error for SpaceMapEntryDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             SpaceMapEntryDecodeError::Action { err } => Some(err),
-            SpaceMapEntryDecodeError::Endian { err } => Some(err),
+            SpaceMapEntryDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -667,23 +667,23 @@ impl error::Error for SpaceMapEntryDecodeError {
 /// [`SpaceMapEntry`] encode error.
 #[derive(Debug)]
 pub enum SpaceMapEntryEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for SpaceMapEntryEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        SpaceMapEntryEncodeError::Endian { err }
+impl From<BinaryEncodeError> for SpaceMapEntryEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        SpaceMapEntryEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for SpaceMapEntryEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SpaceMapEntryEncodeError::Endian { err } => {
+            SpaceMapEntryEncodeError::Binary { err } => {
                 write!(f, "SpaceMapEntry encode error | {err}")
             }
         }
@@ -694,7 +694,7 @@ impl fmt::Display for SpaceMapEntryEncodeError {
 impl error::Error for SpaceMapEntryEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            SpaceMapEntryEncodeError::Endian { err } => Some(err),
+            SpaceMapEntryEncodeError::Binary { err } => Some(err),
         }
     }
 }

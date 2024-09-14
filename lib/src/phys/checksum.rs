@@ -7,7 +7,8 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder,
+    BigLittleEndianDecoder, BigLittleEndianEncoder, BinaryDecodeError, BinaryDecoder,
+    BinaryEncodeError, BinaryEncoder, EndianOrder,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,7 +222,7 @@ impl ChecksumValue {
      * Returns [`ChecksumValueDecodeError`] in case of decoding error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ChecksumValue, ChecksumValueDecodeError> {
         Ok(ChecksumValue {
             words: [
@@ -241,7 +242,7 @@ impl ChecksumValue {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ChecksumValueEncodeError> {
         encoder.put_u64(self.words[0])?;
         encoder.put_u64(self.words[1])?;
@@ -255,23 +256,23 @@ impl ChecksumValue {
 /// [`ChecksumValue`] decode error.
 #[derive(Debug)]
 pub enum ChecksumValueDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 }
 
-impl From<EndianDecodeError> for ChecksumValueDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ChecksumValueDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ChecksumValueDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ChecksumValueDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ChecksumValueDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumValueDecodeError::Endian { err } => {
+            ChecksumValueDecodeError::Binary { err } => {
                 write!(f, "ChecksumValue decode error | {err}")
             }
         }
@@ -282,7 +283,7 @@ impl fmt::Display for ChecksumValueDecodeError {
 impl error::Error for ChecksumValueDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumValueDecodeError::Endian { err } => Some(err),
+            ChecksumValueDecodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -290,23 +291,23 @@ impl error::Error for ChecksumValueDecodeError {
 /// [`ChecksumValue`] encode error.
 #[derive(Debug)]
 pub enum ChecksumValueEncodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for ChecksumValueEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ChecksumValueEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ChecksumValueEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ChecksumValueEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ChecksumValueEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumValueEncodeError::Endian { err } => {
+            ChecksumValueEncodeError::Binary { err } => {
                 write!(f, "ChecksumValue encode error | {err}")
             }
         }
@@ -317,7 +318,7 @@ impl fmt::Display for ChecksumValueEncodeError {
 impl error::Error for ChecksumValueEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ChecksumValueEncodeError::Endian { err } => Some(err),
+            ChecksumValueEncodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -373,11 +374,12 @@ impl ChecksumTail {
     pub fn from_bytes(
         bytes: &[u8; ChecksumTail::SIZE],
     ) -> Result<ChecksumTail, ChecksumTailDecodeError> {
-        let decoder = EndianDecoder::from_u64_magic(bytes, ChecksumTail::MAGIC)?;
+        let mut bele_decoder = BigLittleEndianDecoder::from_u64_magic(bytes, ChecksumTail::MAGIC)?;
+        let decoder = bele_decoder.decoder();
 
         Ok(ChecksumTail {
             order: decoder.order(),
-            value: ChecksumValue::from_decoder(&decoder)?,
+            value: ChecksumValue::from_decoder(decoder)?,
         })
     }
 
@@ -391,10 +393,11 @@ impl ChecksumTail {
         &self,
         bytes: &mut [u8; ChecksumTail::SIZE],
     ) -> Result<(), ChecksumTailEncodeError> {
-        let mut encoder = EndianEncoder::to_bytes(bytes, self.order);
+        let mut bl_encoder = BigLittleEndianEncoder::to_bytes(bytes, self.order);
+        let encoder = bl_encoder.encoder();
 
         encoder.put_u64(ChecksumTail::MAGIC)?;
-        self.value.to_encoder(&mut encoder)?;
+        self.value.to_encoder(encoder)?;
 
         Ok(())
     }
@@ -403,22 +406,22 @@ impl ChecksumTail {
 /// [`ChecksumTail`] decode error.
 #[derive(Debug)]
 pub enum ChecksumTailDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`ChecksumValue`] decode error.
     ChecksumValue {
         /// Error.
         err: ChecksumValueDecodeError,
     },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
 }
 
-impl From<EndianDecodeError> for ChecksumTailDecodeError {
-    fn from(value: EndianDecodeError) -> Self {
-        ChecksumTailDecodeError::Endian { err: value }
+impl From<BinaryDecodeError> for ChecksumTailDecodeError {
+    fn from(value: BinaryDecodeError) -> Self {
+        ChecksumTailDecodeError::Binary { err: value }
     }
 }
 
@@ -431,7 +434,7 @@ impl From<ChecksumValueDecodeError> for ChecksumTailDecodeError {
 impl fmt::Display for ChecksumTailDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTailDecodeError::Endian { err } => {
+            ChecksumTailDecodeError::Binary { err } => {
                 write!(f, "ChecksumTail decode error | {err}")
             }
             ChecksumTailDecodeError::ChecksumValue { err } => {
@@ -445,8 +448,8 @@ impl fmt::Display for ChecksumTailDecodeError {
 impl error::Error for ChecksumTailDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ChecksumTailDecodeError::Binary { err } => Some(err),
             ChecksumTailDecodeError::ChecksumValue { err } => Some(err),
-            ChecksumTailDecodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -454,17 +457,23 @@ impl error::Error for ChecksumTailDecodeError {
 /// [`ChecksumTail`] encode error.
 #[derive(Debug)]
 pub enum ChecksumTailEncodeError {
+    /// [`BinaryEncoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`ChecksumValue`] encode error.
     ChecksumValue {
         /// Error.
         err: ChecksumValueEncodeError,
     },
+}
 
-    /// [`EndianEncoder`] error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
-    },
+impl From<BinaryEncodeError> for ChecksumTailEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ChecksumTailEncodeError::Binary { err }
+    }
 }
 
 impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {
@@ -473,19 +482,13 @@ impl From<ChecksumValueEncodeError> for ChecksumTailEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for ChecksumTailEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ChecksumTailEncodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for ChecksumTailEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChecksumTailEncodeError::ChecksumValue { err } => {
+            ChecksumTailEncodeError::Binary { err } => {
                 write!(f, "ChecksumTail encode error | {err}")
             }
-            ChecksumTailEncodeError::Endian { err } => {
+            ChecksumTailEncodeError::ChecksumValue { err } => {
                 write!(f, "ChecksumTail encode error | {err}")
             }
         }
@@ -496,8 +499,8 @@ impl fmt::Display for ChecksumTailEncodeError {
 impl error::Error for ChecksumTailEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ChecksumTailEncodeError::Binary { err } => Some(err),
             ChecksumTailEncodeError::ChecksumValue { err } => Some(err),
-            ChecksumTailEncodeError::Endian { err } => Some(err),
         }
     }
 }

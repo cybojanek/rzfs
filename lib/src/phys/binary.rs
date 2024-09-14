@@ -1,8 +1,45 @@
 use core::fmt;
+use core::fmt::Display;
 use core::marker::Sized;
 
 #[cfg(feature = "std")]
 use std::error;
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Endian order.
+#[derive(Copy, Clone, Debug)]
+pub enum EndianOrder {
+    /// Big endian byte order. Most significant byte first.
+    Big,
+    /// Little endian byte order. Least significant byte first.
+    Little,
+}
+
+/// Native encoding.
+#[cfg(target_endian = "big")]
+pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Big;
+
+/// Native encoding.
+#[cfg(target_endian = "little")]
+pub const ENDIAN_ORDER_NATIVE: EndianOrder = EndianOrder::Little;
+
+/// Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]).
+#[cfg(target_endian = "big")]
+pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Little;
+
+/// Swapped encoding (opposite of [`ENDIAN_ORDER_NATIVE`]).
+#[cfg(target_endian = "little")]
+pub const ENDIAN_ORDER_SWAP: EndianOrder = EndianOrder::Big;
+
+impl Display for EndianOrder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EndianOrder::Big => write!(f, "Big"),
+            EndianOrder::Little => write!(f, "Little"),
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -53,6 +90,14 @@ pub enum BinaryDecodeError {
         offset: usize,
         /// Length.
         length: usize,
+    },
+
+    /// [`u64`] magic mismatch.
+    InvalidU64Magic {
+        /// Expected magic value.
+        expected: u64,
+        /// Actual bytes.
+        actual: [u8; 8],
     },
 
     /// Invalid str.
@@ -206,6 +251,12 @@ impl fmt::Display for BinaryDecodeError {
                 write!(
                     f,
                     "BinaryDecoder error, invalid clamp offset {offset} length {length}) for capacity {capacity}"
+                )
+            }
+            BinaryDecodeError::InvalidU64Magic { expected, actual } => {
+                write!(
+                    f,
+                    "BinaryDecoder error, invalid u64 magic, expected 0x{expected:016x} actual {:#02x?}", actual
                 )
             }
             BinaryDecodeError::InvalidStr {
@@ -773,6 +824,12 @@ pub trait BinaryDecoder<'a> {
     }
 }
 
+/// A [`BinaryDecoder`] that depends on the [`EndianOrder`] of the data.
+pub trait EndianDecoder<'a>: BinaryDecoder<'a> {
+    /// Gets the [`EndianOrder`] of this [`EndianDecoder`].
+    fn order(&self) -> EndianOrder;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`GetValueFromBinaryDecoder`] is a trait that gets from the [`BinaryDecoder`] to the type.
@@ -891,6 +948,30 @@ impl<'a> GetNValueFromBinaryDecoder<'a> for &'a str {
 /// Big Endian decoder.
 pub struct BigEndianDecoder<'a> {
     buffer: BinaryDecoderBuffer<'a>,
+}
+
+impl BigEndianDecoder<'_> {
+    /// Initializes a [`BigEndianDecoder`] from a slice of bytes.
+    pub fn from_bytes(data: &[u8]) -> BigEndianDecoder<'_> {
+        BigEndianDecoder {
+            buffer: BinaryDecoderBuffer::from_bytes(data),
+        }
+    }
+
+    /** Initializes a [`BigEndianDecoder`] from a slice of clamped bytes.
+     *
+     * The same as [`BigEndianDecoder::from_bytes`], but clamps minimum and maximum
+     * offsets.
+     */
+    pub fn from_bytes_clamped(
+        data: &[u8],
+        offset: usize,
+        length: usize,
+    ) -> Result<BigEndianDecoder<'_>, BinaryDecodeError> {
+        Ok(BigEndianDecoder {
+            buffer: BinaryDecoderBuffer::from_bytes_clamped(data, offset, length)?,
+        })
+    }
 }
 
 impl<'a> BinaryDecoder<'a> for BigEndianDecoder<'a> {
@@ -1012,11 +1093,41 @@ impl<'a> BinaryDecoder<'a> for BigEndianDecoder<'a> {
     }
 }
 
+impl<'a> EndianDecoder<'a> for BigEndianDecoder<'a> {
+    fn order(&self) -> EndianOrder {
+        EndianOrder::Big
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Little Endian decoder.
 pub struct LittleEndianDecoder<'a> {
     buffer: BinaryDecoderBuffer<'a>,
+}
+
+impl LittleEndianDecoder<'_> {
+    /// Initializes an [`LittleEndianDecoder`] from a slice of bytes.
+    pub fn from_bytes(data: &[u8]) -> LittleEndianDecoder<'_> {
+        LittleEndianDecoder {
+            buffer: BinaryDecoderBuffer::from_bytes(data),
+        }
+    }
+
+    /** Initializes an [`LittleEndianDecoder`] from a slice of clamped bytes.
+     *
+     * The same as [`LittleEndianDecoder::from_bytes`], but clamps minimum and maximum
+     * offsets.
+     */
+    pub fn from_bytes_clamped(
+        data: &[u8],
+        offset: usize,
+        length: usize,
+    ) -> Result<LittleEndianDecoder<'_>, BinaryDecodeError> {
+        Ok(LittleEndianDecoder {
+            buffer: BinaryDecoderBuffer::from_bytes_clamped(data, offset, length)?,
+        })
+    }
 }
 
 impl<'a> BinaryDecoder<'a> for LittleEndianDecoder<'a> {
@@ -1135,6 +1246,75 @@ impl<'a> BinaryDecoder<'a> for LittleEndianDecoder<'a> {
 
     fn get_u64(&mut self) -> Result<u64, BinaryDecodeError> {
         Ok(u64::from_le_bytes(self.buffer.get_8_bytes()?))
+    }
+}
+
+impl<'a> EndianDecoder<'a> for LittleEndianDecoder<'a> {
+    fn order(&self) -> EndianOrder {
+        EndianOrder::Little
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Big or Little endian decoder.
+pub enum BigLittleEndianDecoder<'a> {
+    /// [`BigEndianDecoder`].
+    Big(BigEndianDecoder<'a>),
+
+    /// [`LittleEndianDecoder`].
+    Little(LittleEndianDecoder<'a>),
+}
+
+impl BigLittleEndianDecoder<'_> {
+    /// Initializes a [`BigLittleEndianDecoder`] from a slice of bytes and [`EndianOrder`].
+    pub fn from_bytes(data: &[u8], order: EndianOrder) -> BigLittleEndianDecoder<'_> {
+        match order {
+            EndianOrder::Big => BigLittleEndianDecoder::Big(BigEndianDecoder::from_bytes(data)),
+            EndianOrder::Little => {
+                BigLittleEndianDecoder::Little(LittleEndianDecoder::from_bytes(data))
+            }
+        }
+    }
+
+    /// Initializes a [`BigLittleEndianDecoder`] from an expected magic value.
+    pub fn from_u64_magic(
+        data: &[u8],
+        magic: u64,
+    ) -> Result<BigLittleEndianDecoder<'_>, BinaryDecodeError> {
+        // Initialize decoder assuming little endian.
+        let mut decoder = LittleEndianDecoder::from_bytes(data);
+
+        // Try to get the magic.
+        let data_magic = decoder.get_u64()?;
+
+        // If it matches, return the decoder.
+        if data_magic == magic {
+            return Ok(BigLittleEndianDecoder::Little(decoder));
+        }
+
+        // If it doesn't match, then swap bytes and compare again.
+        let mut decoder = BigEndianDecoder::from_bytes(data);
+        let data_magic = decoder.get_u64()?;
+        if data_magic == magic {
+            return Ok(BigLittleEndianDecoder::Big(decoder));
+        }
+
+        // It still doesn't match.
+        Err(BinaryDecodeError::InvalidU64Magic {
+            expected: magic,
+            actual: data_magic.to_le_bytes(),
+        })
+    }
+}
+
+impl<'a, 'b> BigLittleEndianDecoder<'a> {
+    /// Gets the [`BigLittleEndianDecoder::Big`] or [`BigLittleEndianDecoder::Little`] decoder.
+    pub fn decoder(&'b mut self) -> &'b mut dyn EndianDecoder<'a> {
+        match self {
+            BigLittleEndianDecoder::Big(decoder) => decoder,
+            BigLittleEndianDecoder::Little(decoder) => decoder,
+        }
     }
 }
 
@@ -1766,6 +1946,12 @@ pub trait BinaryEncoder<'a> {
     }
 }
 
+/// A [`BinaryEncoder`] that depends on the [`EndianOrder`] of the data.
+pub trait EndianEncoder<'a>: BinaryEncoder<'a> {
+    /// Gets the [`EndianOrder`] of this [`EndianEncoder`].
+    fn order(&self) -> EndianOrder;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`PutValueIntoBinaryEncode`] is a trait that gets from the [`BinaryEncoder`] to the type.
@@ -2044,6 +2230,12 @@ impl<'a> BinaryEncoder<'a> for BigEndianEncoder<'a> {
     }
 }
 
+impl<'a> EndianEncoder<'a> for BigEndianEncoder<'a> {
+    fn order(&self) -> EndianOrder {
+        EndianOrder::Big
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Little Endian encoder.
@@ -2164,6 +2356,44 @@ impl<'a> BinaryEncoder<'a> for LittleEndianEncoder<'a> {
 
     fn put_zeros(&mut self, count: usize) -> Result<(), BinaryEncodeError> {
         self.buffer.put_zeros(count)
+    }
+}
+
+impl<'a> EndianEncoder<'a> for LittleEndianEncoder<'a> {
+    fn order(&self) -> EndianOrder {
+        EndianOrder::Little
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Big or Little endian encoder.
+pub enum BigLittleEndianEncoder<'a> {
+    /// [`BigEndianEncoder`].
+    Big(BigEndianEncoder<'a>),
+
+    /// [`LittleEndianEncoder`].
+    Little(LittleEndianEncoder<'a>),
+}
+
+impl BigLittleEndianEncoder<'_> {
+    /// Initializes a [`BigLittleEndianEncoder`] from a slice of bytes and [`EndianOrder`].
+    pub fn to_bytes(data: &mut [u8], order: EndianOrder) -> BigLittleEndianEncoder<'_> {
+        let buffer = BinaryEncoderBuffer { data, offset: 0 };
+        match order {
+            EndianOrder::Big => BigLittleEndianEncoder::Big(BigEndianEncoder { buffer }),
+            EndianOrder::Little => BigLittleEndianEncoder::Little(LittleEndianEncoder { buffer }),
+        }
+    }
+}
+
+impl<'a, 'b> BigLittleEndianEncoder<'a> {
+    /// Gets the [`BigLittleEndianEncoder::Big`] or [`BigLittleEndianEncoder::Little`] encoder.
+    pub fn encoder(&'b mut self) -> &'b mut dyn EndianEncoder<'a> {
+        match self {
+            BigLittleEndianEncoder::Big(encoder) => encoder,
+            BigLittleEndianEncoder::Little(encoder) => encoder,
+        }
     }
 }
 

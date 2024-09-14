@@ -7,8 +7,9 @@ use std::error;
 
 use crate::checksum::{label_checksum, label_verify, LabelChecksumError, LabelVerifyError, Sha256};
 use crate::phys::{
-    BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumTail,
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder, LabelNvPairs,
+    BigLittleEndianDecoder, BigLittleEndianEncoder, BinaryDecodeError, BinaryDecoder,
+    BinaryEncodeError, BinaryEncoder, BlockPointer, BlockPointerDecodeError,
+    BlockPointerEncodeError, ChecksumTail, EndianOrder, LabelNvPairs, LittleEndianDecoder,
     SpaVersion, SpaVersionError, SECTOR_SHIFT,
 };
 
@@ -179,25 +180,23 @@ impl UberBlock {
         //       UberBlock as all zero, except for the version.
         //       Others, write out all zero, except for the version, and
         //       checksum.
-        let decoder = EndianDecoder::from_bytes(bytes, EndianOrder::Little);
+        let mut decoder = LittleEndianDecoder::from_bytes(bytes);
 
         // If magic is zero.
-        if let Ok(magic_is_zero) = decoder.is_zero_skip(8) {
-            if magic_is_zero {
-                // Skip version.
-                if decoder.skip(8).is_ok() {
-                    // Exclude checksum.
-                    let excluded_length = if exclude_checksum {
-                        ChecksumTail::SIZE
-                    } else {
-                        0
-                    };
+        if decoder.skip_zeros(8).is_ok() {
+            // Skip version.
+            if decoder.skip(8).is_ok() {
+                // Exclude checksum.
+                let excluded_length = if exclude_checksum {
+                    ChecksumTail::SIZE
+                } else {
+                    0
+                };
 
-                    if let Some(rest_size) = decoder.len().checked_sub(excluded_length) {
-                        // If the rest is zero.
-                        if let Ok(rest_is_zero) = decoder.is_zero_skip(rest_size) {
-                            return rest_is_zero;
-                        }
+                if let Some(rest_size) = decoder.len().checked_sub(excluded_length) {
+                    // If the rest is zero.
+                    if decoder.skip_zeros(rest_size).is_ok() {
+                        return true;
                     }
                 }
             }
@@ -231,10 +230,11 @@ impl UberBlock {
 
         ////////////////////////////////
         // Create decoder.
-        let decoder = match EndianDecoder::from_u64_magic(bytes, UberBlock::MAGIC) {
+        let mut bele_decoder = match BigLittleEndianDecoder::from_u64_magic(bytes, UberBlock::MAGIC)
+        {
             Ok(v) => v,
             Err(
-                err @ EndianDecodeError::InvalidMagic {
+                err @ BinaryDecodeError::InvalidU64Magic {
                     expected: _,
                     actual: _,
                 },
@@ -245,11 +245,12 @@ impl UberBlock {
                 }
 
                 // Else, re-raise error.
-                return Err(UberBlockDecodeError::Endian { err });
+                return Err(UberBlockDecodeError::Binary { err });
             }
             // Else, re-raise error.
-            Err(err) => return Err(UberBlockDecodeError::Endian { err }),
+            Err(err) => return Err(UberBlockDecodeError::Binary { err }),
         };
+        let decoder = bele_decoder.decoder();
 
         ////////////////////////////////
         // Decode fields.
@@ -260,7 +261,7 @@ impl UberBlock {
 
         ////////////////////////////////
         // Decode block pointer.
-        let block_ptr = match BlockPointer::from_decoder(&decoder)? {
+        let block_ptr = match BlockPointer::from_decoder(decoder)? {
             Some(ptr) => ptr,
             None => return Err(UberBlockDecodeError::EmptyBlockPointer {}),
         };
@@ -274,7 +275,7 @@ impl UberBlock {
 
         ////////////////////////////////
         // Decode MMP.
-        let mmp = UberBlockMmp::from_decoder(&decoder)?;
+        let mmp = UberBlockMmp::from_decoder(decoder)?;
 
         ////////////////////////////////
         // Decode checkpoint transaction group.
@@ -286,8 +287,8 @@ impl UberBlock {
         let rest_size = match decoder.len().checked_sub(ChecksumTail::SIZE) {
             Some(v) => v,
             None => {
-                return Err(UberBlockDecodeError::Endian {
-                    err: EndianDecodeError::EndOfInput {
+                return Err(UberBlockDecodeError::Binary {
+                    err: BinaryDecodeError::EndOfInput {
                         offset: decoder.offset(),
                         max_offset: bytes.len(),
                         capacity: decoder.capacity(),
@@ -296,7 +297,7 @@ impl UberBlock {
                 })
             }
         };
-        decoder.skip_zero_padding(rest_size)?;
+        decoder.skip_zeros(rest_size)?;
 
         ////////////////////////////////
         // Success.
@@ -327,7 +328,8 @@ impl UberBlock {
     ) -> Result<(), UberBlockEncodeError> {
         ////////////////////////////////
         // Create encoder.
-        let mut encoder = EndianEncoder::to_bytes(bytes, self.order);
+        let mut bl_encoder = BigLittleEndianEncoder::to_bytes(bytes, self.order);
+        let encoder = bl_encoder.encoder();
         encoder.put_u64(UberBlock::MAGIC)?;
 
         ////////////////////////////////
@@ -339,7 +341,7 @@ impl UberBlock {
 
         ////////////////////////////////
         // Encode block pointer.
-        self.ptr.to_encoder(&mut encoder)?;
+        self.ptr.to_encoder(encoder)?;
 
         ////////////////////////////////
         // Encode software version (conditionally).
@@ -351,9 +353,9 @@ impl UberBlock {
         ////////////////////////////////
         // Encode MMP (conditionally).
         match &self.mmp {
-            Some(mmp) => mmp.to_encoder(&mut encoder)?,
+            Some(mmp) => mmp.to_encoder(encoder)?,
             None => {
-                encoder.put_zero_padding(UberBlockMmp::SIZE)?;
+                encoder.put_zeros(UberBlockMmp::SIZE)?;
             }
         }
 
@@ -366,8 +368,8 @@ impl UberBlock {
         let rest_size = match encoder.available().checked_sub(ChecksumTail::SIZE) {
             Some(v) => v,
             None => {
-                return Err(UberBlockEncodeError::Endian {
-                    err: EndianEncodeError::EndOfOutput {
+                return Err(UberBlockEncodeError::Binary {
+                    err: BinaryEncodeError::EndOfOutput {
                         offset: encoder.offset(),
                         capacity: encoder.capacity(),
                         count: ChecksumTail::SIZE,
@@ -376,7 +378,7 @@ impl UberBlock {
             }
         };
 
-        encoder.put_zero_padding(rest_size)?;
+        encoder.put_zeros(rest_size)?;
 
         ////////////////////////////////
         // Compute checksum.
@@ -391,6 +393,12 @@ impl UberBlock {
 /// [`UberBlock`] decode error.
 #[derive(Debug)]
 pub enum UberBlockDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`BlockPointer`] decode error.
     BlockPointer {
         /// Error.
@@ -399,12 +407,6 @@ pub enum UberBlockDecodeError {
 
     /// [`BlockPointer`] is empty. */
     EmptyBlockPointer {},
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
 
     /// Label checksum verification error.
     LabelVerify {
@@ -425,9 +427,9 @@ pub enum UberBlockDecodeError {
     },
 }
 
-impl From<LabelVerifyError> for UberBlockDecodeError {
-    fn from(err: LabelVerifyError) -> Self {
-        UberBlockDecodeError::LabelVerify { err }
+impl From<BinaryDecodeError> for UberBlockDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        UberBlockDecodeError::Binary { err }
     }
 }
 
@@ -437,9 +439,9 @@ impl From<BlockPointerDecodeError> for UberBlockDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for UberBlockDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        UberBlockDecodeError::Endian { err }
+impl From<LabelVerifyError> for UberBlockDecodeError {
+    fn from(err: LabelVerifyError) -> Self {
+        UberBlockDecodeError::LabelVerify { err }
     }
 }
 
@@ -458,14 +460,14 @@ impl From<UberBlockMmpDecodeError> for UberBlockDecodeError {
 impl fmt::Display for UberBlockDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            UberBlockDecodeError::Binary { err } => {
+                write!(f, "UberBlock decode error | {err}")
+            }
             UberBlockDecodeError::BlockPointer { err } => {
                 write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::EmptyBlockPointer {} => {
                 write!(f, "UberBlock decode error, empty block pointer")
-            }
-            UberBlockDecodeError::Endian { err } => {
-                write!(f, "UberBlock decode error | {err}")
             }
             UberBlockDecodeError::LabelVerify { err } => {
                 write!(f, "UberBlock decode error | {err}")
@@ -484,9 +486,9 @@ impl fmt::Display for UberBlockDecodeError {
 impl error::Error for UberBlockDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            UberBlockDecodeError::Binary { err } => Some(err),
             UberBlockDecodeError::BlockPointer { err } => Some(err),
             UberBlockDecodeError::EmptyBlockPointer {} => None,
-            UberBlockDecodeError::Endian { err } => Some(err),
             UberBlockDecodeError::LabelVerify { err } => Some(err),
             UberBlockDecodeError::SpaVersion { err } => Some(err),
             UberBlockDecodeError::UberBlockMmp { err } => Some(err),
@@ -497,16 +499,16 @@ impl error::Error for UberBlockDecodeError {
 /// [`UberBlock`] encode error.
 #[derive(Debug)]
 pub enum UberBlockEncodeError {
+    /// Binary encode error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`BlockPointer`] encode error.
     BlockPointer {
         /// Error.
         err: BlockPointerEncodeError,
-    },
-
-    /// Endian encode error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
     },
 
     /// Label checksum error.
@@ -522,9 +524,9 @@ pub enum UberBlockEncodeError {
     },
 }
 
-impl From<LabelChecksumError> for UberBlockEncodeError {
-    fn from(err: LabelChecksumError) -> Self {
-        UberBlockEncodeError::LabelChecksum { err }
+impl From<BinaryEncodeError> for UberBlockEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        UberBlockEncodeError::Binary { err }
     }
 }
 
@@ -534,9 +536,9 @@ impl From<BlockPointerEncodeError> for UberBlockEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for UberBlockEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        UberBlockEncodeError::Endian { err }
+impl From<LabelChecksumError> for UberBlockEncodeError {
+    fn from(err: LabelChecksumError) -> Self {
+        UberBlockEncodeError::LabelChecksum { err }
     }
 }
 
@@ -549,10 +551,10 @@ impl From<UberBlockMmpEncodeError> for UberBlockEncodeError {
 impl fmt::Display for UberBlockEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UberBlockEncodeError::BlockPointer { err } => {
+            UberBlockEncodeError::Binary { err } => {
                 write!(f, "UberBlock encode error | {err}")
             }
-            UberBlockEncodeError::Endian { err } => {
+            UberBlockEncodeError::BlockPointer { err } => {
                 write!(f, "UberBlock encode error | {err}")
             }
             UberBlockEncodeError::LabelChecksum { err } => {
@@ -569,8 +571,8 @@ impl fmt::Display for UberBlockEncodeError {
 impl error::Error for UberBlockEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            UberBlockEncodeError::Binary { err } => Some(err),
             UberBlockEncodeError::BlockPointer { err } => Some(err),
-            UberBlockEncodeError::Endian { err } => Some(err),
             UberBlockEncodeError::LabelChecksum { err } => Some(err),
             UberBlockEncodeError::UberBlockMmp { err } => Some(err),
         }
@@ -704,7 +706,7 @@ impl UberBlockMmp {
      * Returns [`UberBlockMmpDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<Option<UberBlockMmp>, UberBlockMmpDecodeError> {
         ////////////////////////////////
         // Decode values.
@@ -806,7 +808,7 @@ impl UberBlockMmp {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), UberBlockMmpEncodeError> {
         ////////////////////////////////
         // Encode magic.
@@ -854,10 +856,10 @@ impl UberBlockMmp {
 /// [`UberBlockMmp`] encode error.
 #[derive(Debug)]
 pub enum UberBlockMmpDecodeError {
-    /// [`EndianDecoder`] error.
+    /// [`BinaryDecoder`] error.
     Endian {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Invalid magic.
@@ -883,8 +885,8 @@ pub enum UberBlockMmpDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for UberBlockMmpDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
+impl From<BinaryDecodeError> for UberBlockMmpDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
         UberBlockMmpDecodeError::Endian { err }
     }
 }
@@ -931,10 +933,10 @@ impl error::Error for UberBlockMmpDecodeError {
 /// [`UberBlockMmp`] decode error.
 #[derive(Debug)]
 pub enum UberBlockMmpEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Write interval is too large.
@@ -944,16 +946,16 @@ pub enum UberBlockMmpEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for UberBlockMmpEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        UberBlockMmpEncodeError::Endian { err }
+impl From<BinaryEncodeError> for UberBlockMmpEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        UberBlockMmpEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for UberBlockMmpEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UberBlockMmpEncodeError::Endian { err } => {
+            UberBlockMmpEncodeError::Binary { err } => {
                 write!(f, "UberBlockMmp encode error | {err}")
             }
             UberBlockMmpEncodeError::WriteIntervalTooLarge { write_interval } => {
@@ -971,7 +973,7 @@ impl fmt::Display for UberBlockMmpEncodeError {
 impl error::Error for UberBlockMmpEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            UberBlockMmpEncodeError::Endian { err } => Some(err),
+            UberBlockMmpEncodeError::Binary { err } => Some(err),
             UberBlockMmpEncodeError::WriteIntervalTooLarge { write_interval: _ } => None,
         }
     }

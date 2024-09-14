@@ -6,8 +6,8 @@ use core::fmt;
 use std::error;
 
 use crate::phys::{
-    BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, EndianDecodeError,
-    EndianDecoder, EndianEncodeError, EndianEncoder,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, BlockPointer,
+    BlockPointerDecodeError, BlockPointerEncodeError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +66,9 @@ impl ZilHeader {
      *
      * Returns [`ZilHeaderDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<ZilHeader, ZilHeaderDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<ZilHeader, ZilHeaderDecodeError> {
         let zil_header = ZilHeader {
             claim_txg: decoder.get_u64()?,
             replay_seq: decoder.get_u64()?,
@@ -76,7 +78,7 @@ impl ZilHeader {
             claim_lr_seq: decoder.get_u64()?,
         };
 
-        decoder.skip_zero_padding(ZilHeader::PADDING_SIZE)?;
+        decoder.skip_zeros(ZilHeader::PADDING_SIZE)?;
 
         Ok(zil_header)
     }
@@ -87,7 +89,10 @@ impl ZilHeader {
      *
      * Returns [`ZilHeaderEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), ZilHeaderEncodeError> {
+    pub fn to_encoder(
+        &self,
+        encoder: &mut dyn BinaryEncoder<'_>,
+    ) -> Result<(), ZilHeaderEncodeError> {
         encoder.put_u64(self.claim_txg)?;
         encoder.put_u64(self.replay_seq)?;
         match &self.log {
@@ -97,7 +102,7 @@ impl ZilHeader {
         encoder.put_u64(self.claim_blk_seq)?;
         encoder.put_u64(self.flags)?;
         encoder.put_u64(self.claim_lr_seq)?;
-        encoder.put_zero_padding(ZilHeader::PADDING_SIZE)?;
+        encoder.put_zeros(ZilHeader::PADDING_SIZE)?;
 
         Ok(())
     }
@@ -108,17 +113,23 @@ impl ZilHeader {
 /// [`ZilHeader`] decode error.
 #[derive(Debug)]
 pub enum ZilHeaderDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`BlockPointer`] decode error.
     BlockPointer {
         /// Error.
         err: BlockPointerDecodeError,
     },
+}
 
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
+impl From<BinaryDecodeError> for ZilHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZilHeaderDecodeError::Binary { err }
+    }
 }
 
 impl From<BlockPointerDecodeError> for ZilHeaderDecodeError {
@@ -127,19 +138,13 @@ impl From<BlockPointerDecodeError> for ZilHeaderDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for ZilHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZilHeaderDecodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for ZilHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZilHeaderDecodeError::BlockPointer { err } => {
+            ZilHeaderDecodeError::Binary { err } => {
                 write!(f, "ZilHeader decode error | {err}")
             }
-            ZilHeaderDecodeError::Endian { err } => {
+            ZilHeaderDecodeError::BlockPointer { err } => {
                 write!(f, "ZilHeader decode error | {err}")
             }
         }
@@ -150,8 +155,8 @@ impl fmt::Display for ZilHeaderDecodeError {
 impl error::Error for ZilHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ZilHeaderDecodeError::Binary { err } => Some(err),
             ZilHeaderDecodeError::BlockPointer { err } => Some(err),
-            ZilHeaderDecodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -161,17 +166,23 @@ impl error::Error for ZilHeaderDecodeError {
 /// [`ZilHeader`] encode error.
 #[derive(Debug)]
 pub enum ZilHeaderEncodeError {
+    /// [`BinaryEncoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`BlockPointer`] encode error.
     BlockPointer {
         /// Error.
         err: BlockPointerEncodeError,
     },
+}
 
-    /// Endian encode error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
-    },
+impl From<BinaryEncodeError> for ZilHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZilHeaderEncodeError::Binary { err }
+    }
 }
 
 impl From<BlockPointerEncodeError> for ZilHeaderEncodeError {
@@ -180,19 +191,13 @@ impl From<BlockPointerEncodeError> for ZilHeaderEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for ZilHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZilHeaderEncodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for ZilHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZilHeaderEncodeError::BlockPointer { err } => {
+            ZilHeaderEncodeError::Binary { err } => {
                 write!(f, "ZilHeader encode error | {err}")
             }
-            ZilHeaderEncodeError::Endian { err } => {
+            ZilHeaderEncodeError::BlockPointer { err } => {
                 write!(f, "ZilHeader encode error | {err}")
             }
         }
@@ -203,8 +208,8 @@ impl fmt::Display for ZilHeaderEncodeError {
 impl error::Error for ZilHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ZilHeaderEncodeError::Binary { err } => Some(err),
             ZilHeaderEncodeError::BlockPointer { err } => Some(err),
-            ZilHeaderEncodeError::Endian { err } => Some(err),
         }
     }
 }
