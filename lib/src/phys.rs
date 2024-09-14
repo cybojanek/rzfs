@@ -8,10 +8,11 @@ pub use acl::{
 
 pub(crate) mod binary;
 pub use binary::{
-    BigEndianDecoder, BigEndianEncoder, BinaryDecodeError, BinaryDecoder, BinaryEncodeError,
-    BinaryEncoder, GetNValueFromBinaryDecoder, GetValueFromBinaryDecoder, LittleEndianDecoder,
-    LittleEndianEncoder, PutNValueIntoBinaryEncoder, PutValueIntoBinaryEncode, XdrDecoder,
-    XdrEncoder,
+    BigEndianDecoder, BigEndianEncoder, BigLittleEndianDecoder, BigLittleEndianEncoder,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, EndianDecoder,
+    EndianEncoder, EndianOrder, GetNValueFromBinaryDecoder, GetValueFromBinaryDecoder,
+    LittleEndianDecoder, LittleEndianEncoder, PutNValueIntoBinaryEncoder, PutValueIntoBinaryEncode,
+    XdrDecoder, XdrEncoder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP,
 };
 
 pub(crate) mod block_pointer;
@@ -49,12 +50,6 @@ pub use dmu::{DmuGenericObjectType, DmuType, DmuTypeError};
 
 pub(crate) mod dva;
 pub use dva::{Dva, DvaDecodeError, DvaEncodeError};
-
-pub(crate) mod endian;
-pub use endian::{
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, EndianOrder,
-    GetFromEndianDecoder, ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP,
-};
 
 pub(crate) mod feature;
 pub use feature::{

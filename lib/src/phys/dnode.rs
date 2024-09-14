@@ -6,9 +6,9 @@ use core::fmt;
 use std::error;
 
 use crate::phys::{
-    BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, ChecksumType,
-    ChecksumTypeError, CompressionType, CompressionTypeError, DmuType, DmuTypeError,
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, BlockPointer,
+    BlockPointerDecodeError, BlockPointerEncodeError, ChecksumType, ChecksumTypeError,
+    CompressionType, CompressionTypeError, DmuType, DmuTypeError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -319,10 +319,12 @@ impl Dnode {
      *
      * Returns [`DnodeDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<Option<Dnode>, DnodeDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<Option<Dnode>, DnodeDecodeError> {
         ////////////////////////////////
         // Check for an empty Dnode.
-        if decoder.is_zero_skip(Dnode::SIZE)? {
+        if decoder.is_skip_zeros(Dnode::SIZE)? {
             return Ok(None);
         }
 
@@ -383,7 +385,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(Dnode::PADDING_SIZE_A)?;
+        decoder.skip_zeros(Dnode::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Decode max block id.
@@ -400,7 +402,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(Dnode::PADDING_SIZE_B)?;
+        decoder.skip_zeros(Dnode::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Decode tail.
@@ -410,7 +412,7 @@ impl Dnode {
                 let tail = DnodeTailZero {
                     ptrs: [],
                     bonus: decoder
-                        .get_bytes(DnodeTailZero::BONUS_SIZE)?
+                        .get_bytes_n(DnodeTailZero::BONUS_SIZE)?
                         .try_into()
                         .unwrap(),
                 };
@@ -422,7 +424,7 @@ impl Dnode {
                     let tail = DnodeTailSpill {
                         ptrs: [BlockPointer::from_decoder(decoder)?],
                         bonus: decoder
-                            .get_bytes(DnodeTailSpill::BONUS_SIZE)?
+                            .get_bytes_n(DnodeTailSpill::BONUS_SIZE)?
                             .try_into()
                             .unwrap(),
                         spill: BlockPointer::from_decoder(decoder)?,
@@ -433,7 +435,7 @@ impl Dnode {
                     let tail = DnodeTailOne {
                         ptrs: [BlockPointer::from_decoder(decoder)?],
                         bonus: decoder
-                            .get_bytes(DnodeTailOne::BONUS_SIZE)?
+                            .get_bytes_n(DnodeTailOne::BONUS_SIZE)?
                             .try_into()
                             .unwrap(),
                     };
@@ -448,7 +450,7 @@ impl Dnode {
                         BlockPointer::from_decoder(decoder)?,
                     ],
                     bonus: decoder
-                        .get_bytes(DnodeTailTwo::BONUS_SIZE)?
+                        .get_bytes_n(DnodeTailTwo::BONUS_SIZE)?
                         .try_into()
                         .unwrap(),
                 };
@@ -463,7 +465,7 @@ impl Dnode {
                         BlockPointer::from_decoder(decoder)?,
                     ],
                     bonus: decoder
-                        .get_bytes(DnodeTailThree::BONUS_SIZE)?
+                        .get_bytes_n(DnodeTailThree::BONUS_SIZE)?
                         .try_into()
                         .unwrap(),
                 };
@@ -504,7 +506,7 @@ impl Dnode {
      *
      * Returns [`DnodeEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), DnodeEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), DnodeEncodeError> {
         ////////////////////////////////
         // Encode DMU type.
         encoder.put_u8(self.dmu.into())?;
@@ -574,7 +576,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(Dnode::PADDING_SIZE_A)?;
+        encoder.put_zeros(Dnode::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Encode max block id.
@@ -589,7 +591,7 @@ impl Dnode {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(Dnode::PADDING_SIZE_B)?;
+        encoder.put_zeros(Dnode::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Encode tail.
@@ -619,8 +621,8 @@ impl Dnode {
      *
      * Returns [`DnodeEncodeError`] on error.
      */
-    pub fn empty_to_encoder(encoder: &mut EndianEncoder<'_>) -> Result<(), DnodeEncodeError> {
-        Ok(encoder.put_zero_padding(Dnode::SIZE)?)
+    pub fn empty_to_encoder(encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), DnodeEncodeError> {
+        Ok(encoder.put_zeros(Dnode::SIZE)?)
     }
 
     /** Encode an `[Option<Dnode>`].
@@ -631,7 +633,7 @@ impl Dnode {
      */
     pub fn option_to_encoder(
         dnode: &Option<Dnode>,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), DnodeEncodeError> {
         match dnode {
             Some(v) => v.to_encoder(encoder),
@@ -678,6 +680,12 @@ impl Dnode {
 /// [`Dnode`] decode error.
 #[derive(Debug)]
 pub enum DnodeDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`BlockPointer`] decode error.
     BlockPointer {
         /// Error.
@@ -714,12 +722,6 @@ pub enum DnodeDecodeError {
         err: DmuTypeError,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
-
     /// Unknown flags.
     Flags {
         /// Flags.
@@ -731,6 +733,12 @@ pub enum DnodeDecodeError {
         /// Count.
         count: u8,
     },
+}
+
+impl From<BinaryDecodeError> for DnodeDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        DnodeDecodeError::Binary { err }
+    }
 }
 
 impl From<BlockPointerDecodeError> for DnodeDecodeError {
@@ -757,15 +765,12 @@ impl From<DmuTypeError> for DnodeDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for DnodeDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        DnodeDecodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for DnodeDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            DnodeDecodeError::Binary { err } => {
+                write!(f, "Dnode decode error | {err}")
+            }
             DnodeDecodeError::BlockPointer { err } => {
                 write!(f, "Dnode decode error | {err}")
             }
@@ -782,9 +787,6 @@ impl fmt::Display for DnodeDecodeError {
                 write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::DmuType { err } => {
-                write!(f, "Dnode decode error | {err}")
-            }
-            DnodeDecodeError::Endian { err } => {
                 write!(f, "Dnode decode error | {err}")
             }
             DnodeDecodeError::Flags { flags } => {
@@ -804,11 +806,11 @@ impl fmt::Display for DnodeDecodeError {
 impl error::Error for DnodeDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            DnodeDecodeError::Binary { err } => Some(err),
             DnodeDecodeError::BlockPointer { err } => Some(err),
             DnodeDecodeError::ChecksumType { err } => Some(err),
             DnodeDecodeError::CompressionType { err } => Some(err),
             DnodeDecodeError::DmuType { err } => Some(err),
-            DnodeDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -819,16 +821,16 @@ impl error::Error for DnodeDecodeError {
 /// [`Dnode`] encode error.
 #[derive(Debug)]
 pub enum DnodeEncodeError {
+    /// Binary encode error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`BlockPointer`] encode error.
     BlockPointer {
         /// Error.
         err: BlockPointerEncodeError,
-    },
-
-    /// Endian encode error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
     },
 
     /// Invalid bonus length.
@@ -838,25 +840,25 @@ pub enum DnodeEncodeError {
     },
 }
 
+impl From<BinaryEncodeError> for DnodeEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        DnodeEncodeError::Binary { err }
+    }
+}
+
 impl From<BlockPointerEncodeError> for DnodeEncodeError {
     fn from(err: BlockPointerEncodeError) -> Self {
         DnodeEncodeError::BlockPointer { err }
     }
 }
 
-impl From<EndianEncodeError> for DnodeEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        DnodeEncodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for DnodeEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DnodeEncodeError::BlockPointer { err } => {
+            DnodeEncodeError::Binary { err } => {
                 write!(f, "Dnode encode error | {err}")
             }
-            DnodeEncodeError::Endian { err } => {
+            DnodeEncodeError::BlockPointer { err } => {
                 write!(f, "Dnode encode error | {err}")
             }
             DnodeEncodeError::BonusLength { length } => {
@@ -870,8 +872,8 @@ impl fmt::Display for DnodeEncodeError {
 impl error::Error for DnodeEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            DnodeEncodeError::Binary { err } => Some(err),
             DnodeEncodeError::BlockPointer { err } => Some(err),
-            DnodeEncodeError::Endian { err } => Some(err),
             _ => None,
         }
     }

@@ -6,8 +6,8 @@ use core::fmt;
 use std::error;
 
 use crate::phys::{
-    BlockPointer, BlockPointerDecodeError, BlockPointerEncodeError, EndianDecodeError,
-    EndianDecoder, EndianEncodeError, EndianEncoder,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, BlockPointer,
+    BlockPointerDecodeError, BlockPointerEncodeError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,7 +145,7 @@ impl DslDirectory {
      * Returns [`DslDirectoryDecodeError`] in case of decoding error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<DslDirectory, DslDirectoryDecodeError> {
         ////////////////////////////////
         // Decode values.
@@ -195,7 +195,7 @@ impl DslDirectory {
         }
 
         let used_breakdown = if (flags & DslDirectory::FLAG_USED_BREAKDOWN) == 0 {
-            decoder.skip_zero_padding(DslDirectoryUsedBreakdown::SIZE)?;
+            decoder.skip_zeros(DslDirectoryUsedBreakdown::SIZE)?;
             None
         } else {
             Some(DslDirectoryUsedBreakdown {
@@ -211,7 +211,7 @@ impl DslDirectory {
 
         ////////////////////////////////
         // Skip padding.
-        decoder.skip_zero_padding(DslDirectory::PADDING_SIZE)?;
+        decoder.skip_zeros(DslDirectory::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Success.
@@ -241,7 +241,7 @@ impl DslDirectory {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), DslDirectoryEncodeError> {
         ////////////////////////////////
         // Encode values.
@@ -287,12 +287,12 @@ impl DslDirectory {
                 encoder.put_u64(used_breakdown.child_reserved)?;
                 encoder.put_u64(used_breakdown.referenced_reservation)?;
             }
-            None => encoder.put_zero_padding(DslDirectoryUsedBreakdown::SIZE)?,
+            None => encoder.put_zeros(DslDirectoryUsedBreakdown::SIZE)?,
         }
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(DslDirectory::PADDING_SIZE)?;
+        encoder.put_zeros(DslDirectory::PADDING_SIZE)?;
 
         Ok(())
     }
@@ -301,10 +301,10 @@ impl DslDirectory {
 /// [`DslDirectory`] decode error.
 #[derive(Debug)]
 pub enum DslDirectoryDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Unknown flags.
@@ -320,16 +320,16 @@ pub enum DslDirectoryDecodeError {
     MissingProperties {},
 }
 
-impl From<EndianDecodeError> for DslDirectoryDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        DslDirectoryDecodeError::Endian { err }
+impl From<BinaryDecodeError> for DslDirectoryDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        DslDirectoryDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for DslDirectoryDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DslDirectoryDecodeError::Endian { err } => {
+            DslDirectoryDecodeError::Binary { err } => {
                 write!(f, "DslDirectory decode error | {err}")
             }
             DslDirectoryDecodeError::Flags { flags } => {
@@ -352,7 +352,7 @@ impl fmt::Display for DslDirectoryDecodeError {
 impl error::Error for DslDirectoryDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DslDirectoryDecodeError::Endian { err } => Some(err),
+            DslDirectoryDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -361,10 +361,10 @@ impl error::Error for DslDirectoryDecodeError {
 /// [`DslDirectory`] encode error.
 #[derive(Debug)]
 pub enum DslDirectoryEncodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Child directory ZAP object is 0.
@@ -374,16 +374,16 @@ pub enum DslDirectoryEncodeError {
     MissingProperties {},
 }
 
-impl From<EndianEncodeError> for DslDirectoryEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        DslDirectoryEncodeError::Endian { err }
+impl From<BinaryEncodeError> for DslDirectoryEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        DslDirectoryEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for DslDirectoryEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DslDirectoryEncodeError::Endian { err } => {
+            DslDirectoryEncodeError::Binary { err } => {
                 write!(f, "DslDirectory encode error | {err}")
             }
             DslDirectoryEncodeError::MissingChildDirectory {} => {
@@ -403,7 +403,7 @@ impl fmt::Display for DslDirectoryEncodeError {
 impl error::Error for DslDirectoryEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DslDirectoryEncodeError::Endian { err } => Some(err),
+            DslDirectoryEncodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -539,7 +539,9 @@ impl DslDataSet {
      *
      * Returns [`DslDataSetDecodeError`] in case of decoding error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<DslDataSet, DslDataSetDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<DslDataSet, DslDataSetDecodeError> {
         ////////////////////////////////
         // Decode values.
         let dir_obj = match decoder.get_u64()? {
@@ -600,7 +602,7 @@ impl DslDataSet {
 
         let user_refs_obj = decoder.get_u64()?;
 
-        decoder.skip_zero_padding(DslDataSet::PADDING_SIZE)?;
+        decoder.skip_zeros(DslDataSet::PADDING_SIZE)?;
 
         Ok(DslDataSet {
             dir_obj,
@@ -632,7 +634,10 @@ impl DslDataSet {
      *
      * Returns [`DslDataSetEncodeError`] in case of encoding error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), DslDataSetEncodeError> {
+    pub fn to_encoder(
+        &self,
+        encoder: &mut dyn BinaryEncoder<'_>,
+    ) -> Result<(), DslDataSetEncodeError> {
         if self.dir_obj == 0 {
             return Err(DslDataSetEncodeError::MissingDirectory {});
         }
@@ -666,7 +671,7 @@ impl DslDataSet {
         encoder.put_u64(self.snapshot_props_obj.unwrap_or(0))?;
         encoder.put_u64(self.user_refs_obj)?;
 
-        encoder.put_zero_padding(DslDataSet::PADDING_SIZE)?;
+        encoder.put_zeros(DslDataSet::PADDING_SIZE)?;
 
         Ok(())
     }
@@ -675,16 +680,16 @@ impl DslDataSet {
 /// [`DslDataSet`] decode error.
 #[derive(Debug)]
 pub enum DslDataSetDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`BlockPointer`] decode error.
     BlockPointer {
         /// Error.
         err: BlockPointerDecodeError,
-    },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
     },
 
     /// Unknown flags.
@@ -706,25 +711,25 @@ pub enum DslDataSetDecodeError {
     },
 }
 
+impl From<BinaryDecodeError> for DslDataSetDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        DslDataSetDecodeError::Binary { err }
+    }
+}
+
 impl From<BlockPointerDecodeError> for DslDataSetDecodeError {
     fn from(err: BlockPointerDecodeError) -> Self {
         DslDataSetDecodeError::BlockPointer { err }
     }
 }
 
-impl From<EndianDecodeError> for DslDataSetDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        DslDataSetDecodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for DslDataSetDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DslDataSetDecodeError::BlockPointer { err } => {
+            DslDataSetDecodeError::Binary { err } => {
                 write!(f, "DslDataSet decode error | {err}")
             }
-            DslDataSetDecodeError::Endian { err } => {
+            DslDataSetDecodeError::BlockPointer { err } => {
                 write!(f, "DslDataSet decode error | {err}")
             }
             DslDataSetDecodeError::Flags { flags } => {
@@ -747,8 +752,8 @@ impl fmt::Display for DslDataSetDecodeError {
 impl error::Error for DslDataSetDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            DslDataSetDecodeError::Binary { err } => Some(err),
             DslDataSetDecodeError::BlockPointer { err } => Some(err),
-            DslDataSetDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -757,16 +762,16 @@ impl error::Error for DslDataSetDecodeError {
 /// [`DslDataSet`] encode error.
 #[derive(Debug)]
 pub enum DslDataSetEncodeError {
+    /// [`BinaryEncoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`BlockPointer`] encode error.
     BlockPointer {
         /// Error.
         err: BlockPointerEncodeError,
-    },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
     },
 
     /// Missing [`DslDirectory`] object number.
@@ -782,25 +787,25 @@ pub enum DslDataSetEncodeError {
     },
 }
 
+impl From<BinaryEncodeError> for DslDataSetEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        DslDataSetEncodeError::Binary { err }
+    }
+}
+
 impl From<BlockPointerEncodeError> for DslDataSetEncodeError {
     fn from(err: BlockPointerEncodeError) -> Self {
         DslDataSetEncodeError::BlockPointer { err }
     }
 }
 
-impl From<EndianEncodeError> for DslDataSetEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        DslDataSetEncodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for DslDataSetEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DslDataSetEncodeError::BlockPointer { err } => {
+            DslDataSetEncodeError::Binary { err } => {
                 write!(f, "DslDataSet encode error | {err}")
             }
-            DslDataSetEncodeError::Endian { err } => {
+            DslDataSetEncodeError::BlockPointer { err } => {
                 write!(f, "DslDataSet encode error | {err}")
             }
             DslDataSetEncodeError::MissingDirectory {} => {
@@ -820,8 +825,8 @@ impl fmt::Display for DslDataSetEncodeError {
 impl error::Error for DslDataSetEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            DslDataSetEncodeError::Binary { err } => Some(err),
             DslDataSetEncodeError::BlockPointer { err } => Some(err),
-            DslDataSetEncodeError::Endian { err } => Some(err),
             _ => None,
         }
     }

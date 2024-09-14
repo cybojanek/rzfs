@@ -33,8 +33,8 @@ use std::error;
 
 use crate::checksum::{Checksum, ChecksumError, Sha256};
 use crate::phys::{
-    ChecksumTail, ChecksumTailDecodeError, ChecksumTailEncodeError, ChecksumValue,
-    EndianDecodeError, EndianEncodeError, EndianOrder, SECTOR_SHIFT,
+    BinaryDecodeError, BinaryEncodeError, ChecksumTail, ChecksumTailDecodeError,
+    ChecksumTailEncodeError, ChecksumValue, EndianOrder, SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +159,12 @@ pub fn label_verify(data: &[u8], offset: u64, sha256: &mut Sha256) -> Result<(),
 /// Label checksum error.
 #[derive(Debug)]
 pub enum LabelChecksumError {
+    /// [`crate::phys::BinaryEncoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`Checksum`] error.
     Checksum {
         /// Error.
@@ -169,12 +175,6 @@ pub enum LabelChecksumError {
     ChecksumTail {
         /// Error.
         err: ChecksumTailEncodeError,
-    },
-
-    /// [`crate::phys::EndianEncoder`] error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
     },
 
     /// Invalid length.
@@ -190,6 +190,12 @@ pub enum LabelChecksumError {
     },
 }
 
+impl From<BinaryEncodeError> for LabelChecksumError {
+    fn from(value: BinaryEncodeError) -> Self {
+        LabelChecksumError::Binary { err: value }
+    }
+}
+
 impl From<ChecksumError> for LabelChecksumError {
     fn from(value: ChecksumError) -> Self {
         LabelChecksumError::Checksum { err: value }
@@ -202,22 +208,16 @@ impl From<ChecksumTailEncodeError> for LabelChecksumError {
     }
 }
 
-impl From<EndianEncodeError> for LabelChecksumError {
-    fn from(value: EndianEncodeError) -> Self {
-        LabelChecksumError::Endian { err: value }
-    }
-}
-
 impl fmt::Display for LabelChecksumError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            LabelChecksumError::Binary { err } => {
+                write!(f, "Label checksum error | {err}")
+            }
             LabelChecksumError::Checksum { err } => {
                 write!(f, "Label checksum error | {err}")
             }
             LabelChecksumError::ChecksumTail { err } => {
-                write!(f, "Label checksum error | {err}")
-            }
-            LabelChecksumError::Endian { err } => {
                 write!(f, "Label checksum error | {err}")
             }
             LabelChecksumError::InvalidLength { length } => {
@@ -234,9 +234,9 @@ impl fmt::Display for LabelChecksumError {
 impl error::Error for LabelChecksumError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            LabelChecksumError::Binary { err } => Some(err),
             LabelChecksumError::Checksum { err } => Some(err),
             LabelChecksumError::ChecksumTail { err } => Some(err),
-            LabelChecksumError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -247,6 +247,18 @@ impl error::Error for LabelChecksumError {
 /// Label verify error.
 #[derive(Debug)]
 pub enum LabelVerifyError {
+    /// [`crate::phys::BinaryDecoder`] error.
+    BinaryDecode {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
+    /// [`crate::phys::BinaryEncoder`] error.
+    BinaryEncode {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`Checksum`] error.
     Checksum {
         /// Error.
@@ -263,18 +275,6 @@ pub enum LabelVerifyError {
     ChecksumTailEncode {
         /// Error.
         err: ChecksumTailEncodeError,
-    },
-
-    /// [`crate::phys::EndianEncoder`] error.
-    EndianEncode {
-        /// Error.
-        err: EndianEncodeError,
-    },
-
-    /// [`crate::phys::EndianDecoder`] error.
-    EndianDecode {
-        /// Error.
-        err: EndianDecodeError,
     },
 
     /// Invalid length.
@@ -298,6 +298,18 @@ pub enum LabelVerifyError {
     },
 }
 
+impl From<BinaryDecodeError> for LabelVerifyError {
+    fn from(value: BinaryDecodeError) -> Self {
+        LabelVerifyError::BinaryDecode { err: value }
+    }
+}
+
+impl From<BinaryEncodeError> for LabelVerifyError {
+    fn from(value: BinaryEncodeError) -> Self {
+        LabelVerifyError::BinaryEncode { err: value }
+    }
+}
+
 impl From<ChecksumError> for LabelVerifyError {
     fn from(value: ChecksumError) -> Self {
         LabelVerifyError::Checksum { err: value }
@@ -316,21 +328,15 @@ impl From<ChecksumTailEncodeError> for LabelVerifyError {
     }
 }
 
-impl From<EndianEncodeError> for LabelVerifyError {
-    fn from(value: EndianEncodeError) -> Self {
-        LabelVerifyError::EndianEncode { err: value }
-    }
-}
-
-impl From<EndianDecodeError> for LabelVerifyError {
-    fn from(value: EndianDecodeError) -> Self {
-        LabelVerifyError::EndianDecode { err: value }
-    }
-}
-
 impl fmt::Display for LabelVerifyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            LabelVerifyError::BinaryDecode { err } => {
+                write!(f, "Label verify error | {err}")
+            }
+            LabelVerifyError::BinaryEncode { err } => {
+                write!(f, "Label verify error | {err}")
+            }
             LabelVerifyError::Checksum { err } => {
                 write!(f, "Label verify error | {err}")
             }
@@ -338,12 +344,6 @@ impl fmt::Display for LabelVerifyError {
                 write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::ChecksumTailEncode { err } => {
-                write!(f, "Label verify error | {err}")
-            }
-            LabelVerifyError::EndianEncode { err } => {
-                write!(f, "Label verify error | {err}")
-            }
-            LabelVerifyError::EndianDecode { err } => {
                 write!(f, "Label verify error | {err}")
             }
             LabelVerifyError::InvalidLength { length } => {
@@ -365,11 +365,11 @@ impl fmt::Display for LabelVerifyError {
 impl error::Error for LabelVerifyError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            LabelVerifyError::BinaryDecode { err } => Some(err),
+            LabelVerifyError::BinaryEncode { err } => Some(err),
             LabelVerifyError::Checksum { err } => Some(err),
             LabelVerifyError::ChecksumTailDecode { err } => Some(err),
             LabelVerifyError::ChecksumTailEncode { err } => Some(err),
-            LabelVerifyError::EndianEncode { err } => Some(err),
-            LabelVerifyError::EndianDecode { err } => Some(err),
             _ => None,
         }
     }

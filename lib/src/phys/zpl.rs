@@ -7,8 +7,8 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{
-    Acl, AclDecodeError, AclEncodeError, EndianDecodeError, EndianDecoder, EndianEncodeError,
-    EndianEncoder,
+    Acl, AclDecodeError, AclEncodeError, BinaryDecodeError, BinaryDecoder, BinaryEncodeError,
+    BinaryEncoder,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,9 +222,11 @@ impl ZnodeTime {
      *
      * # Errors
      *
-     * Returns [`EndianDecodeError`] on error.
+     * Returns [`BinaryDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<ZnodeTime, EndianDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<ZnodeTime, BinaryDecodeError> {
         Ok(ZnodeTime {
             seconds: decoder.get_u64()?,
             nanoseconds: decoder.get_u64()?,
@@ -235,9 +237,9 @@ impl ZnodeTime {
      *
      * # Errors
      *
-     * Returns [`EndianEncodeError`] on error.
+     * Returns [`BinaryEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), EndianEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), BinaryEncodeError> {
         encoder.put_u64(self.seconds)?;
         encoder.put_u64(self.nanoseconds)?;
         Ok(())
@@ -410,7 +412,7 @@ impl Znode {
      *
      * Returns [`ZnodeDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<Znode, ZnodeDecodeError> {
+    pub fn from_decoder(decoder: &mut dyn BinaryDecoder<'_>) -> Result<Znode, ZnodeDecodeError> {
         ////////////////////////////////
         // Decode values.
         let access_time = ZnodeTime::from_decoder(decoder)?;
@@ -449,7 +451,7 @@ impl Znode {
         let group_id = decoder.get_u64()?;
         let extra_attributes = decoder.get_u64()?;
 
-        decoder.skip_zero_padding(Znode::PADDING_SIZE)?;
+        decoder.skip_zeros(Znode::PADDING_SIZE)?;
 
         Ok(Znode {
             access_time,
@@ -478,7 +480,7 @@ impl Znode {
      *
      * Returns [`ZnodeEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), ZnodeEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), ZnodeEncodeError> {
         ////////////////////////////////
         // Encode values.
         self.access_time.to_encoder(encoder)?;
@@ -516,7 +518,7 @@ impl Znode {
         encoder.put_u64(self.group_id)?;
         encoder.put_u64(self.extra_attributes)?;
 
-        encoder.put_zero_padding(Znode::PADDING_SIZE)?;
+        encoder.put_zeros(Znode::PADDING_SIZE)?;
 
         self.acl.to_encoder(encoder)?;
 
@@ -535,10 +537,10 @@ pub enum ZnodeDecodeError {
         err: AclDecodeError,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// [`ZnodeFileType`] error.
@@ -563,9 +565,9 @@ impl From<AclDecodeError> for ZnodeDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for ZnodeDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZnodeDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZnodeDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZnodeDecodeError::Binary { err }
     }
 }
 
@@ -581,7 +583,7 @@ impl fmt::Display for ZnodeDecodeError {
             ZnodeDecodeError::Acl { err } => {
                 write!(f, "Znode decode error | {err}")
             }
-            ZnodeDecodeError::Endian { err } => {
+            ZnodeDecodeError::Binary { err } => {
                 write!(f, "Znode decode error | {err}")
             }
             ZnodeDecodeError::FileType { err } => {
@@ -602,7 +604,7 @@ impl error::Error for ZnodeDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             ZnodeDecodeError::Acl { err } => Some(err),
-            ZnodeDecodeError::Endian { err } => Some(err),
+            ZnodeDecodeError::Binary { err } => Some(err),
             ZnodeDecodeError::FileType { err } => Some(err),
             _ => None,
         }
@@ -620,10 +622,10 @@ pub enum ZnodeEncodeError {
         err: AclEncodeError,
     },
 
-    /// Endian encode error.
-    Endian {
+    /// Binary encode error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Missing parent object id.
@@ -642,9 +644,9 @@ impl From<AclEncodeError> for ZnodeEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for ZnodeEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZnodeEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZnodeEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZnodeEncodeError::Binary { err }
     }
 }
 
@@ -654,7 +656,7 @@ impl fmt::Display for ZnodeEncodeError {
             ZnodeEncodeError::Acl { err } => {
                 write!(f, "Znode encode error | {err}")
             }
-            ZnodeEncodeError::Endian { err } => {
+            ZnodeEncodeError::Binary { err } => {
                 write!(f, "Znode encode error | {err}")
             }
             ZnodeEncodeError::MissingParentObjectId {} => {
@@ -672,7 +674,7 @@ impl error::Error for ZnodeEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             ZnodeEncodeError::Acl { err } => Some(err),
-            ZnodeEncodeError::Endian { err } => Some(err),
+            ZnodeEncodeError::Binary { err } => Some(err),
             _ => None,
         }
     }

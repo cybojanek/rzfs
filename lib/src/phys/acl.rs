@@ -6,7 +6,7 @@ use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder};
+use crate::phys::{BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -467,7 +467,7 @@ impl AceV0 {
      *
      * Returns [`AceDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<AceV0, AceDecodeError> {
+    pub fn from_decoder(decoder: &mut dyn BinaryDecoder<'_>) -> Result<AceV0, AceDecodeError> {
         ////////////////////////////////
         // Decode values.
         let id = decoder.get_u32()?;
@@ -507,7 +507,7 @@ impl AceV0 {
      *
      * Returns [`AceEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), AceEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), AceEncodeError> {
         ////////////////////////////////
         // Check values are known.
         if (self.permissions & AcePermission::MASK) != self.permissions {
@@ -586,7 +586,7 @@ impl AclV0 {
      *
      * Returns [`AclDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<AclV0, AclDecodeError> {
+    pub fn from_decoder(decoder: &mut dyn BinaryDecoder<'_>) -> Result<AclV0, AclDecodeError> {
         ////////////////////////////////
         // Decode values.
         let object_id = match decoder.get_u64()? {
@@ -595,7 +595,7 @@ impl AclV0 {
         };
         let count = decoder.get_u32()?;
         let version = decoder.get_u16()?;
-        decoder.skip_zero_padding(AclV0::PADDING_SIZE)?;
+        decoder.skip_zeros(AclV0::PADDING_SIZE)?;
 
         // Check verison.
         if version != AclV0::VERSION {
@@ -623,13 +623,13 @@ impl AclV0 {
      *
      * Returns [`AclEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), AclEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), AclEncodeError> {
         ////////////////////////////////
         // Encode values.
         encoder.put_u64(self.object_id.unwrap_or(0))?;
         encoder.put_u32(self.count)?;
         encoder.put_u16(AclV0::VERSION)?;
-        encoder.put_zero_padding(AclV0::PADDING_SIZE)?;
+        encoder.put_zeros(AclV0::PADDING_SIZE)?;
 
         for ace in &self.aces {
             ace.to_encoder(encoder)?;
@@ -679,7 +679,9 @@ impl AceV1Header {
      *
      * Returns [`AceDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<AceV1Header, AceDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<AceV1Header, AceDecodeError> {
         ////////////////////////////////
         // Decode values.
         let ace_type = AceType::try_from(decoder.get_u16()?)?;
@@ -711,7 +713,7 @@ impl AceV1Header {
      *
      * Returns [`AceEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), AceEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), AceEncodeError> {
         ////////////////////////////////
         // Check values are known.
         if (self.permissions & AcePermission::MASK) != self.permissions {
@@ -852,42 +854,32 @@ pub enum AceV1 {
 }
 
 /// [`AceV1`] iterator.
-pub struct AceV1Iterator<'a> {
+pub struct AceV1Iterator<'a, 'b> {
     /// [`AclV1`] decoder.
-    decoder: EndianDecoder<'a>,
+    decoder: &'b mut dyn BinaryDecoder<'a>,
 }
 
-impl AceV1Iterator<'_> {
+impl AceV1Iterator<'_, '_> {
     /** Decodes an [`AceV1`].
      *
      * # Errors
      *
      * Returns [`AceDecodeError`] on error.
      */
-    pub fn from_decoder<'a>(
-        decoder: &EndianDecoder<'a>,
-    ) -> Result<AceV1Iterator<'a>, AceDecodeError> {
-        // Get the rest of the bytes as the entries.
-        let aces = decoder.get_bytes(decoder.len())?;
-
-        Ok(AceV1Iterator {
-            decoder: EndianDecoder::from_bytes(aces, decoder.order()),
-        })
-    }
-
-    /// Resets the iterator.
-    pub fn reset(&mut self) {
-        self.decoder.reset();
+    pub fn from_decoder<'a, 'b>(
+        decoder: &'b mut dyn BinaryDecoder<'a>,
+    ) -> Result<AceV1Iterator<'a, 'b>, AceDecodeError> {
+        Ok(AceV1Iterator { decoder })
     }
 }
 
-impl<'a> Iterator for AceV1Iterator<'a> {
+impl<'a, 'b> Iterator for AceV1Iterator<'a, 'b> {
     type Item = Result<AceV1, AceDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         if !self.decoder.is_empty() {
             // Decode header.
-            let header = match AceV1Header::from_decoder(&self.decoder) {
+            let header = match AceV1Header::from_decoder(self.decoder) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -898,13 +890,13 @@ impl<'a> Iterator for AceV1Iterator<'a> {
                 | AceType::AccessDenyObject
                 | AceType::SystemAuditObject
                 | AceType::SystemAlarmObject => {
-                    let object_guid = match self.decoder.get_bytes(16) {
+                    let object_guid = match self.decoder.get_bytes_n(16) {
                         Ok(v) => v.try_into().unwrap(),
-                        Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
+                        Err(e) => return Some(Err(AceDecodeError::Binary { err: e })),
                     };
-                    let inherit_guid = match self.decoder.get_bytes(16) {
+                    let inherit_guid = match self.decoder.get_bytes_n(16) {
                         Ok(v) => v.try_into().unwrap(),
-                        Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
+                        Err(e) => return Some(Err(AceDecodeError::Binary { err: e })),
                     };
                     let ace_object = AceV1Object {
                         header,
@@ -925,7 +917,7 @@ impl<'a> Iterator for AceV1Iterator<'a> {
 
             let id = match self.decoder.get_u64() {
                 Ok(v) => v,
-                Err(e) => return Some(Err(AceDecodeError::Endian { err: e })),
+                Err(e) => return Some(Err(AceDecodeError::Binary { err: e })),
             };
 
             let ace_id = AceV1Id { header, id };
@@ -985,7 +977,7 @@ impl AclV1 {
      *
      * Returns [`AclDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<AclV1, AclDecodeError> {
+    pub fn from_decoder(decoder: &mut dyn BinaryDecoder<'_>) -> Result<AclV1, AclDecodeError> {
         ////////////////////////////////
         // Decode values.
         let object_id = match decoder.get_u64()? {
@@ -1002,7 +994,7 @@ impl AclV1 {
         }
 
         // Copy aces.
-        let aces = decoder.get_bytes(AceV0::SIZE * 6)?;
+        let aces = decoder.get_bytes_n(AceV0::SIZE * 6)?;
 
         Ok(AclV1 {
             object_id,
@@ -1018,7 +1010,7 @@ impl AclV1 {
      *
      * Returns [`AclEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), AclEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), AclEncodeError> {
         ////////////////////////////////
         // Decode values.
         encoder.put_u64(self.object_id.unwrap_or(0))?;
@@ -1052,7 +1044,7 @@ impl Acl {
      *
      * Returns [`AclDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<Acl, AclDecodeError> {
+    pub fn from_decoder(decoder: &mut dyn BinaryDecoder<'_>) -> Result<Acl, AclDecodeError> {
         // Look ahead to get the version, and rewind back to the original position.
         let offset = decoder.offset();
         decoder.skip(12)?;
@@ -1072,7 +1064,7 @@ impl Acl {
      *
      * Returns [`AclEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), AclEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), AclEncodeError> {
         match self {
             Acl::V0(acl) => acl.to_encoder(encoder),
             Acl::V1(acl) => acl.to_encoder(encoder),
@@ -1085,10 +1077,10 @@ impl Acl {
 /// [`AceV0`], [`AceV1`] decode error.
 #[derive(Debug)]
 pub enum AceDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Unknown [`AcePermission`].
@@ -1116,9 +1108,9 @@ pub enum AceDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for AceDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        AceDecodeError::Endian { err }
+impl From<BinaryDecodeError> for AceDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        AceDecodeError::Binary { err }
     }
 }
 
@@ -1131,7 +1123,7 @@ impl From<AceTypeError> for AceDecodeError {
 impl fmt::Display for AceDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AceDecodeError::Endian { err } => {
+            AceDecodeError::Binary { err } => {
                 write!(f, "Ace decode error | {err}")
             }
             AceDecodeError::Flags { flags } => {
@@ -1154,7 +1146,7 @@ impl fmt::Display for AceDecodeError {
 impl error::Error for AceDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            AceDecodeError::Endian { err } => Some(err),
+            AceDecodeError::Binary { err } => Some(err),
             AceDecodeError::Type { err } => Some(err),
             _ => None,
         }
@@ -1164,10 +1156,10 @@ impl error::Error for AceDecodeError {
 /// [`AceV0`], [`AceV1`] encode error.
 #[derive(Debug)]
 pub enum AceEncodeError {
-    /// Endian encode error.
-    Endian {
+    /// Binary encode error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Unknown flags.
@@ -1189,16 +1181,16 @@ pub enum AceEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for AceEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        AceEncodeError::Endian { err }
+impl From<BinaryEncodeError> for AceEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        AceEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for AceEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AceEncodeError::Endian { err } => {
+            AceEncodeError::Binary { err } => {
                 write!(f, "Ace encode error | {err}")
             }
             AceEncodeError::Flags { flags } => {
@@ -1218,7 +1210,7 @@ impl fmt::Display for AceEncodeError {
 impl error::Error for AceEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            AceEncodeError::Endian { err } => Some(err),
+            AceEncodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -1235,10 +1227,10 @@ pub enum AclDecodeError {
         err: AceDecodeError,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Incorrect version.
@@ -1254,9 +1246,9 @@ impl From<AceDecodeError> for AclDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for AclDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        AclDecodeError::Endian { err }
+impl From<BinaryDecodeError> for AclDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        AclDecodeError::Binary { err }
     }
 }
 
@@ -1266,7 +1258,7 @@ impl fmt::Display for AclDecodeError {
             AclDecodeError::Ace { err } => {
                 write!(f, "Acl decode error | {err}")
             }
-            AclDecodeError::Endian { err } => {
+            AclDecodeError::Binary { err } => {
                 write!(f, "Acl decode error | {err}")
             }
             AclDecodeError::Version { version } => {
@@ -1281,7 +1273,7 @@ impl error::Error for AclDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             AclDecodeError::Ace { err } => Some(err),
-            AclDecodeError::Endian { err } => Some(err),
+            AclDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -1296,10 +1288,10 @@ pub enum AclEncodeError {
         err: AceEncodeError,
     },
 
-    /// Endian encode error.
-    Endian {
+    /// Binary encode error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
@@ -1309,9 +1301,9 @@ impl From<AceEncodeError> for AclEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for AclEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        AclEncodeError::Endian { err }
+impl From<BinaryEncodeError> for AclEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        AclEncodeError::Binary { err }
     }
 }
 
@@ -1321,7 +1313,7 @@ impl fmt::Display for AclEncodeError {
             AclEncodeError::Ace { err } => {
                 write!(f, "Acl encode error | {err}")
             }
-            AclEncodeError::Endian { err } => {
+            AclEncodeError::Binary { err } => {
                 write!(f, "Acl encode error | {err}")
             }
         }
@@ -1333,7 +1325,7 @@ impl error::Error for AclEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             AclEncodeError::Ace { err } => Some(err),
-            AclEncodeError::Endian { err } => Some(err),
+            AclEncodeError::Binary { err } => Some(err),
         }
     }
 }

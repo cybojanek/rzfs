@@ -7,10 +7,10 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{
-    ChecksumType, ChecksumTypeError, ChecksumValue, ChecksumValueDecodeError,
-    ChecksumValueEncodeError, CompressionType, CompressionTypeError, DmuType, DmuTypeError, Dva,
-    DvaDecodeError, DvaEncodeError, EndianDecodeError, EndianDecoder, EndianEncodeError,
-    EndianEncoder, EndianOrder,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, ChecksumType,
+    ChecksumTypeError, ChecksumValue, ChecksumValueDecodeError, ChecksumValueEncodeError,
+    CompressionType, CompressionTypeError, DmuType, DmuTypeError, Dva, DvaDecodeError,
+    DvaEncodeError, EndianOrder,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,11 +78,11 @@ impl BlockPointer {
      * Returns [`BlockPointerDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<Option<BlockPointer>, BlockPointerDecodeError> {
         ////////////////////////////////
         // Check for an empty BlockPointer.
-        if decoder.is_zero_skip(BlockPointer::SIZE)? {
+        if decoder.is_skip_zeros(BlockPointer::SIZE)? {
             return Ok(None);
         }
 
@@ -125,7 +125,7 @@ impl BlockPointer {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
         match self {
             BlockPointer::Embedded(ptr) => ptr.to_encoder(encoder),
@@ -141,9 +141,9 @@ impl BlockPointer {
      * Returns [`BlockPointerEncodeError`] on error.
      */
     pub fn empty_to_encoder(
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
-        Ok(encoder.put_zero_padding(BlockPointer::SIZE)?)
+        Ok(encoder.put_zeros(BlockPointer::SIZE)?)
     }
 
     /** Encodes an `[Option<BlockPointer>`].
@@ -154,7 +154,7 @@ impl BlockPointer {
      */
     pub fn option_to_encoder(
         ptr: &Option<BlockPointer>,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
         match ptr {
             Some(v) => v.to_encoder(encoder),
@@ -367,14 +367,14 @@ impl BlockPointerEmbedded {
      * or padding is non-zero.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<BlockPointerEmbedded, BlockPointerDecodeError> {
         let mut payload = [0; BlockPointerEmbedded::PHYSICAL_SIZE_MAX];
 
         ////////////////////////////////
         // Decode embedded payload (part 1).
         let part_1 = &mut payload[0..48];
-        part_1.copy_from_slice(decoder.get_bytes(part_1.len())?);
+        part_1.copy_from_slice(decoder.get_bytes_n(part_1.len())?);
 
         ////////////////////////////////
         // Decode flags.
@@ -383,7 +383,7 @@ impl BlockPointerEmbedded {
         ////////////////////////////////
         // Decode embedded payload (part 2).
         let part_2 = &mut payload[48..72];
-        part_2.copy_from_slice(decoder.get_bytes(part_2.len())?);
+        part_2.copy_from_slice(decoder.get_bytes_n(part_2.len())?);
 
         ////////////////////////////////
         // Decode logical birth transaction group.
@@ -392,7 +392,7 @@ impl BlockPointerEmbedded {
         ////////////////////////////////
         // Decode embedded payload (part 3).
         let part_3 = &mut payload[72..112];
-        part_3.copy_from_slice(decoder.get_bytes(part_3.len())?);
+        part_3.copy_from_slice(decoder.get_bytes_n(part_3.len())?);
 
         ////////////////////////////////
         // Decode encrypted and embedded.
@@ -488,7 +488,7 @@ impl BlockPointerEmbedded {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
         ////////////////////////////////
         // Check physical size.
@@ -709,7 +709,7 @@ impl BlockPointerEncrypted {
      * or padding is non-zero.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<BlockPointerEncrypted, BlockPointerDecodeError> {
         ////////////////////////////////
         // Decode DVAs.
@@ -778,7 +778,7 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(BlockPointerEncrypted::PADDING_SIZE)?;
+        decoder.skip_zeros(BlockPointerEncrypted::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode TXGs.
@@ -830,7 +830,7 @@ impl BlockPointerEncrypted {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
         ////////////////////////////////
         // Encode DVAs.
@@ -892,7 +892,7 @@ impl BlockPointerEncrypted {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(BlockPointerEncrypted::PADDING_SIZE)?;
+        encoder.put_zeros(BlockPointerEncrypted::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode TXGs.
@@ -1070,7 +1070,7 @@ impl BlockPointerRegular {
      * or padding is non-zero.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<BlockPointerRegular, BlockPointerDecodeError> {
         ////////////////////////////////
         // Decode DVAs.
@@ -1138,7 +1138,7 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(BlockPointerRegular::PADDING_SIZE)?;
+        decoder.skip_zeros(BlockPointerRegular::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode TXGs.
@@ -1180,7 +1180,7 @@ impl BlockPointerRegular {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BlockPointerEncodeError> {
         ////////////////////////////////
         // Encode DVAs.
@@ -1236,7 +1236,7 @@ impl BlockPointerRegular {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(BlockPointerRegular::PADDING_SIZE)?;
+        encoder.put_zeros(BlockPointerRegular::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode TXGs.
@@ -1298,10 +1298,10 @@ pub enum BlockPointerDecodeError {
         err: DvaDecodeError,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Invalid [`BlockPointer`] type.
@@ -1329,6 +1329,12 @@ pub enum BlockPointerDecodeError {
         /// Invalid logical size value.
         logical_size: u32,
     },
+}
+
+impl From<BinaryDecodeError> for BlockPointerDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        BlockPointerDecodeError::Binary { err }
+    }
 }
 
 impl From<BlockPointerEmbeddedTypeError> for BlockPointerDecodeError {
@@ -1367,15 +1373,12 @@ impl From<DvaDecodeError> for BlockPointerDecodeError {
     }
 }
 
-impl From<EndianDecodeError> for BlockPointerDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        BlockPointerDecodeError::Endian { err }
-    }
-}
-
 impl fmt::Display for BlockPointerDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            BlockPointerDecodeError::Binary { err } => {
+                write!(f, "BlockPointer decode error | {err}")
+            }
             BlockPointerDecodeError::BlockPointerEmbeddedType { err } => {
                 write!(f, "BlockPointer decode error | {err}")
             }
@@ -1392,9 +1395,6 @@ impl fmt::Display for BlockPointerDecodeError {
                 write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::Dva { err } => {
-                write!(f, "BlockPointer decode error | {err}")
-            }
-            BlockPointerDecodeError::Endian { err } => {
                 write!(f, "BlockPointer decode error | {err}")
             }
             BlockPointerDecodeError::InvalidBlockPointerType {
@@ -1429,13 +1429,13 @@ impl fmt::Display for BlockPointerDecodeError {
 impl error::Error for BlockPointerDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            BlockPointerDecodeError::Binary { err } => Some(err),
             BlockPointerDecodeError::BlockPointerEmbeddedType { err } => Some(err),
             BlockPointerDecodeError::ChecksumType { err } => Some(err),
             BlockPointerDecodeError::ChecksumValue { err } => Some(err),
             BlockPointerDecodeError::CompressionType { err } => Some(err),
             BlockPointerDecodeError::DmuType { err } => Some(err),
             BlockPointerDecodeError::Dva { err } => Some(err),
-            BlockPointerDecodeError::Endian { err } => Some(err),
             _ => None,
         }
     }
@@ -1458,10 +1458,10 @@ pub enum BlockPointerEncodeError {
         err: DvaEncodeError,
     },
 
-    /// [`EndianEncoder`] error.
+    /// [`BinaryEncoder`] error.
     Endian {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Invalid embedded length.
@@ -1507,8 +1507,8 @@ impl From<DvaEncodeError> for BlockPointerEncodeError {
     }
 }
 
-impl From<EndianEncodeError> for BlockPointerEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
+impl From<BinaryEncodeError> for BlockPointerEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
         BlockPointerEncodeError::Endian { err }
     }
 }
@@ -1683,7 +1683,7 @@ impl BpObjectHeader {
      * or padding is non-zero.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<BpObjectHeader, BpObjectHeaderDecodeError> {
         ////////////////////////////////
         // Decode values.
@@ -1755,7 +1755,7 @@ impl BpObjectHeader {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), BpObjectHeaderEncodeError> {
         encoder.put_u64(self.block_pointers_count)?;
         encoder.put_u64(self.physical_size)?;
@@ -1829,10 +1829,10 @@ impl BpObjectHeader {
 /// [`BpObjectHeader`] decode error.
 #[derive(Debug)]
 pub enum BpObjectHeaderDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Unknown size.
@@ -1842,16 +1842,16 @@ pub enum BpObjectHeaderDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for BpObjectHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        BpObjectHeaderDecodeError::Endian { err }
+impl From<BinaryDecodeError> for BpObjectHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        BpObjectHeaderDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for BpObjectHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BpObjectHeaderDecodeError::Endian { err } => {
+            BpObjectHeaderDecodeError::Binary { err } => {
                 write!(f, "BpObjectHeader decode error | {err}")
             }
             BpObjectHeaderDecodeError::Size { size } => {
@@ -1865,7 +1865,7 @@ impl fmt::Display for BpObjectHeaderDecodeError {
 impl error::Error for BpObjectHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BpObjectHeaderDecodeError::Endian { err } => Some(err),
+            BpObjectHeaderDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -1874,23 +1874,23 @@ impl error::Error for BpObjectHeaderDecodeError {
 /// [`BpObjectHeader`] encode error.
 #[derive(Debug)]
 pub enum BpObjectHeaderEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for BpObjectHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        BpObjectHeaderEncodeError::Endian { err }
+impl From<BinaryEncodeError> for BpObjectHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        BpObjectHeaderEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for BpObjectHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BpObjectHeaderEncodeError::Endian { err } => {
+            BpObjectHeaderEncodeError::Binary { err } => {
                 write!(f, "BpObjectHeader encode error | {err}")
             }
         }
@@ -1901,7 +1901,7 @@ impl fmt::Display for BpObjectHeaderEncodeError {
 impl error::Error for BpObjectHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            BpObjectHeaderEncodeError::Endian { err } => Some(err),
+            BpObjectHeaderEncodeError::Binary { err } => Some(err),
         }
     }
 }

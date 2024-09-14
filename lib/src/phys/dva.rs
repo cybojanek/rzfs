@@ -6,7 +6,7 @@ use core::fmt;
 use std::error;
 
 use crate::phys::{
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, SECTOR_SHIFT,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,7 +161,9 @@ impl Dva {
      *
      * Returns [`DvaDecodeError`] in case of decoding error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<Option<Dva>, DvaDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<Option<Dva>, DvaDecodeError> {
         ////////////////////////////////
         // Decode values.
         let a = decoder.get_u64()?;
@@ -203,7 +205,7 @@ impl Dva {
      *
      * Returns [`DvaEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), DvaEncodeError> {
+    pub fn to_encoder(&self, encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), DvaEncodeError> {
         ////////////////////////////////
         // Check vdev.
         if self.vdev > Dva::VDEV_MAX {
@@ -249,8 +251,8 @@ impl Dva {
      *
      * Returns [`DvaEncodeError`] in case of encoding error.
      */
-    pub fn empty_to_encoder(encoder: &mut EndianEncoder<'_>) -> Result<(), DvaEncodeError> {
-        Ok(encoder.put_zero_padding(Dva::SIZE)?)
+    pub fn empty_to_encoder(encoder: &mut dyn BinaryEncoder<'_>) -> Result<(), DvaEncodeError> {
+        Ok(encoder.put_zeros(Dva::SIZE)?)
     }
 
     /** Encode an `[Option<Dva>`].
@@ -261,7 +263,7 @@ impl Dva {
      */
     pub fn option_to_encoder(
         dva: &Option<Dva>,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), DvaEncodeError> {
         match dva {
             Some(v) => v.to_encoder(encoder),
@@ -275,10 +277,10 @@ impl Dva {
 /// [`Dva`] decode error.
 #[derive(Debug)]
 pub enum DvaDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Invalid offset error.
@@ -300,16 +302,16 @@ pub enum DvaDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for DvaDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        DvaDecodeError::Endian { err }
+impl From<BinaryDecodeError> for DvaDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        DvaDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for DvaDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DvaDecodeError::Endian { err } => {
+            DvaDecodeError::Binary { err } => {
                 write!(f, "DVA decode error | {err}")
             }
             DvaDecodeError::InvalidOffset { offset } => {
@@ -329,7 +331,7 @@ impl fmt::Display for DvaDecodeError {
 impl error::Error for DvaDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DvaDecodeError::Endian { err } => Some(err),
+            DvaDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -340,10 +342,10 @@ impl error::Error for DvaDecodeError {
 /// [`Dva`] encode error.
 #[derive(Debug)]
 pub enum DvaEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Invalid allocated error.
@@ -365,16 +367,16 @@ pub enum DvaEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for DvaEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        DvaEncodeError::Endian { err }
+impl From<BinaryEncodeError> for DvaEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        DvaEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for DvaEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DvaEncodeError::Endian { err } => {
+            DvaEncodeError::Binary { err } => {
                 write!(f, "DVA encode error | {err}")
             }
             DvaEncodeError::InvalidAllocated { allocated } => {
@@ -394,7 +396,7 @@ impl fmt::Display for DvaEncodeError {
 impl error::Error for DvaEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            DvaEncodeError::Endian { err } => Some(err),
+            DvaEncodeError::Binary { err } => Some(err),
             _ => None,
         }
     }

@@ -7,8 +7,8 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{
-    Dnode, DnodeDecodeError, DnodeEncodeError, EndianDecodeError, EndianDecoder, EndianEncodeError,
-    EndianEncoder, ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, Dnode, DnodeDecodeError,
+    DnodeEncodeError, ZilHeader, ZilHeaderDecodeError, ZilHeaderEncodeError,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -233,7 +233,9 @@ impl ObjectSet {
      *
      * Returns [`ObjectSetDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<ObjectSet, ObjectSetDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<ObjectSet, ObjectSetDecodeError> {
         ////////////////////////////////
         // Decode object set dnode.
         let dnode = match Dnode::from_decoder(decoder)? {
@@ -259,12 +261,12 @@ impl ObjectSet {
 
         ////////////////////////////////
         // Decode MACs.
-        let portable_mac = decoder.get_bytes(ObjectSet::MAC_LEN)?.try_into().unwrap();
-        let local_mac = decoder.get_bytes(ObjectSet::MAC_LEN)?.try_into().unwrap();
+        let portable_mac = decoder.get_bytes_n(ObjectSet::MAC_LEN)?.try_into().unwrap();
+        let local_mac = decoder.get_bytes_n(ObjectSet::MAC_LEN)?.try_into().unwrap();
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ObjectSet::PADDING_SIZE_NONE)?;
+        decoder.skip_zeros(ObjectSet::PADDING_SIZE_NONE)?;
 
         ////////////////////////////////
         // Check for extensions based on length.
@@ -292,7 +294,7 @@ impl ObjectSet {
                     project_used,
                 };
 
-                decoder.skip_zero_padding(ObjectSet::PADDING_SIZE_THREE)?;
+                decoder.skip_zeros(ObjectSet::PADDING_SIZE_THREE)?;
             }
         }
 
@@ -322,7 +324,10 @@ impl ObjectSet {
      *
      * Returns [`ObjectSetEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), ObjectSetEncodeError> {
+    pub fn to_encoder(
+        &self,
+        encoder: &mut dyn BinaryEncoder<'_>,
+    ) -> Result<(), ObjectSetEncodeError> {
         ////////////////////////////////
         // Encode object set dnode.
         self.dnode.to_encoder(encoder)?;
@@ -359,7 +364,7 @@ impl ObjectSet {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ObjectSet::PADDING_SIZE_NONE)?;
+        encoder.put_zeros(ObjectSet::PADDING_SIZE_NONE)?;
 
         ////////////////////////////////
         // Encode extensions.
@@ -380,7 +385,7 @@ impl ObjectSet {
                 Dnode::option_to_encoder(user_used, encoder)?;
                 Dnode::option_to_encoder(group_used, encoder)?;
                 Dnode::option_to_encoder(project_used, encoder)?;
-                encoder.put_zero_padding(ObjectSet::PADDING_SIZE_THREE)?;
+                encoder.put_zeros(ObjectSet::PADDING_SIZE_THREE)?;
             }
         };
 
@@ -395,6 +400,12 @@ impl ObjectSet {
 /// [`ObjectSet`] decode error.
 #[derive(Debug)]
 pub enum ObjectSetDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// [`Dnode`] decode error.
     Dnode {
         /// Error.
@@ -403,12 +414,6 @@ pub enum ObjectSetDecodeError {
 
     /// Empty [`Dnode`].
     EmptyDnode {},
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
 
     /// Unknown flags.
     Flags {
@@ -429,15 +434,15 @@ pub enum ObjectSetDecodeError {
     },
 }
 
-impl From<DnodeDecodeError> for ObjectSetDecodeError {
-    fn from(err: DnodeDecodeError) -> Self {
-        ObjectSetDecodeError::Dnode { err }
+impl From<BinaryDecodeError> for ObjectSetDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ObjectSetDecodeError::Binary { err }
     }
 }
 
-impl From<EndianDecodeError> for ObjectSetDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ObjectSetDecodeError::Endian { err }
+impl From<DnodeDecodeError> for ObjectSetDecodeError {
+    fn from(err: DnodeDecodeError) -> Self {
+        ObjectSetDecodeError::Dnode { err }
     }
 }
 
@@ -456,14 +461,14 @@ impl From<ZilHeaderDecodeError> for ObjectSetDecodeError {
 impl fmt::Display for ObjectSetDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ObjectSetDecodeError::Binary { err } => {
+                write!(f, "ObjectSet decode error | {err}")
+            }
             ObjectSetDecodeError::Dnode { err } => {
                 write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::EmptyDnode {} => {
                 write!(f, "ObjectSet decode error, empty dnode")
-            }
-            ObjectSetDecodeError::Endian { err } => {
-                write!(f, "ObjectSet decode error | {err}")
             }
             ObjectSetDecodeError::Flags { flags } => {
                 write!(f, "ObjectSet decode error, unknown flags {flags:#016x}")
@@ -482,8 +487,8 @@ impl fmt::Display for ObjectSetDecodeError {
 impl error::Error for ObjectSetDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ObjectSetDecodeError::Binary { err } => Some(err),
             ObjectSetDecodeError::Dnode { err } => Some(err),
-            ObjectSetDecodeError::Endian { err } => Some(err),
             ObjectSetDecodeError::ObjectSetType { err } => Some(err),
             ObjectSetDecodeError::ZilHeader { err } => Some(err),
             _ => None,
@@ -496,16 +501,16 @@ impl error::Error for ObjectSetDecodeError {
 /// [`ObjectSet`] encode error.
 #[derive(Debug)]
 pub enum ObjectSetEncodeError {
+    /// [`BinaryEncoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryEncodeError,
+    },
+
     /// [`Dnode`] encode error.
     Dnode {
         /// Error.
         err: DnodeEncodeError,
-    },
-
-    /// Endian encode error.
-    Endian {
-        /// Error.
-        err: EndianEncodeError,
     },
 
     /// [`ZilHeader`] encode error.
@@ -515,15 +520,15 @@ pub enum ObjectSetEncodeError {
     },
 }
 
-impl From<DnodeEncodeError> for ObjectSetEncodeError {
-    fn from(err: DnodeEncodeError) -> Self {
-        ObjectSetEncodeError::Dnode { err }
+impl From<BinaryEncodeError> for ObjectSetEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ObjectSetEncodeError::Binary { err }
     }
 }
 
-impl From<EndianEncodeError> for ObjectSetEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ObjectSetEncodeError::Endian { err }
+impl From<DnodeEncodeError> for ObjectSetEncodeError {
+    fn from(err: DnodeEncodeError) -> Self {
+        ObjectSetEncodeError::Dnode { err }
     }
 }
 
@@ -536,10 +541,10 @@ impl From<ZilHeaderEncodeError> for ObjectSetEncodeError {
 impl fmt::Display for ObjectSetEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ObjectSetEncodeError::Dnode { err } => {
+            ObjectSetEncodeError::Binary { err } => {
                 write!(f, "ObjectSet encode error | {err}")
             }
-            ObjectSetEncodeError::Endian { err } => {
+            ObjectSetEncodeError::Dnode { err } => {
                 write!(f, "ObjectSet encode error | {err}")
             }
             ObjectSetEncodeError::ZilHeader { err } => {
@@ -553,8 +558,8 @@ impl fmt::Display for ObjectSetEncodeError {
 impl error::Error for ObjectSetEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ObjectSetEncodeError::Binary { err } => Some(err),
             ObjectSetEncodeError::Dnode { err } => Some(err),
-            ObjectSetEncodeError::Endian { err } => Some(err),
             ObjectSetEncodeError::ZilHeader { err } => Some(err),
         }
     }

@@ -7,7 +7,7 @@ use core::fmt::Display;
 use std::error;
 
 use crate::phys::{
-    EndianDecodeError, EndianDecoder, EndianEncodeError, EndianEncoder, SECTOR_SHIFT,
+    BinaryDecodeError, BinaryDecoder, BinaryEncodeError, BinaryEncoder, SECTOR_SHIFT,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +255,7 @@ impl ZapMicroHeader {
      * Returns [`ZapMicroHeaderDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapMicroHeader, ZapMicroHeaderDecodeError> {
         ////////////////////////////////
         // Decode block type.
@@ -284,7 +284,7 @@ impl ZapMicroHeader {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ZapMicroHeader::PADDING_SIZE)?;
+        decoder.skip_zeros(ZapMicroHeader::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Success.
@@ -303,7 +303,7 @@ impl ZapMicroHeader {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroHeaderEncodeError> {
         ////////////////////////////////
         // Encode block type.
@@ -321,7 +321,7 @@ impl ZapMicroHeader {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapMicroHeader::PADDING_SIZE)?;
+        encoder.put_zeros(ZapMicroHeader::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Success.
@@ -332,6 +332,12 @@ impl ZapMicroHeader {
 /// [`ZapMicroHeader`] decode error.
 #[derive(Debug)]
 pub enum ZapMicroHeaderDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Invalid block type.
     BlockType {
         /// Block type.
@@ -350,12 +356,6 @@ pub enum ZapMicroHeaderDecodeError {
         normalization: u64,
     },
 
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
-
     /// Unknown [`ZapUnicodeNormalization`].
     UnicodeNormalization {
         /// Error.
@@ -363,15 +363,15 @@ pub enum ZapMicroHeaderDecodeError {
     },
 }
 
-impl From<ZapCaseNormalizationError> for ZapMicroHeaderDecodeError {
-    fn from(err: ZapCaseNormalizationError) -> Self {
-        ZapMicroHeaderDecodeError::CaseNormalization { err }
+impl From<BinaryDecodeError> for ZapMicroHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapMicroHeaderDecodeError::Binary { err }
     }
 }
 
-impl From<EndianDecodeError> for ZapMicroHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapMicroHeaderDecodeError::Endian { err }
+impl From<ZapCaseNormalizationError> for ZapMicroHeaderDecodeError {
+    fn from(err: ZapCaseNormalizationError) -> Self {
+        ZapMicroHeaderDecodeError::CaseNormalization { err }
     }
 }
 
@@ -384,7 +384,7 @@ impl From<ZapUnicodeNormalizationError> for ZapMicroHeaderDecodeError {
 impl fmt::Display for ZapMicroHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMicroHeaderDecodeError::CaseNormalization { err } => {
+            ZapMicroHeaderDecodeError::Binary { err } => {
                 write!(f, "ZapMicroHeader decode error | {err}")
             }
             ZapMicroHeaderDecodeError::BlockType { block_type } => {
@@ -393,14 +393,14 @@ impl fmt::Display for ZapMicroHeaderDecodeError {
                     "ZapMicroHeader decode error, invalid block_type {block_type}"
                 )
             }
+            ZapMicroHeaderDecodeError::CaseNormalization { err } => {
+                write!(f, "ZapMicroHeader decode error | {err}")
+            }
             ZapMicroHeaderDecodeError::Normalization { normalization } => {
                 write!(
                     f,
                     "ZapMicroHeader decode error, unknown normalization {normalization}"
                 )
-            }
-            ZapMicroHeaderDecodeError::Endian { err } => {
-                write!(f, "ZapMicroHeader decode error | {err}")
             }
             ZapMicroHeaderDecodeError::UnicodeNormalization { err } => {
                 write!(f, "ZapMicroHeader decode error | {err}")
@@ -413,8 +413,8 @@ impl fmt::Display for ZapMicroHeaderDecodeError {
 impl error::Error for ZapMicroHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ZapMicroHeaderDecodeError::Binary { err } => Some(err),
             ZapMicroHeaderDecodeError::CaseNormalization { err } => Some(err),
-            ZapMicroHeaderDecodeError::Endian { err } => Some(err),
             ZapMicroHeaderDecodeError::UnicodeNormalization { err } => Some(err),
             _ => None,
         }
@@ -424,23 +424,23 @@ impl error::Error for ZapMicroHeaderDecodeError {
 /// [`ZapMicroHeader`] encode error.
 #[derive(Debug)]
 pub enum ZapMicroHeaderEncodeError {
-    /// Endian encode error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for ZapMicroHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapMicroHeaderEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapMicroHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapMicroHeaderEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapMicroHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMicroHeaderEncodeError::Endian { err } => {
+            ZapMicroHeaderEncodeError::Binary { err } => {
                 write!(f, "ZapMicroHeader encode error | {err}")
             }
         }
@@ -451,7 +451,7 @@ impl fmt::Display for ZapMicroHeaderEncodeError {
 impl error::Error for ZapMicroHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMicroHeaderEncodeError::Endian { err } => Some(err),
+            ZapMicroHeaderEncodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -506,11 +506,11 @@ impl ZapMicroEntry {
      * Returns [`ZapMicroEntryDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<Option<ZapMicroEntry>, ZapMicroEntryDecodeError> {
         ////////////////////////////////
         // Check for an empty ZapMicroEntry.
-        if decoder.is_zero_skip(ZapMicroEntry::SIZE)? {
+        if decoder.is_skip_zeros(ZapMicroEntry::SIZE)? {
             return Ok(None);
         }
 
@@ -524,11 +524,11 @@ impl ZapMicroEntry {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ZapMicroEntry::PADDING_SIZE)?;
+        decoder.skip_zeros(ZapMicroEntry::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode name.
-        let name = decoder.get_bytes(ZapMicroEntry::NAME_MAX + 1)?;
+        let name = decoder.get_bytes_n(ZapMicroEntry::NAME_MAX + 1)?;
 
         ////////////////////////////////
         // Error if it was not NULL terminated.
@@ -560,7 +560,7 @@ impl ZapMicroEntry {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
         ////////////////////////////////
         // Encode value.
@@ -572,7 +572,7 @@ impl ZapMicroEntry {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapMicroEntry::PADDING_SIZE)?;
+        encoder.put_zeros(ZapMicroEntry::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode name.
@@ -593,9 +593,9 @@ impl ZapMicroEntry {
      * Returns [`ZapMicroEntryEncodeError`] on error.
      */
     pub fn empty_to_encoder(
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
-        Ok(encoder.put_zero_padding(ZapMicroEntry::SIZE)?)
+        Ok(encoder.put_zeros(ZapMicroEntry::SIZE)?)
     }
 
     /** Encode an `[Option<ZapMicroEntry>`].
@@ -606,7 +606,7 @@ impl ZapMicroEntry {
      */
     pub fn option_to_encoder(
         ptr: &Option<ZapMicroEntry>,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
         match ptr {
             Some(v) => v.to_encoder(encoder),
@@ -644,11 +644,11 @@ impl ZapMicroEntryRef<'_> {
      * Returns [`ZapMicroEntryDecodeError`] on error.
      */
     pub fn from_decoder<'a>(
-        decoder: &EndianDecoder<'a>,
+        decoder: &mut dyn BinaryDecoder<'a>,
     ) -> Result<Option<ZapMicroEntryRef<'a>>, ZapMicroEntryDecodeError> {
         ////////////////////////////////
         // Check for an empty ZapMicroEntryRef.
-        if decoder.is_zero_skip(ZapMicroEntryRef::SIZE)? {
+        if decoder.is_skip_zeros(ZapMicroEntryRef::SIZE)? {
             return Ok(None);
         }
 
@@ -662,11 +662,11 @@ impl ZapMicroEntryRef<'_> {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ZapMicroEntryRef::PADDING_SIZE)?;
+        decoder.skip_zeros(ZapMicroEntryRef::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Decode name.
-        let name = decoder.get_bytes(ZapMicroEntryRef::NAME_MAX + 1)?;
+        let name = decoder.get_bytes_n(ZapMicroEntryRef::NAME_MAX + 1)?;
 
         ////////////////////////////////
         // Error if it was not NULL terminated.
@@ -704,7 +704,7 @@ impl ZapMicroEntryRef<'_> {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
         ////////////////////////////////
         // Encode value.
@@ -716,7 +716,7 @@ impl ZapMicroEntryRef<'_> {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapMicroEntryRef::PADDING_SIZE)?;
+        encoder.put_zeros(ZapMicroEntryRef::PADDING_SIZE)?;
 
         ////////////////////////////////
         // Encode name.
@@ -726,7 +726,7 @@ impl ZapMicroEntryRef<'_> {
         }
         // FIXME(cybojanek): Normalization.
         encoder.put_bytes(self.name.as_bytes())?;
-        encoder.put_zero_padding((ZapMicroEntryRef::NAME_MAX + 1) - length)?;
+        encoder.put_zeros((ZapMicroEntryRef::NAME_MAX + 1) - length)?;
 
         // Ensure NULL terminated.
         encoder.put_u8(0)?;
@@ -743,9 +743,9 @@ impl ZapMicroEntryRef<'_> {
      * Returns [`ZapMicroEntryEncodeError`] on error.
      */
     pub fn empty_to_encoder(
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
-        Ok(encoder.put_zero_padding(ZapMicroEntryRef::SIZE)?)
+        Ok(encoder.put_zeros(ZapMicroEntryRef::SIZE)?)
     }
 
     /** Encode an `[Option<ZapMicroEntryRef>`].
@@ -756,7 +756,7 @@ impl ZapMicroEntryRef<'_> {
      */
     pub fn option_to_encoder(
         ptr: &Option<ZapMicroEntryRef<'_>>,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMicroEntryEncodeError> {
         match ptr {
             Some(v) => v.to_encoder(encoder),
@@ -768,10 +768,10 @@ impl ZapMicroEntryRef<'_> {
 /// [`ZapMicroEntry`] decode error.
 #[derive(Debug)]
 pub enum ZapMicroEntryDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Name is not NULL terminated.
@@ -784,16 +784,16 @@ pub enum ZapMicroEntryDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for ZapMicroEntryDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapMicroEntryDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZapMicroEntryDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapMicroEntryDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapMicroEntryDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMicroEntryDecodeError::Endian { err } => {
+            ZapMicroEntryDecodeError::Binary { err } => {
                 write!(f, "ZapMicroEntry decode error | {err}")
             }
             ZapMicroEntryDecodeError::NameNotNullTerminated {} => {
@@ -810,7 +810,7 @@ impl fmt::Display for ZapMicroEntryDecodeError {
 impl error::Error for ZapMicroEntryDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMicroEntryDecodeError::Endian { err } => Some(err),
+            ZapMicroEntryDecodeError::Binary { err } => Some(err),
             ZapMicroEntryDecodeError::InvalidStr { err } => Some(err),
             ZapMicroEntryDecodeError::NameNotNullTerminated {} => None,
         }
@@ -820,10 +820,10 @@ impl error::Error for ZapMicroEntryDecodeError {
 /// [`ZapMicroEntry`] encode error.
 #[derive(Debug)]
 pub enum ZapMicroEntryEncodeError {
-    /// Endian encode error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// Name is too long.
@@ -833,16 +833,16 @@ pub enum ZapMicroEntryEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for ZapMicroEntryEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapMicroEntryEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapMicroEntryEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapMicroEntryEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapMicroEntryEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMicroEntryEncodeError::Endian { err } => {
+            ZapMicroEntryEncodeError::Binary { err } => {
                 write!(f, "ZapMicroEntry encode error | {err}")
             }
             ZapMicroEntryEncodeError::NameTooLong { length } => write!(
@@ -858,7 +858,7 @@ impl fmt::Display for ZapMicroEntryEncodeError {
 impl error::Error for ZapMicroEntryEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMicroEntryEncodeError::Endian { err } => Some(err),
+            ZapMicroEntryEncodeError::Binary { err } => Some(err),
             ZapMicroEntryEncodeError::NameTooLong { .. } => None,
         }
     }
@@ -867,57 +867,46 @@ impl error::Error for ZapMicroEntryEncodeError {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// A Micro ZAP iterator.
-pub struct ZapMicroIterator<'a> {
+pub struct ZapMicroIterator<'a, 'b> {
     /// Micro ZAP header.
     pub header: ZapMicroHeader,
 
     /// Entries decoder.
-    decoder: EndianDecoder<'a>,
+    decoder: &'b mut dyn BinaryDecoder<'a>,
 }
 
-impl ZapMicroIterator<'_> {
+impl ZapMicroIterator<'_, '_> {
     /** Decodes a [`ZapMicroIterator`].
      *
      * # Errors
      *
      * Returns [`ZapMicroIteratorError`] on error.
      */
-    pub fn from_decoder<'a>(
-        decoder: &EndianDecoder<'a>,
-    ) -> Result<ZapMicroIterator<'a>, ZapMicroIteratorError> {
+    pub fn from_decoder<'a, 'b>(
+        decoder: &'b mut dyn BinaryDecoder<'a>,
+    ) -> Result<ZapMicroIterator<'a, 'b>, ZapMicroIteratorError> {
         ////////////////////////////////
         // Decode header.
         let header = ZapMicroHeader::from_decoder(decoder)?;
 
-        // Get the rest of the bytes as the entries.
-        let entries = decoder.get_bytes(decoder.len())?;
-
         // Check entries is a multiple of ZapMicroEntry.
-        if entries.len() % ZapMicroEntry::SIZE != 0 {
+        if decoder.len() % ZapMicroEntry::SIZE != 0 {
             return Err(ZapMicroIteratorError::Size {
-                size: entries.len(),
+                size: decoder.len(),
             });
         }
 
-        Ok(ZapMicroIterator {
-            header,
-            decoder: EndianDecoder::from_bytes(entries, decoder.order()),
-        })
-    }
-
-    /// Resets the iterator.
-    pub fn reset(&mut self) {
-        self.decoder.reset();
+        Ok(ZapMicroIterator { header, decoder })
     }
 }
 
-impl<'a> Iterator for ZapMicroIterator<'a> {
+impl<'a, 'b> Iterator for ZapMicroIterator<'a, 'b> {
     type Item = Result<ZapMicroEntryRef<'a>, ZapMicroEntryDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
         while !self.decoder.is_empty() {
             // Get the next entry.
-            let entry_opt = match ZapMicroEntryRef::from_decoder(&self.decoder) {
+            let entry_opt = match ZapMicroEntryRef::from_decoder(self.decoder) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -935,10 +924,10 @@ impl<'a> Iterator for ZapMicroIterator<'a> {
 /// [`ZapMicroIterator`] decode error.
 #[derive(Debug)]
 pub enum ZapMicroIteratorError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 
     /// Invalid entries size.
@@ -954,9 +943,9 @@ pub enum ZapMicroIteratorError {
     },
 }
 
-impl From<EndianDecodeError> for ZapMicroIteratorError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapMicroIteratorError::Endian { err }
+impl From<BinaryDecodeError> for ZapMicroIteratorError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapMicroIteratorError::Binary { err }
     }
 }
 
@@ -969,7 +958,7 @@ impl From<ZapMicroHeaderDecodeError> for ZapMicroIteratorError {
 impl fmt::Display for ZapMicroIteratorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMicroIteratorError::Endian { err } => {
+            ZapMicroIteratorError::Binary { err } => {
                 write!(f, "ZapMicroIterator decode error | {err}")
             }
             ZapMicroIteratorError::Size { size } => {
@@ -990,7 +979,7 @@ impl fmt::Display for ZapMicroIteratorError {
 impl error::Error for ZapMicroIteratorError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMicroIteratorError::Endian { err } => Some(err),
+            ZapMicroIteratorError::Binary { err } => Some(err),
             ZapMicroIteratorError::Size { .. } => None,
             ZapMicroIteratorError::ZapMicroHeader { err } => Some(err),
         }
@@ -1161,7 +1150,7 @@ impl ZapMegaPointerTable {
      * Returns [`ZapMegaPointerTableDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapMegaPointerTable, ZapMegaPointerTableDecodeError> {
         // Success.
         Ok(ZapMegaPointerTable {
@@ -1181,7 +1170,7 @@ impl ZapMegaPointerTable {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMegaPointerTableEncodeError> {
         ////////////////////////////////
         // Encode values
@@ -1200,23 +1189,23 @@ impl ZapMegaPointerTable {
 /// [`ZapMegaPointerTable`] decode error.
 #[derive(Debug)]
 pub enum ZapMegaPointerTableDecodeError {
-    /// [`EndianDecoder`] error.
-    Endian {
+    /// [`BinaryDecoder`] error.
+    Binary {
         /// Error.
-        err: EndianDecodeError,
+        err: BinaryDecodeError,
     },
 }
 
-impl From<EndianDecodeError> for ZapMegaPointerTableDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapMegaPointerTableDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZapMegaPointerTableDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapMegaPointerTableDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapMegaPointerTableDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMegaPointerTableDecodeError::Endian { err } => {
+            ZapMegaPointerTableDecodeError::Binary { err } => {
                 write!(f, "ZapMegaPointerTable decode error | {err}")
             }
         }
@@ -1227,7 +1216,7 @@ impl fmt::Display for ZapMegaPointerTableDecodeError {
 impl error::Error for ZapMegaPointerTableDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMegaPointerTableDecodeError::Endian { err } => Some(err),
+            ZapMegaPointerTableDecodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -1235,23 +1224,23 @@ impl error::Error for ZapMegaPointerTableDecodeError {
 /// [`ZapMegaPointerTable`] encode error.
 #[derive(Debug)]
 pub enum ZapMegaPointerTableEncodeError {
-    /// Endian encode error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for ZapMegaPointerTableEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapMegaPointerTableEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapMegaPointerTableEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapMegaPointerTableEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapMegaPointerTableEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMegaPointerTableEncodeError::Endian { err } => {
+            ZapMegaPointerTableEncodeError::Binary { err } => {
                 write!(f, "ZapMegaPointerTable encode error | {err}")
             }
         }
@@ -1262,7 +1251,7 @@ impl fmt::Display for ZapMegaPointerTableEncodeError {
 impl error::Error for ZapMegaPointerTableEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMegaPointerTableEncodeError::Endian { err } => Some(err),
+            ZapMegaPointerTableEncodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -1436,7 +1425,7 @@ impl ZapMegaHeader {
      * Returns [`ZapMegaHeaderDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapMegaHeader, ZapMegaHeaderDecodeError> {
         ////////////////////////////////
         // Decode block type.
@@ -1517,7 +1506,7 @@ impl ZapMegaHeader {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapMegaHeaderEncodeError> {
         ////////////////////////////////
         // Encode block type.
@@ -1611,6 +1600,12 @@ impl ZapMegaHeader {
 /// [`ZapMegaHeader`] decode error.
 #[derive(Debug)]
 pub enum ZapMegaHeaderDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Invalid block size.
     BlockSize {
         /// Block size.
@@ -1627,12 +1622,6 @@ pub enum ZapMegaHeaderDecodeError {
     CaseNormalization {
         /// Error.
         err: ZapCaseNormalizationError,
-    },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
     },
 
     /// Unknown flags.
@@ -1666,15 +1655,15 @@ pub enum ZapMegaHeaderDecodeError {
     },
 }
 
-impl From<ZapCaseNormalizationError> for ZapMegaHeaderDecodeError {
-    fn from(err: ZapCaseNormalizationError) -> Self {
-        ZapMegaHeaderDecodeError::CaseNormalization { err }
+impl From<BinaryDecodeError> for ZapMegaHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapMegaHeaderDecodeError::Binary { err }
     }
 }
 
-impl From<EndianDecodeError> for ZapMegaHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapMegaHeaderDecodeError::Endian { err }
+impl From<ZapCaseNormalizationError> for ZapMegaHeaderDecodeError {
+    fn from(err: ZapCaseNormalizationError) -> Self {
+        ZapMegaHeaderDecodeError::CaseNormalization { err }
     }
 }
 
@@ -1693,6 +1682,9 @@ impl From<ZapUnicodeNormalizationError> for ZapMegaHeaderDecodeError {
 impl fmt::Display for ZapMegaHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ZapMegaHeaderDecodeError::Binary { err } => {
+                write!(f, "ZapMegaHeader decode error | {err}")
+            }
             ZapMegaHeaderDecodeError::BlockSize { block_size } => {
                 write!(
                     f,
@@ -1706,9 +1698,6 @@ impl fmt::Display for ZapMegaHeaderDecodeError {
                 )
             }
             ZapMegaHeaderDecodeError::CaseNormalization { err } => {
-                write!(f, "ZapMegaHeader decode error | {err}")
-            }
-            ZapMegaHeaderDecodeError::Endian { err } => {
                 write!(f, "ZapMegaHeader decode error | {err}")
             }
             ZapMegaHeaderDecodeError::Flags { flags } => {
@@ -1737,8 +1726,8 @@ impl fmt::Display for ZapMegaHeaderDecodeError {
 impl error::Error for ZapMegaHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ZapMegaHeaderDecodeError::Binary { err } => Some(err),
             ZapMegaHeaderDecodeError::CaseNormalization { err } => Some(err),
-            ZapMegaHeaderDecodeError::Endian { err } => Some(err),
             ZapMegaHeaderDecodeError::UnicodeNormalization { err } => Some(err),
             ZapMegaHeaderDecodeError::ZapMegaPointerTable { err } => Some(err),
             _ => None,
@@ -1749,10 +1738,10 @@ impl error::Error for ZapMegaHeaderDecodeError {
 /// [`ZapMegaHeader`] encode error.
 #[derive(Debug)]
 pub enum ZapMegaHeaderEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 
     /// [`ZapMegaPointerTable`] error.
@@ -1762,9 +1751,9 @@ pub enum ZapMegaHeaderEncodeError {
     },
 }
 
-impl From<EndianEncodeError> for ZapMegaHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapMegaHeaderEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapMegaHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapMegaHeaderEncodeError::Binary { err }
     }
 }
 
@@ -1777,7 +1766,7 @@ impl From<ZapMegaPointerTableEncodeError> for ZapMegaHeaderEncodeError {
 impl fmt::Display for ZapMegaHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapMegaHeaderEncodeError::Endian { err } => {
+            ZapMegaHeaderEncodeError::Binary { err } => {
                 write!(f, "ZapMegaHeader encode error | {err}")
             }
             ZapMegaHeaderEncodeError::ZapMegaPointerTable { err } => {
@@ -1791,7 +1780,7 @@ impl fmt::Display for ZapMegaHeaderEncodeError {
 impl error::Error for ZapMegaHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapMegaHeaderEncodeError::Endian { err } => Some(err),
+            ZapMegaHeaderEncodeError::Binary { err } => Some(err),
             ZapMegaHeaderEncodeError::ZapMegaPointerTable { err } => Some(err),
         }
     }
@@ -1821,7 +1810,9 @@ impl ZapHeader {
      *
      * Returns [`ZapHeaderDecodeError`] on error.
      */
-    pub fn from_decoder(decoder: &EndianDecoder<'_>) -> Result<ZapHeader, ZapHeaderDecodeError> {
+    pub fn from_decoder(
+        decoder: &mut dyn BinaryDecoder<'_>,
+    ) -> Result<ZapHeader, ZapHeaderDecodeError> {
         let block_type = decoder.get_u64()?;
         decoder.rewind(8)?;
 
@@ -1840,7 +1831,10 @@ impl ZapHeader {
      *
      * Returns [`ZapHeaderEncodeError`] on error.
      */
-    pub fn to_encoder(&self, encoder: &mut EndianEncoder<'_>) -> Result<(), ZapHeaderEncodeError> {
+    pub fn to_encoder(
+        &self,
+        encoder: &mut dyn BinaryEncoder<'_>,
+    ) -> Result<(), ZapHeaderEncodeError> {
         match self {
             ZapHeader::Mega(header) => header.to_encoder(encoder)?,
             ZapHeader::Micro(header) => header.to_encoder(encoder)?,
@@ -1853,16 +1847,16 @@ impl ZapHeader {
 /// [`ZapHeader`] decode error.
 #[derive(Debug)]
 pub enum ZapHeaderDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Unknown block type.
     BlockType {
         /// Block type.
         block_type: u64,
-    },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
     },
 
     /// [`ZapMegaHeader`] decode error.
@@ -1878,9 +1872,9 @@ pub enum ZapHeaderDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for ZapHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapHeaderDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZapHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapHeaderDecodeError::Binary { err }
     }
 }
 
@@ -1899,7 +1893,7 @@ impl From<ZapMicroHeaderDecodeError> for ZapHeaderDecodeError {
 impl fmt::Display for ZapHeaderDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapHeaderDecodeError::Endian { err } => {
+            ZapHeaderDecodeError::Binary { err } => {
                 write!(f, "ZapHeader decode error | {err}")
             }
             ZapHeaderDecodeError::BlockType { block_type } => {
@@ -1919,7 +1913,7 @@ impl fmt::Display for ZapHeaderDecodeError {
 impl error::Error for ZapHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapHeaderDecodeError::Endian { err } => Some(err),
+            ZapHeaderDecodeError::Binary { err } => Some(err),
             ZapHeaderDecodeError::ZapMegaHeader { err } => Some(err),
             ZapHeaderDecodeError::ZapMicroHeader { err } => Some(err),
             _ => None,
@@ -2148,7 +2142,7 @@ impl ZapLeafHeader {
      * Returns [`ZapLeafHeaderDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapLeafHeader, ZapLeafHeaderDecodeError> {
         ////////////////////////////////
         // Decode block type.
@@ -2159,7 +2153,7 @@ impl ZapLeafHeader {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ZapLeafHeader::PADDING_SIZE_A)?;
+        decoder.skip_zeros(ZapLeafHeader::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Decode hash prefix.
@@ -2201,7 +2195,7 @@ impl ZapLeafHeader {
 
         ////////////////////////////////
         // Decode padding.
-        decoder.skip_zero_padding(ZapLeafHeader::PADDING_SIZE_B)?;
+        decoder.skip_zeros(ZapLeafHeader::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Success.
@@ -2223,7 +2217,7 @@ impl ZapLeafHeader {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapLeafHeaderEncodeError> {
         ////////////////////////////////
         // Encode block type.
@@ -2231,7 +2225,7 @@ impl ZapLeafHeader {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapLeafHeader::PADDING_SIZE_A)?;
+        encoder.put_zeros(ZapLeafHeader::PADDING_SIZE_A)?;
 
         ////////////////////////////////
         // Encode hash prefix.
@@ -2268,7 +2262,7 @@ impl ZapLeafHeader {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapLeafHeader::PADDING_SIZE_B)?;
+        encoder.put_zeros(ZapLeafHeader::PADDING_SIZE_B)?;
 
         ////////////////////////////////
         // Success.
@@ -2316,6 +2310,12 @@ impl ZapLeafHeader {
 /// [`ZapLeafHeader`] decode error.
 #[derive(Debug)]
 pub enum ZapLeafHeaderDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Invalid block size.
     BlockSize {
         /// Block size.
@@ -2326,12 +2326,6 @@ pub enum ZapLeafHeaderDecodeError {
     BlockType {
         /// Block type.
         block_type: u64,
-    },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
     },
 
     /// Unknown flags.
@@ -2347,9 +2341,9 @@ pub enum ZapLeafHeaderDecodeError {
     },
 }
 
-impl From<EndianDecodeError> for ZapLeafHeaderDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapLeafHeaderDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZapLeafHeaderDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapLeafHeaderDecodeError::Binary { err }
     }
 }
 
@@ -2368,7 +2362,7 @@ impl fmt::Display for ZapLeafHeaderDecodeError {
                     "ZapLeafHeader decode error, invalid block type {block_type}"
                 )
             }
-            ZapLeafHeaderDecodeError::Endian { err } => {
+            ZapLeafHeaderDecodeError::Binary { err } => {
                 write!(f, "ZapLeafHeader decode error | {err}")
             }
             ZapLeafHeaderDecodeError::Flags { flags } => {
@@ -2385,7 +2379,7 @@ impl fmt::Display for ZapLeafHeaderDecodeError {
 impl error::Error for ZapLeafHeaderDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapLeafHeaderDecodeError::Endian { err } => Some(err),
+            ZapLeafHeaderDecodeError::Binary { err } => Some(err),
             _ => None,
         }
     }
@@ -2394,23 +2388,23 @@ impl error::Error for ZapLeafHeaderDecodeError {
 /// [`ZapLeafHeader`] encode error.
 #[derive(Debug)]
 pub enum ZapLeafHeaderEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for ZapLeafHeaderEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapLeafHeaderEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapLeafHeaderEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapLeafHeaderEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapLeafHeaderEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapLeafHeaderEncodeError::Endian { err } => {
+            ZapLeafHeaderEncodeError::Binary { err } => {
                 write!(f, "ZapLeafHeader encode error | {err}")
             }
         }
@@ -2421,7 +2415,7 @@ impl fmt::Display for ZapLeafHeaderEncodeError {
 impl error::Error for ZapLeafHeaderEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapLeafHeaderEncodeError::Endian { err } => Some(err),
+            ZapLeafHeaderEncodeError::Binary { err } => Some(err),
         }
     }
 }
@@ -2470,7 +2464,7 @@ impl ZapLeafChunkData {
      * Returns [`ZapLeafChunkDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapLeafChunkData, ZapLeafChunkDecodeError> {
         ////////////////////////////////
         // Decode leaf type.
@@ -2482,7 +2476,7 @@ impl ZapLeafChunkData {
 
         ////////////////////////////////
         // Get data.
-        let data = decoder.get_bytes(ZapLeafChunkData::ZAP_LEAF_DATA_SIZE)?;
+        let data = decoder.get_bytes_n(ZapLeafChunkData::ZAP_LEAF_DATA_SIZE)?;
 
         ////////////////////////////////
         // Decode next.
@@ -2507,7 +2501,7 @@ impl ZapLeafChunkData {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapLeafChunkEncodeError> {
         ////////////////////////////////
         // Encode leaf type.
@@ -2614,7 +2608,7 @@ impl ZapLeafChunkEntry {
      * Returns [`ZapLeafChunkDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapLeafChunkEntry, ZapLeafChunkDecodeError> {
         ////////////////////////////////
         // Decode leaf type.
@@ -2675,7 +2669,7 @@ impl ZapLeafChunkEntry {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapLeafChunkEncodeError> {
         ////////////////////////////////
         // Encode leaf type.
@@ -2749,7 +2743,7 @@ impl ZapLeafChunkFree {
      * Returns [`ZapLeafChunkDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapLeafChunkFree, ZapLeafChunkDecodeError> {
         ////////////////////////////////
         // Decode leaf type.
@@ -2784,7 +2778,7 @@ impl ZapLeafChunkFree {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapLeafChunkEncodeError> {
         ////////////////////////////////
         // Encode leaf type.
@@ -2792,7 +2786,7 @@ impl ZapLeafChunkFree {
 
         ////////////////////////////////
         // Encode padding.
-        encoder.put_zero_padding(ZapLeafChunkData::ZAP_LEAF_DATA_SIZE)?;
+        encoder.put_zeros(ZapLeafChunkData::ZAP_LEAF_DATA_SIZE)?;
 
         ////////////////////////////////
         // Encode next.
@@ -2831,7 +2825,7 @@ impl ZapLeafChunk {
      * Returns [`ZapLeafChunkDecodeError`] on error.
      */
     pub fn from_decoder(
-        decoder: &EndianDecoder<'_>,
+        decoder: &mut dyn BinaryDecoder<'_>,
     ) -> Result<ZapLeafChunk, ZapLeafChunkDecodeError> {
         ////////////////////////////////
         // Decode leaf type.
@@ -2860,7 +2854,7 @@ impl ZapLeafChunk {
      */
     pub fn to_encoder(
         &self,
-        encoder: &mut EndianEncoder<'_>,
+        encoder: &mut dyn BinaryEncoder<'_>,
     ) -> Result<(), ZapLeafChunkEncodeError> {
         match self {
             ZapLeafChunk::Array(array) => array.to_encoder(encoder),
@@ -2873,36 +2867,36 @@ impl ZapLeafChunk {
 /// [`ZapLeafChunk`] deocde error.
 #[derive(Debug)]
 pub enum ZapLeafChunkDecodeError {
+    /// [`BinaryDecoder`] error.
+    Binary {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Unknown [`ZapLeafChunk`] type.
     ChunkType {
         /// Chunk type.
         chunk_type: u8,
     },
-
-    /// [`EndianDecoder`] error.
-    Endian {
-        /// Error.
-        err: EndianDecodeError,
-    },
 }
 
-impl From<EndianDecodeError> for ZapLeafChunkDecodeError {
-    fn from(err: EndianDecodeError) -> Self {
-        ZapLeafChunkDecodeError::Endian { err }
+impl From<BinaryDecodeError> for ZapLeafChunkDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        ZapLeafChunkDecodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapLeafChunkDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ZapLeafChunkDecodeError::Binary { err } => {
+                write!(f, "ZapLeafChunk decode error | {err}")
+            }
             ZapLeafChunkDecodeError::ChunkType { chunk_type } => {
                 write!(
                     f,
                     "ZapLeafChunk decode error, unknown chunk type {chunk_type}"
                 )
-            }
-            ZapLeafChunkDecodeError::Endian { err } => {
-                write!(f, "ZapLeafChunk decode error | {err}")
             }
         }
     }
@@ -2912,8 +2906,8 @@ impl fmt::Display for ZapLeafChunkDecodeError {
 impl error::Error for ZapLeafChunkDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
+            ZapLeafChunkDecodeError::Binary { err } => Some(err),
             ZapLeafChunkDecodeError::ChunkType { chunk_type: _ } => None,
-            ZapLeafChunkDecodeError::Endian { err } => Some(err),
         }
     }
 }
@@ -2921,23 +2915,23 @@ impl error::Error for ZapLeafChunkDecodeError {
 /// [`ZapLeafChunk`] encode error.
 #[derive(Debug)]
 pub enum ZapLeafChunkEncodeError {
-    /// [`EndianEncoder`] error.
-    Endian {
+    /// [`BinaryEncoder`] error.
+    Binary {
         /// Error.
-        err: EndianEncodeError,
+        err: BinaryEncodeError,
     },
 }
 
-impl From<EndianEncodeError> for ZapLeafChunkEncodeError {
-    fn from(err: EndianEncodeError) -> Self {
-        ZapLeafChunkEncodeError::Endian { err }
+impl From<BinaryEncodeError> for ZapLeafChunkEncodeError {
+    fn from(err: BinaryEncodeError) -> Self {
+        ZapLeafChunkEncodeError::Binary { err }
     }
 }
 
 impl fmt::Display for ZapLeafChunkEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ZapLeafChunkEncodeError::Endian { err } => {
+            ZapLeafChunkEncodeError::Binary { err } => {
                 write!(f, "ZapLeafChunk encode error | {err}")
             }
         }
@@ -2948,7 +2942,7 @@ impl fmt::Display for ZapLeafChunkEncodeError {
 impl error::Error for ZapLeafChunkEncodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ZapLeafChunkEncodeError::Endian { err } => Some(err),
+            ZapLeafChunkEncodeError::Binary { err } => Some(err),
         }
     }
 }
