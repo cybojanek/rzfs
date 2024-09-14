@@ -57,7 +57,9 @@ use core::result::Result::{Err, Ok};
 #[cfg(feature = "std")]
 use std::error;
 
-use crate::phys::{EndianOrder, GetFromXdrDecoder, XdrDecodeError, XdrDecoder};
+use crate::phys::{
+    BinaryDecodeError, BinaryDecoder, EndianOrder, GetValueFromBinaryDecoder, XdrDecoder,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -586,12 +588,12 @@ pub struct NvListIterator<'a, 'b> {
     decoder: XdrDecoder<'a>,
 
     /// Error from creating the iterator decoder.
-    clamp_err: Option<XdrDecodeError>,
+    clamp_err: Option<BinaryDecodeError>,
 }
 
 impl<'a> NvListIterator<'a, '_> {
     /// Gets the next pair result.
-    fn next_pair_result(&self) -> Result<Option<NvPair<'a, 'a>>, NvDecodeError> {
+    fn next_pair_result(&mut self) -> Result<Option<NvPair<'a, 'a>>, NvDecodeError> {
         // Check for end of list.
         if self.decoder.is_empty() {
             return Ok(None);
@@ -602,8 +604,8 @@ impl<'a> NvListIterator<'a, '_> {
         let starting_offset = self.decoder.offset();
 
         // Encoded and decoded sizes.
-        let encoded_size = self.decoder.get_usize()?;
-        let decoded_size = self.decoder.get_usize()?;
+        let encoded_size = self.decoder.get_usize_32()?;
+        let decoded_size = self.decoder.get_usize_32()?;
 
         // Check for end of list.
         if encoded_size == 0 && decoded_size == 0 {
@@ -618,7 +620,7 @@ impl<'a> NvListIterator<'a, '_> {
         let data_type = NvDataType::try_from(data_type)?;
 
         // Number of elements.
-        let element_count = self.decoder.get_usize()?;
+        let element_count = self.decoder.get_usize_32()?;
 
         // Number of bytes remaining.
         let value_offset = self.decoder.offset();
@@ -838,7 +840,7 @@ impl<'a> NvListIterator<'a, '_> {
 
 impl NvListIterator<'_, '_> {
     /// Resets the iterator to the start of the data.
-    pub fn reset(&self) {
+    pub fn reset(&mut self) {
         self.decoder.reset()
     }
 }
@@ -851,7 +853,7 @@ impl<'a> Iterator for NvListIterator<'a, '_> {
         if let Some(err) = self.clamp_err {
             // Finish iteration by skipping the rest of the input.
             let _ = self.decoder.skip(self.decoder.len());
-            return Some(Err(NvDecodeError::Xdr { err }));
+            return Some(Err(NvDecodeError::BinaryDecoder { err }));
         }
 
         // Get the next pair result, and convert it to an option response.
@@ -934,7 +936,7 @@ impl<T> NvArray<'_, T> {
     }
 }
 
-impl<'a, 'b, T: GetFromXdrDecoder> IntoIterator for &'b NvArray<'a, T> {
+impl<'a, 'b, T: GetValueFromBinaryDecoder<'a>> IntoIterator for &'b NvArray<'a, T> {
     type Item = Result<T, NvDecodeError>;
     type IntoIter = NvArrayIterator<'a, 'b, T>;
 
@@ -970,7 +972,7 @@ pub struct NvArrayIterator<'a, 'b, T> {
     phantom: PhantomData<T>,
 
     /// Error from creating the iterator decoder.
-    clamp_err: Option<XdrDecodeError>,
+    clamp_err: Option<BinaryDecodeError>,
 }
 
 impl<T> NvArrayIterator<'_, '_, T> {
@@ -980,7 +982,7 @@ impl<T> NvArrayIterator<'_, '_, T> {
     }
 }
 
-impl<T: GetFromXdrDecoder> Iterator for NvArrayIterator<'_, '_, T> {
+impl<'a, T: GetValueFromBinaryDecoder<'a>> Iterator for NvArrayIterator<'a, '_, T> {
     type Item = Result<T, NvDecodeError>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
@@ -989,38 +991,14 @@ impl<T: GetFromXdrDecoder> Iterator for NvArrayIterator<'_, '_, T> {
             if let Some(err) = self.clamp_err {
                 // Finish iteration.
                 self.index = self.array.count;
-                return Some(Err(NvDecodeError::Xdr { err }));
+                return Some(Err(NvDecodeError::BinaryDecoder { err }));
             }
 
             self.index += 1;
 
             match self.decoder.get() {
                 Ok(v) => Some(Ok(v)),
-                Err(err) => Some(Err(NvDecodeError::Xdr { err })),
-            }
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a> Iterator for NvArrayIterator<'a, '_, &'a str> {
-    type Item = Result<&'a str, NvDecodeError>;
-
-    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        if self.index < self.array.count {
-            // Check for clamp error.
-            if let Some(err) = self.clamp_err {
-                // Finish iteration.
-                self.index = self.array.count;
-                return Some(Err(NvDecodeError::Xdr { err }));
-            }
-
-            self.index += 1;
-
-            match self.decoder.get_str() {
-                Ok(v) => Some(Ok(v)),
-                Err(err) => Some(Err(NvDecodeError::Xdr { err })),
+                Err(err) => Some(Err(NvDecodeError::BinaryDecoder { err })),
             }
         } else {
             None
@@ -1039,7 +1017,7 @@ impl<'a> Iterator for NvArrayIterator<'a, '_, NvList<'a>> {
             if let Some(err) = self.clamp_err {
                 // Finish iteration.
                 self.index = self.array.count;
-                return Some(Err(NvDecodeError::Xdr { err }));
+                return Some(Err(NvDecodeError::BinaryDecoder { err }));
             }
 
             self.index += 1;
@@ -1070,7 +1048,7 @@ impl<'a> Iterator for NvArrayIterator<'a, '_, NvList<'a>> {
 
             // Skip bytes.
             if let Err(err) = self.decoder.skip(bytes_used) {
-                return Some(Err(NvDecodeError::Xdr { err }));
+                return Some(Err(NvDecodeError::BinaryDecoder { err }));
             }
 
             // Return decoder.
@@ -1497,7 +1475,7 @@ impl NvList<'_> {
 
         // NOTE: For XDR, it is always big endian, no matter what the endian
         //       field says.
-        let decoder = XdrDecoder::from_bytes_clamped(data, start, length)?;
+        let mut decoder = XdrDecoder::from_bytes_clamped(data, start, length)?;
 
         // NvList version.
         let version = decoder.get_u32()?;
@@ -2007,6 +1985,12 @@ impl NvList<'_> {
 /// [`NvList`] decode error.
 #[derive(Debug)]
 pub enum NvDecodeError {
+    /// [`BinaryDecoder`] error.
+    BinaryDecoder {
+        /// Error.
+        err: BinaryDecodeError,
+    },
+
     /// Data mismatch
     DataMismatch {},
 
@@ -2096,23 +2080,20 @@ pub enum NvDecodeError {
         /// Invalid version.
         version: u32,
     },
-
-    /// [`XdrDecoder`] error.
-    Xdr {
-        /// Error.
-        err: XdrDecodeError,
-    },
 }
 
-impl From<XdrDecodeError> for NvDecodeError {
-    fn from(err: XdrDecodeError) -> Self {
-        NvDecodeError::Xdr { err }
+impl From<BinaryDecodeError> for NvDecodeError {
+    fn from(err: BinaryDecodeError) -> Self {
+        NvDecodeError::BinaryDecoder { err }
     }
 }
 
 impl fmt::Display for NvDecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            NvDecodeError::BinaryDecoder { err } => {
+                write!(f, "NV decode error | {err}")
+            }
             NvDecodeError::DataMismatch {} => write!(
                 f,
                 "NV decode error, provided data slice does not match decoder data slice"
@@ -2179,9 +2160,6 @@ impl fmt::Display for NvDecodeError {
             NvDecodeError::UnknownVersion { version } => {
                 write!(f, "NV decode error, unknown version {version}")
             }
-            NvDecodeError::Xdr { err } => {
-                write!(f, "NV decode error | {err}")
-            }
         }
     }
 }
@@ -2190,7 +2168,7 @@ impl fmt::Display for NvDecodeError {
 impl error::Error for NvDecodeError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            NvDecodeError::Xdr { err } => Some(err),
+            NvDecodeError::BinaryDecoder { err } => Some(err),
             _ => None,
         }
     }
