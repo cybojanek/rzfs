@@ -7,7 +7,10 @@ pub use acl::{
 };
 
 pub(crate) mod binary;
-pub use binary::{BinaryDecodeError, BinaryDecoder};
+pub use binary::{
+    BigEndianDecoder, BigEndianEncoder, BinaryDecodeError, BinaryDecoder, BinaryEncodeError,
+    BinaryEncoder, LittleEndianDecoder, LittleEndianEncoder,
+};
 
 pub(crate) mod block_pointer;
 pub use block_pointer::{
