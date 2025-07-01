@@ -30,10 +30,7 @@ impl<const N: usize> Fstr<N> {
      * Returns [None] if byte string failed to decode as utf8.
      */
     pub fn as_str(&self) -> Option<&str> {
-        match core::str::from_utf8(self.as_bytes()) {
-            Ok(v) => Some(v),
-            Err(..) => None,
-        }
+        core::str::from_utf8(self.as_bytes()).ok()
     }
 
     /// Gets the capacity of the string in bytes.
