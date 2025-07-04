@@ -2407,9 +2407,16 @@ impl Checksum for Sha256 {
         let byte_length = self.bytes_processed + (self.buffer_fill as u64);
         let bit_length = byte_length * 8;
 
-        // If last block does not have enough space for 64 bits (1 bit + 64 bit length),
+        // Set the 1 bit.
+        // NOTE: Sha256::update guarantees that buffer_fill will be less than
+        //       the size of the buffer, and at least one byte will be
+        //       available.
+        self.buffer[self.buffer_fill] = 0x80;
+        self.buffer_fill += 1;
+
+        // If last block does not have enough space for 64 bit length,
         // then pad it out with zeroes.
-        if self.buffer_fill > SHA_256_BLOCK_SIZE - 9 {
+        if self.buffer_fill > SHA_256_BLOCK_SIZE - 8 {
             while self.buffer_fill < SHA_256_BLOCK_SIZE {
                 self.buffer[self.buffer_fill] = 0;
                 self.buffer_fill += 1;
@@ -2419,10 +2426,6 @@ impl Checksum for Sha256 {
             let data = &self.buffer[0..SHA_256_BLOCK_SIZE];
             (self.impl_ctx.update_blocks)(&mut self.state, data);
         }
-
-        // Set the 1 bit.
-        self.buffer[self.buffer_fill] = 0x80;
-        self.buffer_fill += 1;
 
         // Set zero bits until 64 bits are remaining.
         while self.buffer_fill < SHA_256_BLOCK_SIZE - 8 {
@@ -2478,7 +2481,7 @@ mod tests {
         0x51, 0x8f, 0x51, 0x6e, 0x5a, 0x52, 0x64, 0xee,
     ];
 
-    const TEST_VECTOR_A_CHECKSUMS: [(usize, [u64; 4]); 18] = [
+    const TEST_VECTOR_A_CHECKSUMS: [(usize, [u64; 4]); 39] = [
         (
             0,
             [
@@ -2525,12 +2528,201 @@ mod tests {
             ],
         ),
         (
+            54,
+            [
+                0xa6bce48d7a523f97,
+                0xe14477060f8145b1,
+                0xf661ff548794efde,
+                0xc799a9ee281e53bd,
+            ],
+        ),
+        (
+            55,
+            [
+                0x90d22f4a3a288ab5,
+                0x98032d4d5e0ec47f,
+                0xdc79d9b345ca610f,
+                0xdd0166ed6b2dfac5,
+            ],
+        ),
+        (
+            56,
+            [
+                0xa47592e3df822e8f,
+                0xb3a73815a77e0d2c,
+                0xc365aa33c84e5db2,
+                0xd3a5e425d7c15cfa,
+            ],
+        ),
+        (
+            57,
+            [
+                0xd8c0352b7ccbbd54,
+                0x951f22f7e4565cc4,
+                0xb1fbe572e0ef14ca,
+                0xc4ce21d5f326551d,
+            ],
+        ),
+        (
+            58,
+            [
+                0x3851cdfafc052669,
+                0xe2e6cb4c89c16556,
+                0xadcea2feabab4c81,
+                0xc5785bfe818f879e,
+            ],
+        ),
+        (
+            59,
+            [
+                0xd03ab839ebc87477,
+                0xed7ed02a6eae9611,
+                0x82c80bc44f745a63,
+                0xa2caf85b045a2c55,
+            ],
+        ),
+        (
+            60,
+            [
+                0xe309e008fd712d34,
+                0x2d57125b54ebe70b,
+                0xaa88b3f9846332dd,
+                0xd2e2d29eb13c68aa,
+            ],
+        ),
+        (
+            61,
+            [
+                0x50555efddf345114,
+                0xfbad0e8996caf791,
+                0xfdddbeef33ae70f0,
+                0xc9e404279165a9a9,
+            ],
+        ),
+        (
+            62,
+            [
+                0xd908adc6681d5565,
+                0x9aa39eb6c8f3e9b,
+                0xfa13f1695f917410,
+                0x9110f83336e99fd4,
+            ],
+        ),
+        (
+            63,
+            [
+                0xefe3c012babdc07e,
+                0x162b694b3b6194bf,
+                0x98b7d0f4871dd9a2,
+                0xd05b1ad77f51c992,
+            ],
+        ),
+        (
             64,
             [
                 0xca2eeb504c79cb1,
                 0x650ab12fc6c6edf0,
                 0xbece423778da778b,
                 0x175ca34ac9c24394,
+            ],
+        ),
+        (
+            118,
+            [
+                0x16af4db87182f353,
+                0x8f92abdf69b1164,
+                0xed1d5af9a09e15b,
+                0x97574a8d0d928bf5,
+            ],
+        ),
+        (
+            119,
+            [
+                0xf590e9cf193d6077,
+                0xc2a6d13c28d33014,
+                0x9d5f76b0698ba06d,
+                0x467317e5104036f3,
+            ],
+        ),
+        (
+            120,
+            [
+                0x2be0def0458d2904,
+                0xf2fcf486baf4782b,
+                0xc48b91d8b12267db,
+                0x95a5c58981faadc4,
+            ],
+        ),
+        (
+            121,
+            [
+                0x11bdfabecbd2d4a1,
+                0xb769d966cc828f15,
+                0x5e986dc7f84f6225,
+                0xacab3bd2948d8c35,
+            ],
+        ),
+        (
+            122,
+            [
+                0x4209e324a3f22e51,
+                0xa8c5b105665c0cce,
+                0xd5b0422a3732f032,
+                0xa789b523b0f9ff2e,
+            ],
+        ),
+        (
+            123,
+            [
+                0x4861a9af3d82707,
+                0x896545f8d54b26a1,
+                0x9f3a20dc9ceafe93,
+                0xbd6d55c3c7ef1b57,
+            ],
+        ),
+        (
+            124,
+            [
+                0x71cda6d80069d05f,
+                0xaa6145d9d7dc4da2,
+                0xc40948a5967b6b74,
+                0xcd4e8e4901e31b38,
+            ],
+        ),
+        (
+            125,
+            [
+                0xc4f775f3ff80b8b2,
+                0xfb1c3a8ff16e254b,
+                0x32ea51f9c50ae9d8,
+                0xdd2b8388857399d3,
+            ],
+        ),
+        (
+            126,
+            [
+                0xd1ad86f514344454,
+                0xf70ce8064a40f9a2,
+                0xe0300209c05b740,
+                0xbd0abe70d9d9b02,
+            ],
+        ),
+        (
+            127,
+            [
+                0xdc7f172989caf873,
+                0xb8b0a5b5ad447cf8,
+                0x7be84d24066ad9f8,
+                0x759f10f1eb825c2a,
+            ],
+        ),
+        (
+            128,
+            [
+                0xb5cf520a264dcaad,
+                0xb33b2e7c4df5707d,
+                0xaa9e6391019591cb,
+                0x17c5c99a2e286f5e,
             ],
         ),
         (

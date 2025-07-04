@@ -24,7 +24,9 @@ test_vector = [
   0x51, 0x8f, 0x51, 0x6e, 0x5a, 0x52, 0x64, 0xee,
 ]
 
-for size in 0, 4, 8, 16, 32, 64, 128:
+small_sizes = [0, 4, 8, 16, 32] + list(range(54, 65)) + list(range(118, 129))
+
+for size in small_sizes:
     h = hashlib.sha256()
 
     h.update(bytes(test_vector[0:size]))
@@ -34,8 +36,7 @@ for size in 0, 4, 8, 16, 32, 64, 128:
 
     print(f"({size}, [{a:#016x}, {b:#016x}, {c:#016x}, {d:#016x}]), ")
 
-
-for size in 192, 256, 320, 384, 448, 512, 8192, 16384, 32768, 65536, 131072:
+for size in 128, 192, 256, 320, 384, 448, 512, 8192, 16384, 32768, 65536, 131072:
     total = 0
 
     h = hashlib.sha256()
