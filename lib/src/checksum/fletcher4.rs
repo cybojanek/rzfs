@@ -1233,7 +1233,7 @@ impl Fletcher4 {
             //                  optimizes this code, and uses vpshufb, which is
             //                  an AVX512BW instruction.
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut a = arch::_mm512_loadu_si512(state.add(0));
             let mut b = arch::_mm512_loadu_si512(state.add(16));
             let mut c = arch::_mm512_loadu_si512(state.add(32));
@@ -1298,9 +1298,9 @@ impl Fletcher4 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), a);
-            arch::_mm512_storeu_si512(state.add(16), b);
-            arch::_mm512_storeu_si512(state.add(32), c);
-            arch::_mm512_storeu_si512(state.add(48), d);
+            arch::_mm512_storeu_si512(state.add(1), b);
+            arch::_mm512_storeu_si512(state.add(2), c);
+            arch::_mm512_storeu_si512(state.add(3), d);
         }
 
         unsafe { update_blocks_avx512f_byteswap_impl(state, data) }
@@ -1323,7 +1323,7 @@ impl Fletcher4 {
         #[target_feature(enable = "avx512f")]
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut a = arch::_mm512_loadu_si512(state.add(0));
             let mut b = arch::_mm512_loadu_si512(state.add(16));
             let mut c = arch::_mm512_loadu_si512(state.add(32));
@@ -1360,9 +1360,9 @@ impl Fletcher4 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), a);
-            arch::_mm512_storeu_si512(state.add(16), b);
-            arch::_mm512_storeu_si512(state.add(32), c);
-            arch::_mm512_storeu_si512(state.add(48), d);
+            arch::_mm512_storeu_si512(state.add(1), b);
+            arch::_mm512_storeu_si512(state.add(2), c);
+            arch::_mm512_storeu_si512(state.add(3), d);
         }
 
         unsafe { update_blocks_avx512f_native_impl(state, data) }
@@ -1398,7 +1398,7 @@ impl Fletcher4 {
             );
 
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut a = arch::_mm512_loadu_si512(state.add(0));
             let mut b = arch::_mm512_loadu_si512(state.add(16));
             let mut c = arch::_mm512_loadu_si512(state.add(32));
@@ -1455,9 +1455,9 @@ impl Fletcher4 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), a);
-            arch::_mm512_storeu_si512(state.add(16), b);
-            arch::_mm512_storeu_si512(state.add(32), c);
-            arch::_mm512_storeu_si512(state.add(48), d);
+            arch::_mm512_storeu_si512(state.add(1), b);
+            arch::_mm512_storeu_si512(state.add(2), c);
+            arch::_mm512_storeu_si512(state.add(3), d);
         }
 
         unsafe { update_blocks_avx512bw_byteswap_impl(state, data) }
