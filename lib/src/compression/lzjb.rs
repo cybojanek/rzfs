@@ -483,9 +483,7 @@ impl Decompression for LzjbDecoder {
 #[cfg(test)]
 mod tests {
 
-    use crate::compression::{
-        Compression, CompressionError, Decompression, DecompressionError, LzjbDecoder, LzjbEncoder,
-    };
+    use crate::compression::{Compression, Decompression, LzjbDecoder, LzjbEncoder};
 
     // Decompressed data, Compressed Data, Pre-v21 compressed data
     const TEST_VECTORS: &[(&[u8], &[u8], &[u8])] = &[(
@@ -724,8 +722,8 @@ mod tests {
     ];
 
     #[test]
-    fn compress() -> Result<(), CompressionError> {
-        let mut lzjb = LzjbEncoder::new();
+    fn compress() {
+        let mut lzjb: LzjbEncoder = Default::default();
 
         // Loop over test vectors.
         for (decompressed_data, compressed_data, compressed_data_pre_v21) in TEST_VECTORS {
@@ -733,7 +731,7 @@ mod tests {
             let mut output = vec![0; decompressed_data.len()];
 
             // Compress the data.
-            let ret = lzjb.compress(&mut output, decompressed_data, 0)?;
+            let ret = lzjb.compress(&mut output, decompressed_data, 0).unwrap();
 
             // Check result.
             assert!(ret <= compressed_data.len());
@@ -741,19 +739,19 @@ mod tests {
 
             // Now test the old compression.
             output.fill(0);
-            let ret = lzjb.compress_pre_v21(&mut output, decompressed_data, 0)?;
+            let ret = lzjb
+                .compress_pre_v21(&mut output, decompressed_data, 0)
+                .unwrap();
             assert!(ret <= compressed_data_pre_v21.len());
             assert_eq!(
                 &output[0..compressed_data_pre_v21.len()],
                 *compressed_data_pre_v21
             );
         }
-
-        Ok(())
     }
 
     #[test]
-    fn decompress() -> Result<(), DecompressionError> {
+    fn decompress() {
         let mut lzjb = LzjbDecoder {};
 
         // Loop over test vectors.
@@ -762,22 +760,21 @@ mod tests {
             let mut output = vec![0; decompressed_data.len()];
 
             // Decompress the data.
-            lzjb.decompress(&mut output, compressed_data, 0)?;
+            lzjb.decompress(&mut output, compressed_data, 0).unwrap();
 
             // Check result.
             assert_eq!(output, *decompressed_data);
 
             // Now test the old compression.
             output.fill(0);
-            lzjb.decompress(&mut output, compressed_data_pre_v21, 0)?;
+            lzjb.decompress(&mut output, compressed_data_pre_v21, 0)
+                .unwrap();
             assert_eq!(output, *decompressed_data);
         }
-
-        Ok(())
     }
 
     #[test]
-    fn compress_error() -> Result<(), CompressionError> {
+    fn compress_error() {
         let mut lzjb = LzjbEncoder::new();
 
         // Loop over test vectors.
@@ -786,7 +783,7 @@ mod tests {
             let mut output = vec![0; decompressed_data.len()];
 
             // Compress the data.
-            let ret = lzjb.compress(&mut output, decompressed_data, 0)?;
+            let ret = lzjb.compress(&mut output, decompressed_data, 0).unwrap();
 
             // Provide an output that is too small.
             assert!(lzjb
@@ -794,15 +791,15 @@ mod tests {
                 .is_err());
 
             // Now test the old compression.
-            let ret = lzjb.compress_pre_v21(&mut output, decompressed_data, 0)?;
+            let ret = lzjb
+                .compress_pre_v21(&mut output, decompressed_data, 0)
+                .unwrap();
 
             // Provide an output that is too small.
             assert!(lzjb
                 .compress_pre_v21(&mut output[0..ret - 1], decompressed_data, 0)
                 .is_err());
         }
-
-        Ok(())
     }
 
     #[test]
@@ -824,7 +821,7 @@ mod tests {
     }
 
     #[test]
-    fn compress_zeros() -> Result<(), CompressionError> {
+    fn compress_zeros() {
         let mut lzjb = LzjbEncoder::new();
 
         // Loop over test vectors.
@@ -839,7 +836,7 @@ mod tests {
 
                 // Output is the same size as input.
                 let mut output = vec![0; input.len()];
-                let ret = lzjb.compress(&mut output, &input, 0)?;
+                let ret = lzjb.compress(&mut output, &input, 0).unwrap();
 
                 // Set as input to next step.
                 input = output[0..ret].to_vec();
@@ -849,12 +846,10 @@ mod tests {
             assert_eq!(input.len(), compressed_data.len());
             assert_eq!(&input, compressed_data);
         }
-
-        Ok(())
     }
 
     #[test]
-    fn decompress_zeros() -> Result<(), DecompressionError> {
+    fn decompress_zeros() {
         let mut lzjb = LzjbDecoder {};
 
         // Loop over test vectors.
@@ -868,7 +863,7 @@ mod tests {
                 // Set the initial values to non-zero to check that data is
                 // actually written out.
                 let mut output = vec![33; *size];
-                lzjb.decompress(&mut output, &input, 0)?;
+                lzjb.decompress(&mut output, &input, 0).unwrap();
 
                 // Set as input to next step.
                 input = output;
@@ -877,7 +872,5 @@ mod tests {
             // Should be all zeroes.
             assert!(input.iter().all(|&b| b == 0));
         }
-
-        Ok(())
     }
 }
