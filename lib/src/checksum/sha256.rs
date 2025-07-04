@@ -197,49 +197,6 @@ impl Sha256Implementation {
         &ALL_SHA_256_IMPLEMENTATIONS
     }
 
-    /// Is the implementation supported.
-    pub fn is_supported(&self) -> bool {
-        match self {
-            Sha256Implementation::Generic => true,
-
-            #[cfg(feature = "sha256-bmi")]
-            Sha256Implementation::BMI => is_bmi1_supported() && is_bmi2_supported(),
-
-            #[cfg(feature = "sha256-ssse3")]
-            Sha256Implementation::SSSE3 => {
-                is_sse2_supported() && is_sse3_supported() && is_ssse3_supported()
-            }
-
-            #[cfg(feature = "sha256-avx")]
-            Sha256Implementation::AVX => is_avx_supported(),
-
-            #[cfg(feature = "sha256-avx2")]
-            Sha256Implementation::AVX2 => {
-                is_avx_supported()
-                    && is_avx2_supported()
-                    && is_bmi1_supported()
-                    && is_bmi2_supported()
-            }
-
-            #[cfg(feature = "sha256-sha")]
-            Sha256Implementation::SHA => {
-                is_sse2_supported()
-                    && is_sse3_supported()
-                    && is_ssse3_supported()
-                    && is_sha_supported()
-            }
-
-            #[cfg(any(
-                not(feature = "sha256-bmi"),
-                not(feature = "sha256-ssse3"),
-                not(feature = "sha256-avx"),
-                not(feature = "sha256-avx2"),
-                not(feature = "sha256-sha"),
-            ))]
-            _ => false,
-        }
-    }
-
     /// Get the string name of the implementation.
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -250,6 +207,49 @@ impl Sha256Implementation {
             Sha256Implementation::AVX2 => "avx2",
             Sha256Implementation::SHA => "sha",
         }
+    }
+
+    /** Get implementation context.
+     *
+     * # Errors
+     *
+     * Returns [`ChecksumError`] if the implementation is not supported.
+     */
+    fn get_implementation_ctx(&self) -> Result<&'static Sha256ImplementationCtx, ChecksumError> {
+        let ctx = match self {
+            Sha256Implementation::Generic => &SHA_256_IMPL_CTX_GENERIC,
+
+            #[cfg(feature = "sha256-bmi")]
+            Sha256Implementation::BMI => &SHA_256_IMPL_CTX_BMI,
+
+            #[cfg(feature = "sha256-ssse3")]
+            Sha256Implementation::SSSE3 => &SHA_256_IMPL_CTX_SSSE3,
+
+            #[cfg(feature = "sha256-avx")]
+            Sha256Implementation::AVX => &SHA_256_IMPL_CTX_AVX,
+
+            #[cfg(feature = "sha256-avx2")]
+            Sha256Implementation::AVX2 => &SHA_256_IMPL_CTX_AVX2,
+
+            #[cfg(feature = "sha256-sha")]
+            Sha256Implementation::SHA => &SHA_256_IMPL_CTX_SHA,
+
+            #[cfg(any(
+                not(feature = "sha256-bmi"),
+                not(feature = "sha256-ssse3"),
+                not(feature = "sha256-avx"),
+                not(feature = "sha256-avx2"),
+                not(feature = "sha256-sha"),
+            ))]
+            _ => {
+                return Err(ChecksumError::Unsupported {
+                    checksum: ChecksumType::Sha256,
+                    implementation: self.to_str(),
+                })
+            }
+        };
+
+        Ok(ctx)
     }
 }
 
@@ -262,11 +262,56 @@ impl Display for Sha256Implementation {
 /// Update state. Data length is a multiple of [`SHA_256_BLOCK_SIZE`].
 type Sha256UpdateBlock = fn(state: &mut [u32], data: &[u8]);
 
+/// Is the implementation supported by the CPU.
+type Sha256IsSupported = fn() -> bool;
+
 /// Sha256 implementation context.
 struct Sha256ImplementationCtx {
     /// Implementation of [`Sha256UpdateBlock`].
     update_blocks: Sha256UpdateBlock,
+
+    /// Is the implementation supported by the CPU.
+    is_supported: Sha256IsSupported,
 }
+
+const SHA_256_IMPL_CTX_GENERIC: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_generic,
+    is_supported: || true,
+};
+
+#[cfg(feature = "sha256-bmi")]
+const SHA_256_IMPL_CTX_BMI: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_bmi,
+    is_supported: || is_bmi1_supported() && is_bmi2_supported(),
+};
+
+#[cfg(feature = "sha256-ssse3")]
+const SHA_256_IMPL_CTX_SSSE3: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_ssse3,
+    is_supported: || is_sse2_supported() && is_sse3_supported() && is_ssse3_supported(),
+};
+
+#[cfg(feature = "sha256-avx")]
+const SHA_256_IMPL_CTX_AVX: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_avx,
+    is_supported: is_avx_supported,
+};
+
+#[cfg(feature = "sha256-avx2")]
+const SHA_256_IMPL_CTX_AVX2: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_avx2,
+    is_supported: || {
+        is_avx_supported() && is_avx2_supported() && is_bmi1_supported() && is_bmi2_supported()
+    },
+};
+
+#[cfg(feature = "sha256-sha")]
+const SHA_256_IMPL_CTX_SHA: Sha256ImplementationCtx = Sha256ImplementationCtx {
+    update_blocks: Sha256::update_blocks_sha,
+    is_supported: || {
+        is_sse2_supported() && is_sse3_supported() && is_ssse3_supported() && is_sha_supported()
+    },
+};
 
 /// [`crate::phys::ChecksumType::Sha256`] implementation.
 pub struct Sha256 {
@@ -283,61 +328,7 @@ pub struct Sha256 {
     state: [u32; SHA_256_U32_COUNT],
 
     /// Implementation context.
-    impl_ctx: Sha256ImplementationCtx,
-}
-
-impl Sha256ImplementationCtx {
-    fn new(implementation: Sha256Implementation) -> Result<Sha256ImplementationCtx, ChecksumError> {
-        if !implementation.is_supported() {
-            return Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Sha256,
-                implementation: implementation.to_str(),
-            });
-        }
-
-        match implementation {
-            Sha256Implementation::Generic => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_generic,
-            }),
-
-            #[cfg(feature = "sha256-bmi")]
-            Sha256Implementation::BMI => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_bmi,
-            }),
-
-            #[cfg(feature = "sha256-ssse3")]
-            Sha256Implementation::SSSE3 => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_ssse3,
-            }),
-
-            #[cfg(feature = "sha256-avx")]
-            Sha256Implementation::AVX => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_avx,
-            }),
-
-            #[cfg(feature = "sha256-avx2")]
-            Sha256Implementation::AVX2 => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_avx2,
-            }),
-
-            #[cfg(feature = "sha256-sha")]
-            Sha256Implementation::SHA => Ok(Sha256ImplementationCtx {
-                update_blocks: Sha256::update_blocks_sha,
-            }),
-
-            #[cfg(any(
-                not(feature = "sha256-bmi"),
-                not(feature = "sha256-ssse3"),
-                not(feature = "sha256-avx"),
-                not(feature = "sha256-avx2"),
-                not(feature = "sha256-sha"),
-            ))]
-            _ => Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Sha256,
-                implementation: implementation.to_str(),
-            }),
-        }
-    }
+    impl_ctx: &'static Sha256ImplementationCtx,
 }
 
 #[cfg(all(
@@ -696,12 +687,21 @@ impl Sha256 {
      * Returns [`ChecksumError`] if the implementation is not supported.
      */
     pub fn new(implementation: Sha256Implementation) -> Result<Sha256, ChecksumError> {
+        let ctx = implementation.get_implementation_ctx()?;
+
+        if !(ctx.is_supported)() {
+            return Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Sha256,
+                implementation: implementation.to_str(),
+            });
+        }
+
         Ok(Sha256 {
             bytes_processed: 0,
             buffer_fill: 0,
             buffer: [0; SHA_256_BLOCK_SIZE],
             state: SHA_256_CONSTANTS.h,
-            impl_ctx: Sha256ImplementationCtx::new(implementation)?,
+            impl_ctx: ctx,
         })
     }
 
@@ -2648,7 +2648,7 @@ mod tests {
         order: EndianOrder,
         vector: &[u8],
         checksums: &[(usize, [u64; 4])],
-    ) -> Result<(), ChecksumError> {
+    ) {
         // Test sizes.
         for (size, checksum) in checksums {
             let size = *size;
@@ -2656,64 +2656,56 @@ mod tests {
 
             if size <= vector.len() {
                 // Single update call.
-                assert_eq!(h.hash(&vector[0..size], order)?, checksum, "size {}", size);
+                assert_eq!(h.hash(&vector[0..size], order).unwrap(), checksum);
 
                 // Partial update.
-                h.reset(order)?;
+                h.reset(order).unwrap();
                 let mut offset = 0;
 
-                h.update(&vector[0..size / 3])?;
+                h.update(&vector[0..size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..offset + size / 3])?;
+                h.update(&vector[offset..offset + size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..size])?;
+                h.update(&vector[offset..size]).unwrap();
 
-                assert_eq!(h.finalize()?, checksum);
+                assert_eq!(h.finalize().unwrap(), checksum);
             } else {
                 // Multiple calls.
                 let mut todo = size;
-                h.reset(order)?;
+                h.reset(order).unwrap();
 
                 while todo > 0 {
                     let can_do = cmp::min(todo, vector.len());
-                    h.update(&vector[0..can_do])?;
+                    h.update(&vector[0..can_do]).unwrap();
                     todo -= can_do;
                 }
 
-                assert_eq!(h.finalize()?, checksum, "size {}", size);
+                assert_eq!(h.finalize().unwrap(), checksum);
             }
         }
-
-        Ok(())
     }
 
-    fn test_required_implementation(
-        implementation: Sha256Implementation,
-    ) -> Result<(), ChecksumError> {
-        let mut h = Sha256::new(implementation)?;
+    fn test_required_implementation(implementation: Sha256Implementation) {
+        let mut h = Sha256::new(implementation).unwrap();
 
         run_test_vector(
             &mut h,
             EndianOrder::Big,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_CHECKSUMS,
-        )?;
+        );
 
         run_test_vector(
             &mut h,
             EndianOrder::Little,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_CHECKSUMS,
-        )?;
-
-        Ok(())
+        );
     }
 
-    fn test_optional_implementation(
-        implementation: Sha256Implementation,
-    ) -> Result<(), ChecksumError> {
+    fn test_optional_implementation(implementation: Sha256Implementation) {
         let supported = match Sha256::new(implementation) {
             _e @ Err(ChecksumError::Unsupported {
                 checksum: _,
@@ -2722,39 +2714,53 @@ mod tests {
             _ => true,
         };
 
-        match supported {
-            false => Ok(()),
-            true => test_required_implementation(implementation),
+        if supported {
+            test_required_implementation(implementation);
         }
     }
 
     #[test]
-    fn sha256_generic() -> Result<(), ChecksumError> {
+    fn sha256_all() {
+        assert_eq!(Sha256Implementation::all().len(), 6);
+    }
+
+    #[test]
+    fn sha256_str() {
+        assert_eq!(format!("{}", Sha256Implementation::Generic), "generic");
+        assert_eq!(format!("{}", Sha256Implementation::BMI), "bmi");
+        assert_eq!(format!("{}", Sha256Implementation::SSSE3), "ssse3");
+        assert_eq!(format!("{}", Sha256Implementation::AVX), "avx");
+        assert_eq!(format!("{}", Sha256Implementation::AVX2), "avx2");
+        assert_eq!(format!("{}", Sha256Implementation::SHA), "sha");
+    }
+
+    #[test]
+    fn sha256_generic() {
         test_required_implementation(Sha256Implementation::Generic)
     }
 
     #[test]
-    fn sha256_bmi() -> Result<(), ChecksumError> {
+    fn sha256_bmi() {
         test_optional_implementation(Sha256Implementation::BMI)
     }
 
     #[test]
-    fn sha256_ssse3() -> Result<(), ChecksumError> {
+    fn sha256_ssse3() {
         test_optional_implementation(Sha256Implementation::SSSE3)
     }
 
     #[test]
-    fn sha256_avx() -> Result<(), ChecksumError> {
+    fn sha256_avx() {
         test_optional_implementation(Sha256Implementation::AVX)
     }
 
     #[test]
-    fn sha256_avx2() -> Result<(), ChecksumError> {
+    fn sha256_avx2() {
         test_optional_implementation(Sha256Implementation::AVX2)
     }
 
     #[test]
-    fn sha256_sha() -> Result<(), ChecksumError> {
+    fn sha256_sha() {
         test_optional_implementation(Sha256Implementation::SHA)
     }
 }
