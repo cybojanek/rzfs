@@ -152,25 +152,35 @@ fn benchmark_sha256(
 
     // Loop through each implementation.
     for implementation in Sha256Implementation::all() {
-        let mut checksum = Sha256::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
-        // Loop through native and swap order.
-        for order in [ENDIAN_ORDER_NATIVE] {
-            // Skip if not supported.
-            if !implementation.is_supported() {
-                print!(" {:>11}", "n/a");
+        let mut checksum = match Sha256::new(*implementation) {
+            Ok(v) => v,
+            Err(
+                _err @ ChecksumError::Unsupported {
+                    checksum: _,
+                    implementation: _,
+                },
+            ) => {
+                // Skip if not supported.
+                println!(" {:>11} {:>11}", "n/a", "n/a");
                 continue;
             }
+        };
 
-            let bytes_per_second =
-                benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
+        let bytes_per_second = benchmark_checksum(
+            &mut checksum,
+            ENDIAN_ORDER_NATIVE,
+            data,
+            iterations,
+            duration_us,
+        )?;
 
-            // Display units.
-            print!(" {:11}", bytes_per_second / display_units);
-        }
+        // Display units.
+        print!(" {:11}", bytes_per_second / display_units);
 
+        // There is no byte swap.
         print!(" {:>11}", "n/a");
 
         println!();
@@ -180,7 +190,7 @@ fn benchmark_sha256(
 }
 
 fn print_usage(arg0: &str) {
-    eprintln!("usage: {} fletcher2|fletcher4", arg0);
+    eprintln!("usage: {} fletcher2|fletcher4|sha256", arg0);
 }
 
 fn main() -> ExitCode {
