@@ -827,46 +827,44 @@ impl Fletcher4 {
 
         #[target_feature(enable = "sse2")]
         unsafe fn update_blocks_sse2_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each dual stream into an xmm register.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut a = arch::_mm_loadu_si128(state.add(0));
-                let mut b = arch::_mm_loadu_si128(state.add(1));
-                let mut c = arch::_mm_loadu_si128(state.add(2));
-                let mut d = arch::_mm_loadu_si128(state.add(3));
+            // Load each dual stream into an xmm register.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut a = arch::_mm_loadu_si128(state.add(0));
+            let mut b = arch::_mm_loadu_si128(state.add(1));
+            let mut c = arch::_mm_loadu_si128(state.add(2));
+            let mut d = arch::_mm_loadu_si128(state.add(3));
 
-                // Iterate two blocks at a time.
-                let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate two blocks at a time.
+            let mut iter = data.chunks_exact(2 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Decode values.
-                    let v = u32::from_ne_bytes(block[0..4].try_into().unwrap()).swap_bytes();
-                    let w = u32::from_ne_bytes(block[4..8].try_into().unwrap()).swap_bytes();
+            for block in iter.by_ref() {
+                // Decode values.
+                let v = u32::from_ne_bytes(block[0..4].try_into().unwrap()).swap_bytes();
+                let w = u32::from_ne_bytes(block[4..8].try_into().unwrap()).swap_bytes();
 
-                    // Load v and w into an xmm register.
-                    //
-                    // vw[0..32]   = v[0..32] == f[n]
-                    // vw[32..64]  = 0
-                    // vw[64..96]  = w[0..32] == f[n+1]
-                    // vw[96..128] = 0
-                    let block: &[u64; 2] = &[u64::from(v), u64::from(w)];
-                    let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+                // Load v and w into an xmm register.
+                //
+                // vw[0..32]   = v[0..32] == f[n]
+                // vw[32..64]  = 0
+                // vw[64..96]  = w[0..32] == f[n+1]
+                // vw[96..128] = 0
+                let block: &[u64; 2] = &[u64::from(v), u64::from(w)];
+                let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Add the values to the lanes.
-                    // a[0], a[1] += f[n], f[n+1]
-                    // ...
-                    a = arch::_mm_add_epi64(a, vw);
-                    b = arch::_mm_add_epi64(b, a);
-                    c = arch::_mm_add_epi64(c, b);
-                    d = arch::_mm_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), a);
-                arch::_mm_storeu_si128(state.add(1), b);
-                arch::_mm_storeu_si128(state.add(2), c);
-                arch::_mm_storeu_si128(state.add(3), d);
+                // Add the values to the lanes.
+                // a[0], a[1] += f[n], f[n+1]
+                // ...
+                a = arch::_mm_add_epi64(a, vw);
+                b = arch::_mm_add_epi64(b, a);
+                c = arch::_mm_add_epi64(c, b);
+                d = arch::_mm_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), a);
+            arch::_mm_storeu_si128(state.add(1), b);
+            arch::_mm_storeu_si128(state.add(2), c);
+            arch::_mm_storeu_si128(state.add(3), d);
         }
 
         unsafe { update_blocks_sse2_byteswap_impl(state, data) }
@@ -889,69 +887,67 @@ impl Fletcher4 {
 
         #[target_feature(enable = "sse2")]
         unsafe fn update_blocks_sse2_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each dual stream into an xmm register.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut a = arch::_mm_loadu_si128(state.add(0));
-                let mut b = arch::_mm_loadu_si128(state.add(1));
-                let mut c = arch::_mm_loadu_si128(state.add(2));
-                let mut d = arch::_mm_loadu_si128(state.add(3));
+            // Load each dual stream into an xmm register.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut a = arch::_mm_loadu_si128(state.add(0));
+            let mut b = arch::_mm_loadu_si128(state.add(1));
+            let mut c = arch::_mm_loadu_si128(state.add(2));
+            let mut d = arch::_mm_loadu_si128(state.add(3));
 
-                // Load zero into an xmm register.
-                let zero = arch::_mm_setzero_si128();
+            // Load zero into an xmm register.
+            let zero = arch::_mm_setzero_si128();
 
-                // Iterate four blocks at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate four blocks at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 128 bits into an xmm register.
-                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 128 bits into an xmm register.
+                let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Split the lower 64 bits of vwxy into two 32 bit values.
-                    // Zero extend them into two 64 bit values into vw.
-                    //
-                    // vw[0..32]   = vwxy[0..32]  == f[n]
-                    // vw[32..64]  = zero[0..32]  == 0
-                    // vw[64..96]  = vwxy[32..64] == f[n+1]
-                    // vw[96..128] = zero[32..64] == 0
-                    //
-                    // vw[0..64]   = f[n]
-                    // vw[64..128] = f[n+1]
-                    let vw = arch::_mm_unpacklo_epi32(vwxy, zero);
+                // Split the lower 64 bits of vwxy into two 32 bit values.
+                // Zero extend them into two 64 bit values into vw.
+                //
+                // vw[0..32]   = vwxy[0..32]  == f[n]
+                // vw[32..64]  = zero[0..32]  == 0
+                // vw[64..96]  = vwxy[32..64] == f[n+1]
+                // vw[96..128] = zero[32..64] == 0
+                //
+                // vw[0..64]   = f[n]
+                // vw[64..128] = f[n+1]
+                let vw = arch::_mm_unpacklo_epi32(vwxy, zero);
 
-                    // Do the same, but with the high bits.
-                    // xy[0..32]   = vwxy[64..96]  == f[n+2]
-                    // xy[32..64]  = zero[64..96]  == 0
-                    // xy[64..96]  = vwxy[96..128] == f[n+3]
-                    // xy[96..128] = zero[96..128] == 0
-                    //
-                    // xy[0..64]   = f[n+2]
-                    // xy[64..128] = f[n+3]
-                    let xy = arch::_mm_unpackhi_epi32(vwxy, zero);
+                // Do the same, but with the high bits.
+                // xy[0..32]   = vwxy[64..96]  == f[n+2]
+                // xy[32..64]  = zero[64..96]  == 0
+                // xy[64..96]  = vwxy[96..128] == f[n+3]
+                // xy[96..128] = zero[96..128] == 0
+                //
+                // xy[0..64]   = f[n+2]
+                // xy[64..128] = f[n+3]
+                let xy = arch::_mm_unpackhi_epi32(vwxy, zero);
 
-                    // Add the values to the lanes.
-                    // a[0], a[1] += f[n], f[n+1]
-                    // ...
-                    a = arch::_mm_add_epi64(a, vw);
-                    b = arch::_mm_add_epi64(b, a);
-                    c = arch::_mm_add_epi64(c, b);
-                    d = arch::_mm_add_epi64(d, c);
+                // Add the values to the lanes.
+                // a[0], a[1] += f[n], f[n+1]
+                // ...
+                a = arch::_mm_add_epi64(a, vw);
+                b = arch::_mm_add_epi64(b, a);
+                c = arch::_mm_add_epi64(c, b);
+                d = arch::_mm_add_epi64(d, c);
 
-                    // Add the values to the lanes.
-                    // a[0], a[1] += f[n+2], f[n+3]
-                    // ...
-                    a = arch::_mm_add_epi64(a, xy);
-                    b = arch::_mm_add_epi64(b, a);
-                    c = arch::_mm_add_epi64(c, b);
-                    d = arch::_mm_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), a);
-                arch::_mm_storeu_si128(state.add(1), b);
-                arch::_mm_storeu_si128(state.add(2), c);
-                arch::_mm_storeu_si128(state.add(3), d);
+                // Add the values to the lanes.
+                // a[0], a[1] += f[n+2], f[n+3]
+                // ...
+                a = arch::_mm_add_epi64(a, xy);
+                b = arch::_mm_add_epi64(b, a);
+                c = arch::_mm_add_epi64(c, b);
+                d = arch::_mm_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), a);
+            arch::_mm_storeu_si128(state.add(1), b);
+            arch::_mm_storeu_si128(state.add(2), c);
+            arch::_mm_storeu_si128(state.add(3), d);
         }
 
         unsafe { update_blocks_sse2_native_impl(state, data) }
@@ -976,90 +972,88 @@ impl Fletcher4 {
 
         #[target_feature(enable = "sse2,ssse3")]
         unsafe fn update_blocks_ssse3_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each dual stream into an xmm register.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut a = arch::_mm_loadu_si128(state.add(0));
-                let mut b = arch::_mm_loadu_si128(state.add(1));
-                let mut c = arch::_mm_loadu_si128(state.add(2));
-                let mut d = arch::_mm_loadu_si128(state.add(3));
+            // Load each dual stream into an xmm register.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut a = arch::_mm_loadu_si128(state.add(0));
+            let mut b = arch::_mm_loadu_si128(state.add(1));
+            let mut c = arch::_mm_loadu_si128(state.add(2));
+            let mut d = arch::_mm_loadu_si128(state.add(3));
 
-                // Load zero into an xmm register.
-                let zero = arch::_mm_setzero_si128();
+            // Load zero into an xmm register.
+            let zero = arch::_mm_setzero_si128();
 
-                // Set the shuffle value.
-                let shuffle = arch::_mm_set_epi8(
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm_set_epi8(
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+            );
 
-                // Iterate four blocks at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate four blocks at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 128 bits into an xmm register.
-                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 128 bits into an xmm register.
+                let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Swap the order of each 4-byte part of vwxy.
-                    // Each byte of shuffle indicates the byte index of vwxy.
-                    //
-                    // index = shuffle[0..8]
-                    // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
-                    // vwxy[0..8] = vwxy[24..32]
-                    //
-                    // index = shuffle[8..16]
-                    // vwxy[8..16] = vwxy[index * 8..(index + 1) * 8]
-                    // vwxy[8..16] = vwxy[16..24]
-                    // ...
-                    let vwxy = arch::_mm_shuffle_epi8(vwxy, shuffle);
+                // Swap the order of each 4-byte part of vwxy.
+                // Each byte of shuffle indicates the byte index of vwxy.
+                //
+                // index = shuffle[0..8]
+                // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
+                // vwxy[0..8] = vwxy[24..32]
+                //
+                // index = shuffle[8..16]
+                // vwxy[8..16] = vwxy[index * 8..(index + 1) * 8]
+                // vwxy[8..16] = vwxy[16..24]
+                // ...
+                let vwxy = arch::_mm_shuffle_epi8(vwxy, shuffle);
 
-                    // Split the lower 64 bits of vwxy into two 32 bit values.
-                    // Zero extend them into two 64 bit values into vw.
-                    //
-                    // vw[0..32]   = vwxy[0..32]  == f[n]
-                    // vw[32..64]  = zero[0..32]  == 0
-                    // vw[64..96]  = vwxy[32..64] == f[n+1]
-                    // vw[96..128] = zero[32..64] == 0
-                    //
-                    // vw[0..64]   = f[n]
-                    // vw[64..128] = f[n+1]
-                    let vw = arch::_mm_unpacklo_epi32(vwxy, zero);
+                // Split the lower 64 bits of vwxy into two 32 bit values.
+                // Zero extend them into two 64 bit values into vw.
+                //
+                // vw[0..32]   = vwxy[0..32]  == f[n]
+                // vw[32..64]  = zero[0..32]  == 0
+                // vw[64..96]  = vwxy[32..64] == f[n+1]
+                // vw[96..128] = zero[32..64] == 0
+                //
+                // vw[0..64]   = f[n]
+                // vw[64..128] = f[n+1]
+                let vw = arch::_mm_unpacklo_epi32(vwxy, zero);
 
-                    // Do the same, but with the high bits.
-                    // xy[0..32]   = vwxy[64..96]  == f[n+2]
-                    // xy[32..64]  = zero[64..96]  == 0
-                    // xy[64..96]  = vwxy[96..128] == f[n+3]
-                    // xy[96..128] = zero[96..128] == 0
-                    //
-                    // xy[0..64]   = f[n+2]
-                    // xy[64..128] = f[n+3]
-                    let xy = arch::_mm_unpackhi_epi32(vwxy, zero);
+                // Do the same, but with the high bits.
+                // xy[0..32]   = vwxy[64..96]  == f[n+2]
+                // xy[32..64]  = zero[64..96]  == 0
+                // xy[64..96]  = vwxy[96..128] == f[n+3]
+                // xy[96..128] = zero[96..128] == 0
+                //
+                // xy[0..64]   = f[n+2]
+                // xy[64..128] = f[n+3]
+                let xy = arch::_mm_unpackhi_epi32(vwxy, zero);
 
-                    // Add the values to the lanes.
-                    // a[0], a[1] += f[n], f[n+1]
-                    // ...
-                    a = arch::_mm_add_epi64(a, vw);
-                    b = arch::_mm_add_epi64(b, a);
-                    c = arch::_mm_add_epi64(c, b);
-                    d = arch::_mm_add_epi64(d, c);
+                // Add the values to the lanes.
+                // a[0], a[1] += f[n], f[n+1]
+                // ...
+                a = arch::_mm_add_epi64(a, vw);
+                b = arch::_mm_add_epi64(b, a);
+                c = arch::_mm_add_epi64(c, b);
+                d = arch::_mm_add_epi64(d, c);
 
-                    // Add the values to the lanes.
-                    // a[0], a[1] += f[n+2], f[n+3]
-                    // ...
-                    a = arch::_mm_add_epi64(a, xy);
-                    b = arch::_mm_add_epi64(b, a);
-                    c = arch::_mm_add_epi64(c, b);
-                    d = arch::_mm_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), a);
-                arch::_mm_storeu_si128(state.add(1), b);
-                arch::_mm_storeu_si128(state.add(2), c);
-                arch::_mm_storeu_si128(state.add(3), d);
+                // Add the values to the lanes.
+                // a[0], a[1] += f[n+2], f[n+3]
+                // ...
+                a = arch::_mm_add_epi64(a, xy);
+                b = arch::_mm_add_epi64(b, a);
+                c = arch::_mm_add_epi64(c, b);
+                d = arch::_mm_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), a);
+            arch::_mm_storeu_si128(state.add(1), b);
+            arch::_mm_storeu_si128(state.add(2), c);
+            arch::_mm_storeu_si128(state.add(3), d);
         }
 
         unsafe { update_blocks_ssse3_byteswap_impl(state, data) }
@@ -1082,77 +1076,75 @@ impl Fletcher4 {
 
         #[target_feature(enable = "avx,avx2")]
         unsafe fn update_blocks_avx2_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
-                let shuffle = arch::_mm256_set_epi8(
-                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f3
-                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f2
-                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
-                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm256_set_epi8(
+                -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f3
+                -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f2
+                -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
+                -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
+            );
 
-                // Load each quad stream into a ymm register.
-                let state = state.as_ptr() as *mut arch::__m256i;
-                let mut a = arch::_mm256_lddqu_si256(state.add(0));
-                let mut b = arch::_mm256_lddqu_si256(state.add(1));
-                let mut c = arch::_mm256_lddqu_si256(state.add(2));
-                let mut d = arch::_mm256_lddqu_si256(state.add(3));
+            // Load each quad stream into a ymm register.
+            let state = state.as_ptr() as *mut arch::__m256i;
+            let mut a = arch::_mm256_lddqu_si256(state.add(0));
+            let mut b = arch::_mm256_lddqu_si256(state.add(1));
+            let mut c = arch::_mm256_lddqu_si256(state.add(2));
+            let mut d = arch::_mm256_lddqu_si256(state.add(3));
 
-                // Iterate 128 bits at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate 128 bits at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // If you look at the intel intrinsics guide:
-                    // +-----------------------+---------------------+
-                    // | _mm_loadu_si128       | movdqu    xmm, m128 |
-                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
-                    // +-----------------------+---------------------+
-                    // If you check the assembly guide, VPMOVZXDQ also supports m128.
-                    // The compiler will optimize the calls, and instead just do:
-                    // +-----------------------+---------------------+
-                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
-                    // +-----------------------+---------------------+
+            for block in iter.by_ref() {
+                // If you look at the intel intrinsics guide:
+                // +-----------------------+---------------------+
+                // | _mm_loadu_si128       | movdqu    xmm, m128 |
+                // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
+                // +-----------------------+---------------------+
+                // If you check the assembly guide, VPMOVZXDQ also supports m128.
+                // The compiler will optimize the calls, and instead just do:
+                // +-----------------------+---------------------+
+                // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
+                // +-----------------------+---------------------+
 
-                    // Load 128 bits into an xmm register.
-                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+                // Load 128 bits into an xmm register.
+                let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
-                    let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
+                // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
+                let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
 
-                    // Swap the order of the lower 4-byte parts of vwxy.
-                    // Each byte of shuffle indicates the byte index of vwxy.
-                    // The shuffle is done on each 128 bit lane, so the indices
-                    // repeat for f0, f1 and f2, f3. Use -0x80 to keep the high
-                    // bytes zero.
-                    //
-                    // index = shuffle[0..8]
-                    // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
-                    // vwxy[0..8] = vwxy[24..32]
-                    // ...
-                    // vwxy[8..16]  = vwxy[16..24]
-                    // vwxy[16..24] = vwxy[8..16]
-                    // vwxy[24..32] = vwxy[0..8]
-                    // vwxy[32..40] = 0
-                    // vwxy[40..48] = 0
-                    // vwxy[48..56] = 0
-                    // vwxy[56..64] = 0
-                    // ...
-                    let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
+                // Swap the order of the lower 4-byte parts of vwxy.
+                // Each byte of shuffle indicates the byte index of vwxy.
+                // The shuffle is done on each 128 bit lane, so the indices
+                // repeat for f0, f1 and f2, f3. Use -0x80 to keep the high
+                // bytes zero.
+                //
+                // index = shuffle[0..8]
+                // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
+                // vwxy[0..8] = vwxy[24..32]
+                // ...
+                // vwxy[8..16]  = vwxy[16..24]
+                // vwxy[16..24] = vwxy[8..16]
+                // vwxy[24..32] = vwxy[0..8]
+                // vwxy[32..40] = 0
+                // vwxy[40..48] = 0
+                // vwxy[48..56] = 0
+                // vwxy[56..64] = 0
+                // ...
+                let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
 
-                    // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
-                    // ...
-                    a = arch::_mm256_add_epi64(a, vwxy);
-                    b = arch::_mm256_add_epi64(b, a);
-                    c = arch::_mm256_add_epi64(c, b);
-                    d = arch::_mm256_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm256_storeu_si256(state.add(0), a);
-                arch::_mm256_storeu_si256(state.add(1), b);
-                arch::_mm256_storeu_si256(state.add(2), c);
-                arch::_mm256_storeu_si256(state.add(3), d);
+                // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
+                // ...
+                a = arch::_mm256_add_epi64(a, vwxy);
+                b = arch::_mm256_add_epi64(b, a);
+                c = arch::_mm256_add_epi64(c, b);
+                d = arch::_mm256_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm256_storeu_si256(state.add(0), a);
+            arch::_mm256_storeu_si256(state.add(1), b);
+            arch::_mm256_storeu_si256(state.add(2), c);
+            arch::_mm256_storeu_si256(state.add(3), d);
         }
 
         unsafe { update_blocks_avx2_byteswap_impl(state, data) }
@@ -1174,49 +1166,47 @@ impl Fletcher4 {
 
         #[target_feature(enable = "avx,avx2")]
         unsafe fn update_blocks_avx2_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each quad stream into a ymm register.
-                let state = state.as_ptr() as *mut arch::__m256i;
-                let mut a = arch::_mm256_lddqu_si256(state.add(0));
-                let mut b = arch::_mm256_lddqu_si256(state.add(1));
-                let mut c = arch::_mm256_lddqu_si256(state.add(2));
-                let mut d = arch::_mm256_lddqu_si256(state.add(3));
+            // Load each quad stream into a ymm register.
+            let state = state.as_ptr() as *mut arch::__m256i;
+            let mut a = arch::_mm256_lddqu_si256(state.add(0));
+            let mut b = arch::_mm256_lddqu_si256(state.add(1));
+            let mut c = arch::_mm256_lddqu_si256(state.add(2));
+            let mut d = arch::_mm256_lddqu_si256(state.add(3));
 
-                // Iterate 128 bits at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate 128 bits at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // If you look at the intel intrinsics guide:
-                    // +-----------------------+---------------------+
-                    // | _mm_loadu_si128       | movdqu    xmm, m128 |
-                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
-                    // +-----------------------+---------------------+
-                    // If you check the assembly guide, VPMOVZXDQ also supports m128.
-                    // The compiler will optimize the calls, and instead just do:
-                    // +-----------------------+---------------------+
-                    // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
-                    // +-----------------------+---------------------+
+            for block in iter.by_ref() {
+                // If you look at the intel intrinsics guide:
+                // +-----------------------+---------------------+
+                // | _mm_loadu_si128       | movdqu    xmm, m128 |
+                // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, xmm  |
+                // +-----------------------+---------------------+
+                // If you check the assembly guide, VPMOVZXDQ also supports m128.
+                // The compiler will optimize the calls, and instead just do:
+                // +-----------------------+---------------------+
+                // | _mm256_cvtepu32_epi64 | vpmovzxdq ymm, m128 |
+                // +-----------------------+---------------------+
 
-                    // Load 128 bits into an xmm register.
-                    let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+                // Load 128 bits into an xmm register.
+                let vwxy = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
-                    let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
+                // Zero extend 128 bits of 4xu32 into 256 bits of 4xu64.
+                let vwxy = arch::_mm256_cvtepu32_epi64(vwxy);
 
-                    // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
-                    // ...
-                    a = arch::_mm256_add_epi64(a, vwxy);
-                    b = arch::_mm256_add_epi64(b, a);
-                    c = arch::_mm256_add_epi64(c, b);
-                    d = arch::_mm256_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm256_storeu_si256(state.add(0), a);
-                arch::_mm256_storeu_si256(state.add(1), b);
-                arch::_mm256_storeu_si256(state.add(2), c);
-                arch::_mm256_storeu_si256(state.add(3), d);
+                // a[0], a[1], a[2], a[3] += f[n], f[n+1], f[n+2], f[n+3]
+                // ...
+                a = arch::_mm256_add_epi64(a, vwxy);
+                b = arch::_mm256_add_epi64(b, a);
+                c = arch::_mm256_add_epi64(c, b);
+                d = arch::_mm256_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm256_storeu_si256(state.add(0), a);
+            arch::_mm256_storeu_si256(state.add(1), b);
+            arch::_mm256_storeu_si256(state.add(2), c);
+            arch::_mm256_storeu_si256(state.add(3), d);
         }
 
         unsafe { update_blocks_avx2_native_impl(state, data) }
@@ -1242,77 +1232,75 @@ impl Fletcher4 {
             //                  At the time of this writing, the compiler
             //                  optimizes this code, and uses vpshufb, which is
             //                  an AVX512BW instruction.
-            unsafe {
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut a = arch::_mm512_loadu_si512(state.add(0));
-                let mut b = arch::_mm512_loadu_si512(state.add(16));
-                let mut c = arch::_mm512_loadu_si512(state.add(32));
-                let mut d = arch::_mm512_loadu_si512(state.add(48));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut i32;
+            let mut a = arch::_mm512_loadu_si512(state.add(0));
+            let mut b = arch::_mm512_loadu_si512(state.add(16));
+            let mut c = arch::_mm512_loadu_si512(state.add(32));
+            let mut d = arch::_mm512_loadu_si512(state.add(48));
 
-                // Iterate 256 bits at a time.
-                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate 256 bits at a time.
+            let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
 
-                // Use broadcast for the first, and then shift for remaining,
-                // because shift is only one latency and one CPI.
-                // 8xu64 [0x000000ff, ... ]
-                // 8xu64 [0x0000ff00, ... ]
-                // 8xu64 [0x00ff0000, ... ]
-                // 8xu64 [0xff000000, ... ]
-                let mask0 = arch::_mm512_maskz_set1_epi64(0xff, 0xff);
-                let mask1 = arch::_mm512_slli_epi64(mask0, 8);
-                let mask2 = arch::_mm512_slli_epi64(mask0, 16);
-                let mask3 = arch::_mm512_slli_epi64(mask0, 24);
+            // Use broadcast for the first, and then shift for remaining,
+            // because shift is only one latency and one CPI.
+            // 8xu64 [0x000000ff, ... ]
+            // 8xu64 [0x0000ff00, ... ]
+            // 8xu64 [0x00ff0000, ... ]
+            // 8xu64 [0xff000000, ... ]
+            let mask0 = arch::_mm512_maskz_set1_epi64(0xff, 0xff);
+            let mask1 = arch::_mm512_slli_epi64(mask0, 8);
+            let mask2 = arch::_mm512_slli_epi64(mask0, 16);
+            let mask3 = arch::_mm512_slli_epi64(mask0, 24);
 
-                for block in iter.by_ref() {
-                    // If you look at the intel intrinsics guide:
-                    // +-----------------------+---------------------+
-                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
-                    // +-----------------------+---------------------+
-                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
-                    // The compiler will optimize the calls, and instead just do:
-                    // +-----------------------+---------------------+
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
-                    // +-----------------------+---------------------+
+            for block in iter.by_ref() {
+                // If you look at the intel intrinsics guide:
+                // +-----------------------+---------------------+
+                // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                // +-----------------------+---------------------+
+                // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                // The compiler will optimize the calls, and instead just do:
+                // +-----------------------+---------------------+
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                // +-----------------------+---------------------+
 
-                    // Load 256 bits into an ymm register.
-                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+                // Load 256 bits into an ymm register.
+                let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
 
-                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
-                    let values = arch::_mm512_cvtepu32_epi64(values);
+                // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                let values = arch::_mm512_cvtepu32_epi64(values);
 
-                    // Select one byte of each u64 value.
-                    let s0 = arch::_mm512_and_epi64(values, mask0);
-                    let s1 = arch::_mm512_and_epi64(values, mask1);
-                    let s2 = arch::_mm512_and_epi64(values, mask2);
-                    let s3 = arch::_mm512_and_epi64(values, mask3);
+                // Select one byte of each u64 value.
+                let s0 = arch::_mm512_and_epi64(values, mask0);
+                let s1 = arch::_mm512_and_epi64(values, mask1);
+                let s2 = arch::_mm512_and_epi64(values, mask2);
+                let s3 = arch::_mm512_and_epi64(values, mask3);
 
-                    // Shift the selected byte of each u64, to its swapped place.
-                    let s0 = arch::_mm512_slli_epi64(s0, 24);
-                    let s1 = arch::_mm512_slli_epi64(s1, 8);
-                    let s2 = arch::_mm512_srli_epi64(s2, 8);
-                    let s3 = arch::_mm512_srli_epi64(s3, 24);
+                // Shift the selected byte of each u64, to its swapped place.
+                let s0 = arch::_mm512_slli_epi64(s0, 24);
+                let s1 = arch::_mm512_slli_epi64(s1, 8);
+                let s2 = arch::_mm512_srli_epi64(s2, 8);
+                let s3 = arch::_mm512_srli_epi64(s3, 24);
 
-                    // Or the values to get the swapped u64 values.
-                    let s01 = arch::_mm512_or_epi64(s0, s1);
-                    let s23 = arch::_mm512_or_epi64(s2, s3);
-                    let values = arch::_mm512_or_epi64(s01, s23);
+                // Or the values to get the swapped u64 values.
+                let s01 = arch::_mm512_or_epi64(s0, s1);
+                let s23 = arch::_mm512_or_epi64(s2, s3);
+                let values = arch::_mm512_or_epi64(s01, s23);
 
-                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    a = arch::_mm512_add_epi64(a, values);
-                    b = arch::_mm512_add_epi64(b, a);
-                    c = arch::_mm512_add_epi64(c, b);
-                    d = arch::_mm512_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(16), b);
-                arch::_mm512_storeu_si512(state.add(32), c);
-                arch::_mm512_storeu_si512(state.add(48), d);
+                // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                // ...
+                a = arch::_mm512_add_epi64(a, values);
+                b = arch::_mm512_add_epi64(b, a);
+                c = arch::_mm512_add_epi64(c, b);
+                d = arch::_mm512_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), a);
+            arch::_mm512_storeu_si512(state.add(16), b);
+            arch::_mm512_storeu_si512(state.add(32), c);
+            arch::_mm512_storeu_si512(state.add(48), d);
         }
 
         unsafe { update_blocks_avx512f_byteswap_impl(state, data) }
@@ -1334,49 +1322,47 @@ impl Fletcher4 {
 
         #[target_feature(enable = "avx512f")]
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut a = arch::_mm512_loadu_si512(state.add(0));
-                let mut b = arch::_mm512_loadu_si512(state.add(16));
-                let mut c = arch::_mm512_loadu_si512(state.add(32));
-                let mut d = arch::_mm512_loadu_si512(state.add(48));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut i32;
+            let mut a = arch::_mm512_loadu_si512(state.add(0));
+            let mut b = arch::_mm512_loadu_si512(state.add(16));
+            let mut c = arch::_mm512_loadu_si512(state.add(32));
+            let mut d = arch::_mm512_loadu_si512(state.add(48));
 
-                // Iterate 256 bits at a time.
-                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate 256 bits at a time.
+            let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // If you look at the intel intrinsics guide:
-                    // +-----------------------+---------------------+
-                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
-                    // +-----------------------+---------------------+
-                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
-                    // The compiler will optimize the calls, and instead just do:
-                    // +-----------------------+---------------------+
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
-                    // +-----------------------+---------------------+
+            for block in iter.by_ref() {
+                // If you look at the intel intrinsics guide:
+                // +-----------------------+---------------------+
+                // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                // +-----------------------+---------------------+
+                // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                // The compiler will optimize the calls, and instead just do:
+                // +-----------------------+---------------------+
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                // +-----------------------+---------------------+
 
-                    // Load 256 bits into an ymm register.
-                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+                // Load 256 bits into an ymm register.
+                let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
 
-                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
-                    let values = arch::_mm512_cvtepu32_epi64(values);
+                // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                let values = arch::_mm512_cvtepu32_epi64(values);
 
-                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    a = arch::_mm512_add_epi64(a, values);
-                    b = arch::_mm512_add_epi64(b, a);
-                    c = arch::_mm512_add_epi64(c, b);
-                    d = arch::_mm512_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(16), b);
-                arch::_mm512_storeu_si512(state.add(32), c);
-                arch::_mm512_storeu_si512(state.add(48), d);
+                // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                // ...
+                a = arch::_mm512_add_epi64(a, values);
+                b = arch::_mm512_add_epi64(b, a);
+                c = arch::_mm512_add_epi64(c, b);
+                d = arch::_mm512_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), a);
+            arch::_mm512_storeu_si512(state.add(16), b);
+            arch::_mm512_storeu_si512(state.add(32), c);
+            arch::_mm512_storeu_si512(state.add(48), d);
         }
 
         unsafe { update_blocks_avx512f_native_impl(state, data) }
@@ -1399,81 +1385,79 @@ impl Fletcher4 {
 
         #[target_feature(enable = "avx512f,avx512bw")]
         unsafe fn update_blocks_avx512bw_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
-                let shuffle = arch::_mm512_set_epi8(
-                    -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f7
-                    -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f6
-                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f5
-                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f4
-                    -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f3
-                    -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f3
-                    -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
-                    -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm512_set_epi8(
+                -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f7
+                -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f6
+                -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f5
+                -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f4
+                -0x80, -0x80, -0x80, -0x80, 0x18, 0x19, 0x1a, 0x1b, // f3
+                -0x80, -0x80, -0x80, -0x80, 0x10, 0x11, 0x12, 0x13, // f3
+                -0x80, -0x80, -0x80, -0x80, 0x08, 0x09, 0x0a, 0x0b, // f1
+                -0x80, -0x80, -0x80, -0x80, 0x00, 0x01, 0x02, 0x03, // f0
+            );
 
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut a = arch::_mm512_loadu_si512(state.add(0));
-                let mut b = arch::_mm512_loadu_si512(state.add(16));
-                let mut c = arch::_mm512_loadu_si512(state.add(32));
-                let mut d = arch::_mm512_loadu_si512(state.add(48));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut i32;
+            let mut a = arch::_mm512_loadu_si512(state.add(0));
+            let mut b = arch::_mm512_loadu_si512(state.add(16));
+            let mut c = arch::_mm512_loadu_si512(state.add(32));
+            let mut d = arch::_mm512_loadu_si512(state.add(48));
 
-                // Iterate 256 bits at a time.
-                let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
+            // Iterate 256 bits at a time.
+            let mut iter = data.chunks_exact(8 * FLETCHER_4_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // If you look at the intel intrinsics guide:
-                    // +-----------------------+---------------------+
-                    // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
-                    // +-----------------------+---------------------+
-                    // If you check the assembly guide, VPMOVZXDQ also supports m256.
-                    // The compiler will optimize the calls, and instead just do:
-                    // +-----------------------+---------------------+
-                    // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
-                    // +-----------------------+---------------------+
+            for block in iter.by_ref() {
+                // If you look at the intel intrinsics guide:
+                // +-----------------------+---------------------+
+                // | _mm256_lddqu_si256    | vlddqu    ymm, m256 |
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, ymm  |
+                // +-----------------------+---------------------+
+                // If you check the assembly guide, VPMOVZXDQ also supports m256.
+                // The compiler will optimize the calls, and instead just do:
+                // +-----------------------+---------------------+
+                // | _mm512_cvtepu32_epi64 | vpmovzxdq zmm, m256 |
+                // +-----------------------+---------------------+
 
-                    // Load 256 bits into an ymm register.
-                    let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+                // Load 256 bits into an ymm register.
+                let values = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
 
-                    // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
-                    let values = arch::_mm512_cvtepu32_epi64(values);
+                // Zero extend 256 bits of 8xu32 into 512 bits of 8xu64.
+                let values = arch::_mm512_cvtepu32_epi64(values);
 
-                    // Swap the order of the lower 4-byte parts of values.
-                    // Each byte of shuffle indicates the byte index of values.
-                    // The shuffle is done on each 256 bit lane, so the indices
-                    // repeat for f0, f1, f2, f3 and f4, f5, f6, f7. Use
-                    // -0x80 to keep the high bytes zero.
-                    //
-                    // index = shuffle[0..8]
-                    // values[0..8] = values[index * 8..(index + 1) * 8]
-                    // values[0..8] = values[24..32]
-                    // ...
-                    // values[8..16]  = values[16..24]
-                    // values[16..24] = values[8..16]
-                    // values[24..32] = values[0..8]
-                    // values[32..40] = 0
-                    // values[40..48] = 0
-                    // values[48..56] = 0
-                    // values[56..64] = 0
-                    // ...
-                    let values = arch::_mm512_shuffle_epi8(values, shuffle);
+                // Swap the order of the lower 4-byte parts of values.
+                // Each byte of shuffle indicates the byte index of values.
+                // The shuffle is done on each 256 bit lane, so the indices
+                // repeat for f0, f1, f2, f3 and f4, f5, f6, f7. Use
+                // -0x80 to keep the high bytes zero.
+                //
+                // index = shuffle[0..8]
+                // values[0..8] = values[index * 8..(index + 1) * 8]
+                // values[0..8] = values[24..32]
+                // ...
+                // values[8..16]  = values[16..24]
+                // values[16..24] = values[8..16]
+                // values[24..32] = values[0..8]
+                // values[32..40] = 0
+                // values[40..48] = 0
+                // values[48..56] = 0
+                // values[56..64] = 0
+                // ...
+                let values = arch::_mm512_shuffle_epi8(values, shuffle);
 
-                    // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    a = arch::_mm512_add_epi64(a, values);
-                    b = arch::_mm512_add_epi64(b, a);
-                    c = arch::_mm512_add_epi64(c, b);
-                    d = arch::_mm512_add_epi64(d, c);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), a);
-                arch::_mm512_storeu_si512(state.add(16), b);
-                arch::_mm512_storeu_si512(state.add(32), c);
-                arch::_mm512_storeu_si512(state.add(48), d);
+                // a[0], a[1], ..., a[7] += f[n], f[n+1], ... , f[n+7]
+                // ...
+                a = arch::_mm512_add_epi64(a, values);
+                b = arch::_mm512_add_epi64(b, a);
+                c = arch::_mm512_add_epi64(c, b);
+                d = arch::_mm512_add_epi64(d, c);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), a);
+            arch::_mm512_storeu_si512(state.add(16), b);
+            arch::_mm512_storeu_si512(state.add(32), c);
+            arch::_mm512_storeu_si512(state.add(48), d);
         }
 
         unsafe { update_blocks_avx512bw_byteswap_impl(state, data) }
