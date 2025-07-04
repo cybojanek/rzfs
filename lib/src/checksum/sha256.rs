@@ -1212,117 +1212,115 @@ impl Sha256 {
 
         #[target_feature(enable = "sse2,sse3,ssse3")]
         unsafe fn update_blocks_ssse3_impl(state: &mut [u32], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
+            // Set the shuffle value.
+            #[cfg(target_endian = "little")]
+            let shuffle = arch::_mm_set_epi8(
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+            );
+
+            let mut w = WK16 { wk: [0; 64] };
+
+            // Initialize local variables.
+            let mut a = state[0];
+            let mut b = state[1];
+            let mut c = state[2];
+            let mut d = state[3];
+            let mut e = state[4];
+            let mut f = state[5];
+            let mut g = state[6];
+            let mut h = state[7];
+
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
+
+            for block in iter.by_ref() {
+                // Initialize w[0..16].
+                let block = block.as_ptr() as *const arch::__m128i;
+                let mut w0 = arch::_mm_lddqu_si128(block.add(0));
+                let mut w1 = arch::_mm_lddqu_si128(block.add(1));
+                let mut w2 = arch::_mm_lddqu_si128(block.add(2));
+                let mut w3 = arch::_mm_lddqu_si128(block.add(3));
+
                 #[cfg(target_endian = "little")]
-                let shuffle = arch::_mm_set_epi8(
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                );
-
-                let mut w = WK16 { wk: [0; 64] };
-
-                // Initialize local variables.
-                let mut a = state[0];
-                let mut b = state[1];
-                let mut c = state[2];
-                let mut d = state[3];
-                let mut e = state[4];
-                let mut f = state[5];
-                let mut g = state[6];
-                let mut h = state[7];
-
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
-
-                for block in iter.by_ref() {
-                    // Initialize w[0..16].
-                    let block = block.as_ptr() as *const arch::__m128i;
-                    let mut w0 = arch::_mm_lddqu_si128(block.add(0));
-                    let mut w1 = arch::_mm_lddqu_si128(block.add(1));
-                    let mut w2 = arch::_mm_lddqu_si128(block.add(2));
-                    let mut w3 = arch::_mm_lddqu_si128(block.add(3));
-
-                    #[cfg(target_endian = "little")]
-                    {
-                        w0 = arch::_mm_shuffle_epi8(w0, shuffle);
-                        w1 = arch::_mm_shuffle_epi8(w1, shuffle);
-                        w2 = arch::_mm_shuffle_epi8(w2, shuffle);
-                        w3 = arch::_mm_shuffle_epi8(w3, shuffle);
-                    }
-
-                    let mut round = 0;
-
-                    while round < 48 {
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, a, b, c, d, e, f, g, h, w0, w1, w2, w3
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, e, f, g, h, a, b, c, d, w1, w2, w3, w0
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, a, b, c, d, e, f, g, h, w2, w3, w0, w1
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, e, f, g, h, a, b, c, d, w3, w0, w1, w2
-                        );
-                    }
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w0);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
-                    round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
-                    round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
-                    round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w1);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
-                    round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
-                    round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
-                    round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w2);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
-                    round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
-                    round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
-                    round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w3);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
-                    round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
-                    round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
-                    round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
-
-                    // Prevent unused assignment warning due to loop unroll.
-                    let _ = round;
-
-                    a = a.wrapping_add(state[0]);
-                    b = b.wrapping_add(state[1]);
-                    c = c.wrapping_add(state[2]);
-                    d = d.wrapping_add(state[3]);
-                    e = e.wrapping_add(state[4]);
-                    f = f.wrapping_add(state[5]);
-                    g = g.wrapping_add(state[6]);
-                    h = h.wrapping_add(state[7]);
-
-                    state[0] = a;
-                    state[1] = b;
-                    state[2] = c;
-                    state[3] = d;
-                    state[4] = e;
-                    state[5] = f;
-                    state[6] = g;
-                    state[7] = h;
+                {
+                    w0 = arch::_mm_shuffle_epi8(w0, shuffle);
+                    w1 = arch::_mm_shuffle_epi8(w1, shuffle);
+                    w2 = arch::_mm_shuffle_epi8(w2, shuffle);
+                    w3 = arch::_mm_shuffle_epi8(w3, shuffle);
                 }
+
+                let mut round = 0;
+
+                while round < 48 {
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, a, b, c, d, e, f, g, h, w0, w1, w2, w3
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, e, f, g, h, a, b, c, d, w1, w2, w3, w0
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, a, b, c, d, e, f, g, h, w2, w3, w0, w1
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, e, f, g, h, a, b, c, d, w3, w0, w1, w2
+                    );
+                }
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w0);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
+                round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
+                round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
+                round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w1);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
+                round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
+                round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
+                round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w2);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
+                round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
+                round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
+                round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w3);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
+                round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
+                round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
+                round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
+
+                // Prevent unused assignment warning due to loop unroll.
+                let _ = round;
+
+                a = a.wrapping_add(state[0]);
+                b = b.wrapping_add(state[1]);
+                c = c.wrapping_add(state[2]);
+                d = d.wrapping_add(state[3]);
+                e = e.wrapping_add(state[4]);
+                f = f.wrapping_add(state[5]);
+                g = g.wrapping_add(state[6]);
+                h = h.wrapping_add(state[7]);
+
+                state[0] = a;
+                state[1] = b;
+                state[2] = c;
+                state[3] = d;
+                state[4] = e;
+                state[5] = f;
+                state[6] = g;
+                state[7] = h;
             }
         }
 
@@ -1361,117 +1359,115 @@ impl Sha256 {
 
         #[target_feature(enable = "avx")]
         unsafe fn update_blocks_avx_impl(state: &mut [u32], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
+            // Set the shuffle value.
+            #[cfg(target_endian = "little")]
+            let shuffle = arch::_mm_set_epi8(
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+            );
+
+            let mut w = WK16 { wk: [0; 64] };
+
+            // Initialize local variables.
+            let mut a = state[0];
+            let mut b = state[1];
+            let mut c = state[2];
+            let mut d = state[3];
+            let mut e = state[4];
+            let mut f = state[5];
+            let mut g = state[6];
+            let mut h = state[7];
+
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
+
+            for block in iter.by_ref() {
+                // Initialize w[0..16].
+                let block = block.as_ptr() as *const arch::__m128i;
+                let mut w0 = arch::_mm_lddqu_si128(block.add(0));
+                let mut w1 = arch::_mm_lddqu_si128(block.add(1));
+                let mut w2 = arch::_mm_lddqu_si128(block.add(2));
+                let mut w3 = arch::_mm_lddqu_si128(block.add(3));
+
                 #[cfg(target_endian = "little")]
-                let shuffle = arch::_mm_set_epi8(
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                );
-
-                let mut w = WK16 { wk: [0; 64] };
-
-                // Initialize local variables.
-                let mut a = state[0];
-                let mut b = state[1];
-                let mut c = state[2];
-                let mut d = state[3];
-                let mut e = state[4];
-                let mut f = state[5];
-                let mut g = state[6];
-                let mut h = state[7];
-
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
-
-                for block in iter.by_ref() {
-                    // Initialize w[0..16].
-                    let block = block.as_ptr() as *const arch::__m128i;
-                    let mut w0 = arch::_mm_lddqu_si128(block.add(0));
-                    let mut w1 = arch::_mm_lddqu_si128(block.add(1));
-                    let mut w2 = arch::_mm_lddqu_si128(block.add(2));
-                    let mut w3 = arch::_mm_lddqu_si128(block.add(3));
-
-                    #[cfg(target_endian = "little")]
-                    {
-                        w0 = arch::_mm_shuffle_epi8(w0, shuffle);
-                        w1 = arch::_mm_shuffle_epi8(w1, shuffle);
-                        w2 = arch::_mm_shuffle_epi8(w2, shuffle);
-                        w3 = arch::_mm_shuffle_epi8(w3, shuffle);
-                    }
-
-                    let mut round = 0;
-
-                    while round < 48 {
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, a, b, c, d, e, f, g, h, w0, w1, w2, w3
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, e, f, g, h, a, b, c, d, w1, w2, w3, w0
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, a, b, c, d, e, f, g, h, w2, w3, w0, w1
-                        );
-                        schedule_and_rounds_ssse3_or_avx!(
-                            round, w.wk, e, f, g, h, a, b, c, d, w3, w0, w1, w2
-                        );
-                    }
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w0);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
-                    round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
-                    round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
-                    round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w1);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
-                    round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
-                    round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
-                    round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w2);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
-                    round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
-                    round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
-                    round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
-
-                    let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
-                    let k = arch::_mm_add_epi32(k, w3);
-                    arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
-                    round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
-                    round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
-                    round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
-                    round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
-
-                    // Prevent unused assignment warning due to loop unroll.
-                    let _ = round;
-
-                    a = a.wrapping_add(state[0]);
-                    b = b.wrapping_add(state[1]);
-                    c = c.wrapping_add(state[2]);
-                    d = d.wrapping_add(state[3]);
-                    e = e.wrapping_add(state[4]);
-                    f = f.wrapping_add(state[5]);
-                    g = g.wrapping_add(state[6]);
-                    h = h.wrapping_add(state[7]);
-
-                    state[0] = a;
-                    state[1] = b;
-                    state[2] = c;
-                    state[3] = d;
-                    state[4] = e;
-                    state[5] = f;
-                    state[6] = g;
-                    state[7] = h;
+                {
+                    w0 = arch::_mm_shuffle_epi8(w0, shuffle);
+                    w1 = arch::_mm_shuffle_epi8(w1, shuffle);
+                    w2 = arch::_mm_shuffle_epi8(w2, shuffle);
+                    w3 = arch::_mm_shuffle_epi8(w3, shuffle);
                 }
+
+                let mut round = 0;
+
+                while round < 48 {
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, a, b, c, d, e, f, g, h, w0, w1, w2, w3
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, e, f, g, h, a, b, c, d, w1, w2, w3, w0
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, a, b, c, d, e, f, g, h, w2, w3, w0, w1
+                    );
+                    schedule_and_rounds_ssse3_or_avx!(
+                        round, w.wk, e, f, g, h, a, b, c, d, w3, w0, w1, w2
+                    );
+                }
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w0);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
+                round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
+                round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
+                round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w1);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
+                round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
+                round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
+                round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w2);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, a, b, c, d, e, f, g, h);
+                round_ssse3_or_avx!(round, w.wk, h, a, b, c, d, e, f, g);
+                round_ssse3_or_avx!(round, w.wk, g, h, a, b, c, d, e, f);
+                round_ssse3_or_avx!(round, w.wk, f, g, h, a, b, c, d, e);
+
+                let k = arch::_mm_load_si128(SHA_256_CONSTANTS.k[round..].as_ptr() as *const _);
+                let k = arch::_mm_add_epi32(k, w3);
+                arch::_mm_store_si128(w.wk[round..].as_mut_ptr() as *mut _, k);
+                round_ssse3_or_avx!(round, w.wk, e, f, g, h, a, b, c, d);
+                round_ssse3_or_avx!(round, w.wk, d, e, f, g, h, a, b, c);
+                round_ssse3_or_avx!(round, w.wk, c, d, e, f, g, h, a, b);
+                round_ssse3_or_avx!(round, w.wk, b, c, d, e, f, g, h, a);
+
+                // Prevent unused assignment warning due to loop unroll.
+                let _ = round;
+
+                a = a.wrapping_add(state[0]);
+                b = b.wrapping_add(state[1]);
+                c = c.wrapping_add(state[2]);
+                d = d.wrapping_add(state[3]);
+                e = e.wrapping_add(state[4]);
+                f = f.wrapping_add(state[5]);
+                g = g.wrapping_add(state[6]);
+                h = h.wrapping_add(state[7]);
+
+                state[0] = a;
+                state[1] = b;
+                state[2] = c;
+                state[3] = d;
+                state[4] = e;
+                state[5] = f;
+                state[6] = g;
+                state[7] = h;
             }
         }
 
@@ -1851,167 +1847,165 @@ impl Sha256 {
 
         #[target_feature(enable = "avx,avx2,bmi1,bmi2")]
         unsafe fn update_blocks_avx2_impl(state: &mut [u32], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
+            // Set the shuffle value.
+            #[cfg(target_endian = "little")]
+            let shuffle_256 = arch::_mm256_set_epi8(
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+            );
+
+            let mut w: [u32; 128] = [0; 128];
+
+            // Initialize local variables.
+            let mut a = state[0];
+            let mut b = state[1];
+            let mut c = state[2];
+            let mut d = state[3];
+            let mut e = state[4];
+            let mut f = state[5];
+            let mut g = state[6];
+            let mut h = state[7];
+
+            // Iterate two blocks at a time.
+            let mut iter = data.chunks_exact(2 * SHA_256_BLOCK_SIZE);
+
+            for block in iter.by_ref() {
+                // Initialize w[0..32].
+                let block = block.as_ptr() as *const arch::__m256i;
+                let mut w01 = arch::_mm256_lddqu_si256(block.add(0));
+                let mut w23 = arch::_mm256_lddqu_si256(block.add(1));
+                let mut w45 = arch::_mm256_lddqu_si256(block.add(2));
+                let mut w67 = arch::_mm256_lddqu_si256(block.add(3));
+
                 #[cfg(target_endian = "little")]
-                let shuffle_256 = arch::_mm256_set_epi8(
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                );
+                {
+                    w01 = arch::_mm256_shuffle_epi8(w01, shuffle_256);
+                    w23 = arch::_mm256_shuffle_epi8(w23, shuffle_256);
+                    w45 = arch::_mm256_shuffle_epi8(w45, shuffle_256);
+                    w67 = arch::_mm256_shuffle_epi8(w67, shuffle_256);
+                }
 
-                let mut w: [u32; 128] = [0; 128];
+                // Permute the lanes, so that the scheduling works correctly.
+                let w04 = arch::_mm256_permute2x128_si256(w01, w45, 0b00100000);
+                let w15 = arch::_mm256_permute2x128_si256(w01, w45, 0b00110001);
+                let w26 = arch::_mm256_permute2x128_si256(w23, w67, 0b00100000);
+                let w37 = arch::_mm256_permute2x128_si256(w23, w67, 0b00110001);
 
-                // Initialize local variables.
-                let mut a = state[0];
-                let mut b = state[1];
-                let mut c = state[2];
-                let mut d = state[3];
-                let mut e = state[4];
-                let mut f = state[5];
-                let mut g = state[6];
-                let mut h = state[7];
+                // Rename for clarity below.
+                let mut w0 = w04;
+                let mut w1 = w15;
+                let mut w2 = w26;
+                let mut w3 = w37;
 
-                // Iterate two blocks at a time.
-                let mut iter = data.chunks_exact(2 * SHA_256_BLOCK_SIZE);
+                // Use pointer, because blocks scheduled in w are blended.
+                let mut wp = w.as_mut_ptr();
+                let mut kp = SHA_256_CONSTANTS.k2.as_ptr() as *const arch::__m256i;
 
-                for block in iter.by_ref() {
-                    // Initialize w[0..32].
-                    let block = block.as_ptr() as *const arch::__m256i;
-                    let mut w01 = arch::_mm256_lddqu_si256(block.add(0));
-                    let mut w23 = arch::_mm256_lddqu_si256(block.add(1));
-                    let mut w45 = arch::_mm256_lddqu_si256(block.add(2));
-                    let mut w67 = arch::_mm256_lddqu_si256(block.add(3));
+                for _ in 0..3 {
+                    schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w0, w1, w2, w3);
+                    schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w1, w2, w3, w0);
+                    schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w2, w3, w0, w1);
+                    schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w3, w0, w1, w2);
+                }
 
-                    #[cfg(target_endian = "little")]
-                    {
-                        w01 = arch::_mm256_shuffle_epi8(w01, shuffle_256);
-                        w23 = arch::_mm256_shuffle_epi8(w23, shuffle_256);
-                        w45 = arch::_mm256_shuffle_epi8(w45, shuffle_256);
-                        w67 = arch::_mm256_shuffle_epi8(w67, shuffle_256);
-                    }
+                let k0 = arch::_mm256_load_si256(kp.add(0));
+                let k0 = arch::_mm256_add_epi32(k0, w0);
+                arch::_mm256_storeu_si256(wp as *mut _, k0);
+                round!(*wp.add(0), a, b, c, d, e, f, g, h);
+                round!(*wp.add(1), h, a, b, c, d, e, f, g);
+                round!(*wp.add(2), g, h, a, b, c, d, e, f);
+                round!(*wp.add(3), f, g, h, a, b, c, d, e);
+                wp = wp.add(8);
 
-                    // Permute the lanes, so that the scheduling works correctly.
-                    let w04 = arch::_mm256_permute2x128_si256(w01, w45, 0b00100000);
-                    let w15 = arch::_mm256_permute2x128_si256(w01, w45, 0b00110001);
-                    let w26 = arch::_mm256_permute2x128_si256(w23, w67, 0b00100000);
-                    let w37 = arch::_mm256_permute2x128_si256(w23, w67, 0b00110001);
+                let k1 = arch::_mm256_load_si256(kp.add(1));
+                let k1 = arch::_mm256_add_epi32(k1, w1);
+                arch::_mm256_storeu_si256(wp as *mut _, k1);
+                round!(*wp.add(0), e, f, g, h, a, b, c, d);
+                round!(*wp.add(1), d, e, f, g, h, a, b, c);
+                round!(*wp.add(2), c, d, e, f, g, h, a, b);
+                round!(*wp.add(3), b, c, d, e, f, g, h, a);
+                wp = wp.add(8);
 
-                    // Rename for clarity below.
-                    let mut w0 = w04;
-                    let mut w1 = w15;
-                    let mut w2 = w26;
-                    let mut w3 = w37;
+                let k2 = arch::_mm256_load_si256(kp.add(2));
+                let k2 = arch::_mm256_add_epi32(k2, w2);
+                arch::_mm256_storeu_si256(wp as *mut _, k2);
+                round!(*wp.add(0), a, b, c, d, e, f, g, h);
+                round!(*wp.add(1), h, a, b, c, d, e, f, g);
+                round!(*wp.add(2), g, h, a, b, c, d, e, f);
+                round!(*wp.add(3), f, g, h, a, b, c, d, e);
+                wp = wp.add(8);
 
-                    // Use pointer, because blocks scheduled in w are blended.
-                    let mut wp = w.as_mut_ptr();
-                    let mut kp = SHA_256_CONSTANTS.k2.as_ptr() as *const arch::__m256i;
+                let k3 = arch::_mm256_load_si256(kp.add(3));
+                let k3 = arch::_mm256_add_epi32(k3, w3);
+                arch::_mm256_storeu_si256(wp as *mut _, k3);
+                round!(*wp.add(0), e, f, g, h, a, b, c, d);
+                round!(*wp.add(1), d, e, f, g, h, a, b, c);
+                round!(*wp.add(2), c, d, e, f, g, h, a, b);
+                round!(*wp.add(3), b, c, d, e, f, g, h, a);
 
-                    for _ in 0..3 {
-                        schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w0, w1, w2, w3);
-                        schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w1, w2, w3, w0);
-                        schedule_and_rounds!(kp, wp, a, b, c, d, e, f, g, h, w2, w3, w0, w1);
-                        schedule_and_rounds!(kp, wp, e, f, g, h, a, b, c, d, w3, w0, w1, w2);
-                    }
+                a = a.wrapping_add(state[0]);
+                b = b.wrapping_add(state[1]);
+                c = c.wrapping_add(state[2]);
+                d = d.wrapping_add(state[3]);
+                e = e.wrapping_add(state[4]);
+                f = f.wrapping_add(state[5]);
+                g = g.wrapping_add(state[6]);
+                h = h.wrapping_add(state[7]);
 
-                    let k0 = arch::_mm256_load_si256(kp.add(0));
-                    let k0 = arch::_mm256_add_epi32(k0, w0);
-                    arch::_mm256_storeu_si256(wp as *mut _, k0);
+                state[0] = a;
+                state[1] = b;
+                state[2] = c;
+                state[3] = d;
+                state[4] = e;
+                state[5] = f;
+                state[6] = g;
+                state[7] = h;
+
+                // Skip w0 and jump to w4 from w04 result.
+                let mut wp = w.as_mut_ptr().add(4);
+
+                for _ in 0..8 {
                     round!(*wp.add(0), a, b, c, d, e, f, g, h);
                     round!(*wp.add(1), h, a, b, c, d, e, f, g);
                     round!(*wp.add(2), g, h, a, b, c, d, e, f);
                     round!(*wp.add(3), f, g, h, a, b, c, d, e);
                     wp = wp.add(8);
-
-                    let k1 = arch::_mm256_load_si256(kp.add(1));
-                    let k1 = arch::_mm256_add_epi32(k1, w1);
-                    arch::_mm256_storeu_si256(wp as *mut _, k1);
                     round!(*wp.add(0), e, f, g, h, a, b, c, d);
                     round!(*wp.add(1), d, e, f, g, h, a, b, c);
                     round!(*wp.add(2), c, d, e, f, g, h, a, b);
                     round!(*wp.add(3), b, c, d, e, f, g, h, a);
                     wp = wp.add(8);
-
-                    let k2 = arch::_mm256_load_si256(kp.add(2));
-                    let k2 = arch::_mm256_add_epi32(k2, w2);
-                    arch::_mm256_storeu_si256(wp as *mut _, k2);
-                    round!(*wp.add(0), a, b, c, d, e, f, g, h);
-                    round!(*wp.add(1), h, a, b, c, d, e, f, g);
-                    round!(*wp.add(2), g, h, a, b, c, d, e, f);
-                    round!(*wp.add(3), f, g, h, a, b, c, d, e);
-                    wp = wp.add(8);
-
-                    let k3 = arch::_mm256_load_si256(kp.add(3));
-                    let k3 = arch::_mm256_add_epi32(k3, w3);
-                    arch::_mm256_storeu_si256(wp as *mut _, k3);
-                    round!(*wp.add(0), e, f, g, h, a, b, c, d);
-                    round!(*wp.add(1), d, e, f, g, h, a, b, c);
-                    round!(*wp.add(2), c, d, e, f, g, h, a, b);
-                    round!(*wp.add(3), b, c, d, e, f, g, h, a);
-
-                    a = a.wrapping_add(state[0]);
-                    b = b.wrapping_add(state[1]);
-                    c = c.wrapping_add(state[2]);
-                    d = d.wrapping_add(state[3]);
-                    e = e.wrapping_add(state[4]);
-                    f = f.wrapping_add(state[5]);
-                    g = g.wrapping_add(state[6]);
-                    h = h.wrapping_add(state[7]);
-
-                    state[0] = a;
-                    state[1] = b;
-                    state[2] = c;
-                    state[3] = d;
-                    state[4] = e;
-                    state[5] = f;
-                    state[6] = g;
-                    state[7] = h;
-
-                    // Skip w0 and jump to w4 from w04 result.
-                    let mut wp = w.as_mut_ptr().add(4);
-
-                    for _ in 0..8 {
-                        round!(*wp.add(0), a, b, c, d, e, f, g, h);
-                        round!(*wp.add(1), h, a, b, c, d, e, f, g);
-                        round!(*wp.add(2), g, h, a, b, c, d, e, f);
-                        round!(*wp.add(3), f, g, h, a, b, c, d, e);
-                        wp = wp.add(8);
-                        round!(*wp.add(0), e, f, g, h, a, b, c, d);
-                        round!(*wp.add(1), d, e, f, g, h, a, b, c);
-                        round!(*wp.add(2), c, d, e, f, g, h, a, b);
-                        round!(*wp.add(3), b, c, d, e, f, g, h, a);
-                        wp = wp.add(8);
-                    }
-
-                    a = a.wrapping_add(state[0]);
-                    b = b.wrapping_add(state[1]);
-                    c = c.wrapping_add(state[2]);
-                    d = d.wrapping_add(state[3]);
-                    e = e.wrapping_add(state[4]);
-                    f = f.wrapping_add(state[5]);
-                    g = g.wrapping_add(state[6]);
-                    h = h.wrapping_add(state[7]);
-
-                    state[0] = a;
-                    state[1] = b;
-                    state[2] = c;
-                    state[3] = d;
-                    state[4] = e;
-                    state[5] = f;
-                    state[6] = g;
-                    state[7] = h;
                 }
 
-                // Gracefully handle the last block.
-                let remainder = iter.remainder();
-                if !remainder.is_empty() {
-                    Sha256::update_blocks_avx(state, remainder);
-                }
+                a = a.wrapping_add(state[0]);
+                b = b.wrapping_add(state[1]);
+                c = c.wrapping_add(state[2]);
+                d = d.wrapping_add(state[3]);
+                e = e.wrapping_add(state[4]);
+                f = f.wrapping_add(state[5]);
+                g = g.wrapping_add(state[6]);
+                h = h.wrapping_add(state[7]);
+
+                state[0] = a;
+                state[1] = b;
+                state[2] = c;
+                state[3] = d;
+                state[4] = e;
+                state[5] = f;
+                state[6] = g;
+                state[7] = h;
+            }
+
+            // Gracefully handle the last block.
+            let remainder = iter.remainder();
+            if !remainder.is_empty() {
+                Sha256::update_blocks_avx(state, remainder);
             }
         }
 
@@ -2052,298 +2046,295 @@ impl Sha256 {
 
         #[target_feature(enable = "sse2,sse3,ssse3,sha")]
         unsafe fn update_blocks_sha_impl(state: &mut [u32], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
+            // Set the shuffle value.
+            #[cfg(target_endian = "little")]
+            let shuffle = arch::_mm_set_epi8(
+                0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x08, 0x09, 0x0a, 0x0b, // f2
+                0x04, 0x05, 0x06, 0x07, // f1
+                0x00, 0x01, 0x02, 0x03, // f0
+            );
+
+            // Load the saved state.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut abcd = arch::_mm_lddqu_si128(state.add(0));
+            let mut efgh = arch::_mm_lddqu_si128(state.add(1));
+
+            // Mix the registers for usage with _mm_sha256rnds2_epu32.
+            let mut sha_abef = arch::_mm_unpacklo_epi64(abcd, efgh);
+            let mut sha_cdgh = arch::_mm_unpackhi_epi64(abcd, efgh);
+
+            // The register has values a, b, c, and, d, but they look like:
+            // abef[0..32] = a, abef[32..64] = b
+            // abef[64..96] = e, abef[96..128] = f
+            // However, they need to be re-arranged for _mm_sha256rnds2_epu32:
+            // abef[0..32] = f, abef[32..64] = e
+            // abef[64..96] = b, abef[96..128] = a
+            sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
+            sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
+
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
+
+            for block in iter.by_ref() {
+                let block = block.as_ptr() as *const arch::__m128i;
+
+                let mut abef = sha_abef;
+                let mut cdgh = sha_cdgh;
+
+                ////////////////////
+                // Rounds 0 to 4.
+
+                // Initialize w[0..4].
+                let mut w_00_04 = arch::_mm_lddqu_si128(block.add(0));
                 #[cfg(target_endian = "little")]
-                let shuffle = arch::_mm_set_epi8(
-                    0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x08, 0x09, 0x0a, 0x0b, // f2
-                    0x04, 0x05, 0x06, 0x07, // f1
-                    0x00, 0x01, 0x02, 0x03, // f0
-                );
-
-                // Load the saved state.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut abcd = arch::_mm_lddqu_si128(state.add(0));
-                let mut efgh = arch::_mm_lddqu_si128(state.add(1));
-
-                // Mix the registers for usage with _mm_sha256rnds2_epu32.
-                let mut sha_abef = arch::_mm_unpacklo_epi64(abcd, efgh);
-                let mut sha_cdgh = arch::_mm_unpackhi_epi64(abcd, efgh);
-
-                // The register has values a, b, c, and, d, but they look like:
-                // abef[0..32] = a, abef[32..64] = b
-                // abef[64..96] = e, abef[96..128] = f
-                // However, they need to be re-arranged for _mm_sha256rnds2_epu32:
-                // abef[0..32] = f, abef[32..64] = e
-                // abef[64..96] = b, abef[96..128] = a
-                sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
-                sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
-
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(SHA_256_BLOCK_SIZE);
-
-                for block in iter.by_ref() {
-                    let block = block.as_ptr() as *const arch::__m128i;
-
-                    let mut abef = sha_abef;
-                    let mut cdgh = sha_cdgh;
-
-                    ////////////////////
-                    // Rounds 0 to 4.
-
-                    // Initialize w[0..4].
-                    let mut w_00_04 = arch::_mm_lddqu_si128(block.add(0));
-                    #[cfg(target_endian = "little")]
-                    {
-                        w_00_04 = arch::_mm_shuffle_epi8(w_00_04, shuffle);
-                    }
-
-                    // Initialize k[0..4].
-                    let k_00_04 = arch::_mm_load_si128(SHA_256_K_M128I!().add(0));
-
-                    // Initialize wk[0..4].
-                    let wk_00_04 = arch::_mm_add_epi32(w_00_04, k_00_04);
-
-                    // Do two rounds using wk[0..2].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_00_04);
-
-                    // Move wk[2..4] down to the lower bits.
-                    let wk_00_04_b = arch::_mm_shuffle_epi32(wk_00_04, 0b00001110);
-
-                    // Do two rounds using m[2..4].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_00_04_b);
-
-                    ////////////////////
-                    // Rounds 4 to 8.
-
-                    // Initialize w[0..4].
-                    let mut w_04_08 = arch::_mm_lddqu_si128(block.add(1));
-                    #[cfg(target_endian = "little")]
-                    {
-                        w_04_08 = arch::_mm_shuffle_epi8(w_04_08, shuffle);
-                    }
-
-                    // Initialize k[4..8].
-                    let k_04_08 = arch::_mm_load_si128(SHA_256_K_M128I!().add(1));
-
-                    // Initialize wk[4..8].
-                    let wk_04_08 = arch::_mm_add_epi32(w_04_08, k_04_08);
-
-                    // Do two rounds using wk[4..6].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_04_08);
-
-                    // Move wk[6..8] down to the lower bits.
-                    let wk_04_08_b = arch::_mm_shuffle_epi32(wk_04_08, 0b00001110);
-
-                    // Do two rounds using wk[6..8].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_04_08_b);
-
-                    // Compute intermediate calculation for w16 to w20.
-                    // w[0..4] + w[4..] => x[0..4].
-                    let x_00_04 = arch::_mm_sha256msg1_epu32(w_00_04, w_04_08);
-
-                    ////////////////////
-                    // Rounds 8 to 12.
-
-                    // Initialize w[8..12].
-                    let mut w_08_12 = arch::_mm_lddqu_si128(block.add(2));
-                    #[cfg(target_endian = "little")]
-                    {
-                        w_08_12 = arch::_mm_shuffle_epi8(w_08_12, shuffle);
-                    }
-
-                    // Initialize k[8..12].
-                    let k_08_12 = arch::_mm_load_si128(SHA_256_K_M128I!().add(2));
-
-                    // Initialize wk[8..12].
-                    let wk_08_12 = arch::_mm_add_epi32(w_08_12, k_08_12);
-
-                    // Do two rounds using wk[8..10].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_08_12);
-
-                    // Move wk[10..12] down to the lower bits.
-                    let wk_08_12_b = arch::_mm_shuffle_epi32(wk_08_12, 0b00001110);
-
-                    // Do two rounds using wk[10..12].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_08_12_b);
-
-                    // Compute intermediate calculation for w20 to w24.
-                    // w[4..8] + w[8..] => x[4..8].
-                    let x_04_08 = arch::_mm_sha256msg1_epu32(w_04_08, w_08_12);
-
-                    ////////////////////
-                    // Rounds 12 to 16.
-
-                    // Initialize w[12..16].
-                    let mut w_12_16 = arch::_mm_lddqu_si128(block.add(3));
-                    #[cfg(target_endian = "little")]
-                    {
-                        w_12_16 = arch::_mm_shuffle_epi8(w_12_16, shuffle);
-                    }
-
-                    // Initialize k[12..16].
-                    let k_12_16 = arch::_mm_load_si128(SHA_256_K_M128I!().add(3));
-
-                    // Initialize wk[12..16].
-                    let wk_12_16 = arch::_mm_add_epi32(w_12_16, k_12_16);
-
-                    // Do two rounds using wk[12..14].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_12_16);
-
-                    // sha256msg2 requires that w[-7] be added by the caller.
-                    // For w_16_20, w_09_13 is needed.
-                    let w_09_13 = arch::_mm_alignr_epi8(w_12_16, w_08_12, 4);
-                    let z_00_04 = arch::_mm_add_epi32(x_00_04, w_09_13);
-                    let w_16_20 = arch::_mm_sha256msg2_epu32(z_00_04, w_12_16);
-
-                    // Move wk[14..16] down to the lower bits.
-                    let wk_12_16_b = arch::_mm_shuffle_epi32(wk_12_16, 0b00001110);
-
-                    // Do two rounds using wk[14..16].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_12_16_b);
-
-                    // Compute intermediate calculation for w24 to w28.
-                    // w[8..12] + w[12..] => x[8..12].
-                    let x_08_12 = arch::_mm_sha256msg1_epu32(w_08_12, w_12_16);
-
-                    ////////////////////
-                    // Rounds 16 to 52.
-                    let mut rounds = 16;
-
-                    // NOTE: w_12_16 already defined as mutable above.
-                    // let mut w_12_16 = w_12_16;
-                    let mut w_16_20 = w_16_20;
-                    let mut x_04_08 = x_04_08;
-                    let mut x_08_12 = x_08_12;
-
-                    while rounds < 52 {
-                        // Initialize k[16..20].
-                        let k_16_20 = arch::_mm_lddqu_si128(
-                            SHA_256_CONSTANTS.k[rounds..].as_ptr() as *const _
-                        );
-
-                        // Initialize wk[16..20].
-                        let wk_16_20 = arch::_mm_add_epi32(w_16_20, k_16_20);
-
-                        // Do two rounds using wk[16..18].
-                        cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_16_20);
-
-                        // sha256msg2 requires that w[-7] be added by the caller.
-                        // For w_20_24, w_13_17 is needed.
-                        let w_13_17 = arch::_mm_alignr_epi8(w_16_20, w_12_16, 4);
-                        let z_04_08 = arch::_mm_add_epi32(x_04_08, w_13_17);
-                        let w_20_24 = arch::_mm_sha256msg2_epu32(z_04_08, w_16_20);
-
-                        // Move wk[18..20] down to the lower bits.
-                        let wk_16_20_b = arch::_mm_shuffle_epi32(wk_16_20, 0b00001110);
-
-                        // Do two rounds using wk[18..20].
-                        abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_16_20_b);
-
-                        // Compute intermediate calculation for w24 to w28.
-                        // w[12..16] + w[17..] => x[12..16].
-                        let x_12_16 = arch::_mm_sha256msg1_epu32(w_12_16, w_16_20);
-
-                        rounds += 4;
-
-                        // Advance variables.
-                        w_12_16 = w_16_20;
-                        w_16_20 = w_20_24;
-                        x_04_08 = x_08_12;
-                        x_08_12 = x_12_16;
-                    }
-
-                    ////////////////////
-                    // Rename for clarity.
-                    let w_48_52 = w_12_16;
-                    let w_52_56 = w_16_20;
-                    let x_40_44 = x_04_08;
-                    let x_44_48 = x_08_12;
-
-                    ////////////////////
-                    // Rounds 52 to 56.
-
-                    // Initialize k[52..56].
-                    let k_52_56 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(13));
-
-                    // Initialize wk[52..56].
-                    let wk_52_56 = arch::_mm_add_epi32(w_52_56, k_52_56);
-
-                    // Do two rounds using wk[52..54].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_52_56);
-
-                    // sha256msg2 requires that w[-7] be added by the caller.
-                    // For w_56_60, w_49_53 is needed.
-                    let w_49_53 = arch::_mm_alignr_epi8(w_52_56, w_48_52, 4);
-                    let z_40_44 = arch::_mm_add_epi32(x_40_44, w_49_53);
-                    let w_56_60 = arch::_mm_sha256msg2_epu32(z_40_44, w_52_56);
-
-                    // Move wk[54..56] down to the lower bits.
-                    let wk_52_56_b = arch::_mm_shuffle_epi32(wk_52_56, 0b00001110);
-
-                    // Do two rounds using wk[54..56].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_52_56_b);
-
-                    ////////////////////
-                    // Rounds 56 to 60.
-
-                    // Initialize k[56..60].
-                    let k_56_60 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(14));
-
-                    // Initialize wk[56..60].
-                    let wk_56_60 = arch::_mm_add_epi32(w_56_60, k_56_60);
-
-                    // Do two rounds using wk[56..58].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_56_60);
-
-                    // sha256msg2 requires that w[-7] be added by the caller.
-                    // For w_60_64, w_53_61 is needed.
-                    let w_53_57 = arch::_mm_alignr_epi8(w_56_60, w_52_56, 4);
-                    let z_44_48 = arch::_mm_add_epi32(x_44_48, w_53_57);
-                    let w_60_64 = arch::_mm_sha256msg2_epu32(z_44_48, w_56_60);
-
-                    // Move wk[58..60] down to the lower bits.
-                    let wk_56_60_b = arch::_mm_shuffle_epi32(wk_56_60, 0b00001110);
-
-                    // Do two rounds using wk[58..60].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_56_60_b);
-
-                    ////////////////////
-                    // Rounds 60 to 64.
-
-                    // Initialize k[60..64].
-                    let k_60_64 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(15));
-
-                    // Initialize wk[60..64].
-                    let wk_60_64 = arch::_mm_add_epi32(w_60_64, k_60_64);
-
-                    // Do two rounds using wk[60..62].
-                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_60_64);
-
-                    // Move wk[62..64] down to the lower bits.
-                    let wk_60_64_b = arch::_mm_shuffle_epi32(wk_60_64, 0b00001110);
-
-                    // Do two rounds using wk[62..64].
-                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_60_64_b);
-
-                    ////////////////////
-                    // Done.
-                    sha_abef = arch::_mm_add_epi32(sha_abef, abef);
-                    sha_cdgh = arch::_mm_add_epi32(sha_cdgh, cdgh);
+                {
+                    w_00_04 = arch::_mm_shuffle_epi8(w_00_04, shuffle);
                 }
 
-                sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
-                sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
+                // Initialize k[0..4].
+                let k_00_04 = arch::_mm_load_si128(SHA_256_K_M128I!().add(0));
 
-                // Unpack the registers for the state.
-                abcd = arch::_mm_unpacklo_epi64(sha_abef, sha_cdgh);
-                efgh = arch::_mm_unpackhi_epi64(sha_abef, sha_cdgh);
+                // Initialize wk[0..4].
+                let wk_00_04 = arch::_mm_add_epi32(w_00_04, k_00_04);
 
-                // Save the state.
-                arch::_mm_storeu_si128(state.add(0), abcd);
-                arch::_mm_storeu_si128(state.add(1), efgh);
+                // Do two rounds using wk[0..2].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_00_04);
+
+                // Move wk[2..4] down to the lower bits.
+                let wk_00_04_b = arch::_mm_shuffle_epi32(wk_00_04, 0b00001110);
+
+                // Do two rounds using m[2..4].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_00_04_b);
+
+                ////////////////////
+                // Rounds 4 to 8.
+
+                // Initialize w[0..4].
+                let mut w_04_08 = arch::_mm_lddqu_si128(block.add(1));
+                #[cfg(target_endian = "little")]
+                {
+                    w_04_08 = arch::_mm_shuffle_epi8(w_04_08, shuffle);
+                }
+
+                // Initialize k[4..8].
+                let k_04_08 = arch::_mm_load_si128(SHA_256_K_M128I!().add(1));
+
+                // Initialize wk[4..8].
+                let wk_04_08 = arch::_mm_add_epi32(w_04_08, k_04_08);
+
+                // Do two rounds using wk[4..6].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_04_08);
+
+                // Move wk[6..8] down to the lower bits.
+                let wk_04_08_b = arch::_mm_shuffle_epi32(wk_04_08, 0b00001110);
+
+                // Do two rounds using wk[6..8].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_04_08_b);
+
+                // Compute intermediate calculation for w16 to w20.
+                // w[0..4] + w[4..] => x[0..4].
+                let x_00_04 = arch::_mm_sha256msg1_epu32(w_00_04, w_04_08);
+
+                ////////////////////
+                // Rounds 8 to 12.
+
+                // Initialize w[8..12].
+                let mut w_08_12 = arch::_mm_lddqu_si128(block.add(2));
+                #[cfg(target_endian = "little")]
+                {
+                    w_08_12 = arch::_mm_shuffle_epi8(w_08_12, shuffle);
+                }
+
+                // Initialize k[8..12].
+                let k_08_12 = arch::_mm_load_si128(SHA_256_K_M128I!().add(2));
+
+                // Initialize wk[8..12].
+                let wk_08_12 = arch::_mm_add_epi32(w_08_12, k_08_12);
+
+                // Do two rounds using wk[8..10].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_08_12);
+
+                // Move wk[10..12] down to the lower bits.
+                let wk_08_12_b = arch::_mm_shuffle_epi32(wk_08_12, 0b00001110);
+
+                // Do two rounds using wk[10..12].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_08_12_b);
+
+                // Compute intermediate calculation for w20 to w24.
+                // w[4..8] + w[8..] => x[4..8].
+                let x_04_08 = arch::_mm_sha256msg1_epu32(w_04_08, w_08_12);
+
+                ////////////////////
+                // Rounds 12 to 16.
+
+                // Initialize w[12..16].
+                let mut w_12_16 = arch::_mm_lddqu_si128(block.add(3));
+                #[cfg(target_endian = "little")]
+                {
+                    w_12_16 = arch::_mm_shuffle_epi8(w_12_16, shuffle);
+                }
+
+                // Initialize k[12..16].
+                let k_12_16 = arch::_mm_load_si128(SHA_256_K_M128I!().add(3));
+
+                // Initialize wk[12..16].
+                let wk_12_16 = arch::_mm_add_epi32(w_12_16, k_12_16);
+
+                // Do two rounds using wk[12..14].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_12_16);
+
+                // sha256msg2 requires that w[-7] be added by the caller.
+                // For w_16_20, w_09_13 is needed.
+                let w_09_13 = arch::_mm_alignr_epi8(w_12_16, w_08_12, 4);
+                let z_00_04 = arch::_mm_add_epi32(x_00_04, w_09_13);
+                let w_16_20 = arch::_mm_sha256msg2_epu32(z_00_04, w_12_16);
+
+                // Move wk[14..16] down to the lower bits.
+                let wk_12_16_b = arch::_mm_shuffle_epi32(wk_12_16, 0b00001110);
+
+                // Do two rounds using wk[14..16].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_12_16_b);
+
+                // Compute intermediate calculation for w24 to w28.
+                // w[8..12] + w[12..] => x[8..12].
+                let x_08_12 = arch::_mm_sha256msg1_epu32(w_08_12, w_12_16);
+
+                ////////////////////
+                // Rounds 16 to 52.
+                let mut rounds = 16;
+
+                // NOTE: w_12_16 already defined as mutable above.
+                // let mut w_12_16 = w_12_16;
+                let mut w_16_20 = w_16_20;
+                let mut x_04_08 = x_04_08;
+                let mut x_08_12 = x_08_12;
+
+                while rounds < 52 {
+                    // Initialize k[16..20].
+                    let k_16_20 =
+                        arch::_mm_lddqu_si128(SHA_256_CONSTANTS.k[rounds..].as_ptr() as *const _);
+
+                    // Initialize wk[16..20].
+                    let wk_16_20 = arch::_mm_add_epi32(w_16_20, k_16_20);
+
+                    // Do two rounds using wk[16..18].
+                    cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_16_20);
+
+                    // sha256msg2 requires that w[-7] be added by the caller.
+                    // For w_20_24, w_13_17 is needed.
+                    let w_13_17 = arch::_mm_alignr_epi8(w_16_20, w_12_16, 4);
+                    let z_04_08 = arch::_mm_add_epi32(x_04_08, w_13_17);
+                    let w_20_24 = arch::_mm_sha256msg2_epu32(z_04_08, w_16_20);
+
+                    // Move wk[18..20] down to the lower bits.
+                    let wk_16_20_b = arch::_mm_shuffle_epi32(wk_16_20, 0b00001110);
+
+                    // Do two rounds using wk[18..20].
+                    abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_16_20_b);
+
+                    // Compute intermediate calculation for w24 to w28.
+                    // w[12..16] + w[17..] => x[12..16].
+                    let x_12_16 = arch::_mm_sha256msg1_epu32(w_12_16, w_16_20);
+
+                    rounds += 4;
+
+                    // Advance variables.
+                    w_12_16 = w_16_20;
+                    w_16_20 = w_20_24;
+                    x_04_08 = x_08_12;
+                    x_08_12 = x_12_16;
+                }
+
+                ////////////////////
+                // Rename for clarity.
+                let w_48_52 = w_12_16;
+                let w_52_56 = w_16_20;
+                let x_40_44 = x_04_08;
+                let x_44_48 = x_08_12;
+
+                ////////////////////
+                // Rounds 52 to 56.
+
+                // Initialize k[52..56].
+                let k_52_56 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(13));
+
+                // Initialize wk[52..56].
+                let wk_52_56 = arch::_mm_add_epi32(w_52_56, k_52_56);
+
+                // Do two rounds using wk[52..54].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_52_56);
+
+                // sha256msg2 requires that w[-7] be added by the caller.
+                // For w_56_60, w_49_53 is needed.
+                let w_49_53 = arch::_mm_alignr_epi8(w_52_56, w_48_52, 4);
+                let z_40_44 = arch::_mm_add_epi32(x_40_44, w_49_53);
+                let w_56_60 = arch::_mm_sha256msg2_epu32(z_40_44, w_52_56);
+
+                // Move wk[54..56] down to the lower bits.
+                let wk_52_56_b = arch::_mm_shuffle_epi32(wk_52_56, 0b00001110);
+
+                // Do two rounds using wk[54..56].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_52_56_b);
+
+                ////////////////////
+                // Rounds 56 to 60.
+
+                // Initialize k[56..60].
+                let k_56_60 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(14));
+
+                // Initialize wk[56..60].
+                let wk_56_60 = arch::_mm_add_epi32(w_56_60, k_56_60);
+
+                // Do two rounds using wk[56..58].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_56_60);
+
+                // sha256msg2 requires that w[-7] be added by the caller.
+                // For w_60_64, w_53_61 is needed.
+                let w_53_57 = arch::_mm_alignr_epi8(w_56_60, w_52_56, 4);
+                let z_44_48 = arch::_mm_add_epi32(x_44_48, w_53_57);
+                let w_60_64 = arch::_mm_sha256msg2_epu32(z_44_48, w_56_60);
+
+                // Move wk[58..60] down to the lower bits.
+                let wk_56_60_b = arch::_mm_shuffle_epi32(wk_56_60, 0b00001110);
+
+                // Do two rounds using wk[58..60].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_56_60_b);
+
+                ////////////////////
+                // Rounds 60 to 64.
+
+                // Initialize k[60..64].
+                let k_60_64 = arch::_mm_lddqu_si128(SHA_256_K_M128I!().add(15));
+
+                // Initialize wk[60..64].
+                let wk_60_64 = arch::_mm_add_epi32(w_60_64, k_60_64);
+
+                // Do two rounds using wk[60..62].
+                cdgh = arch::_mm_sha256rnds2_epu32(cdgh, abef, wk_60_64);
+
+                // Move wk[62..64] down to the lower bits.
+                let wk_60_64_b = arch::_mm_shuffle_epi32(wk_60_64, 0b00001110);
+
+                // Do two rounds using wk[62..64].
+                abef = arch::_mm_sha256rnds2_epu32(abef, cdgh, wk_60_64_b);
+
+                ////////////////////
+                // Done.
+                sha_abef = arch::_mm_add_epi32(sha_abef, abef);
+                sha_cdgh = arch::_mm_add_epi32(sha_cdgh, cdgh);
             }
+
+            sha_abef = arch::_mm_shuffle_epi32(sha_abef, 0b00011011);
+            sha_cdgh = arch::_mm_shuffle_epi32(sha_cdgh, 0b00011011);
+
+            // Unpack the registers for the state.
+            abcd = arch::_mm_unpacklo_epi64(sha_abef, sha_cdgh);
+            efgh = arch::_mm_unpackhi_epi64(sha_abef, sha_cdgh);
+
+            // Save the state.
+            arch::_mm_storeu_si128(state.add(0), abcd);
+            arch::_mm_storeu_si128(state.add(1), efgh);
         }
 
         unsafe { update_blocks_sha_impl(state, data) }
