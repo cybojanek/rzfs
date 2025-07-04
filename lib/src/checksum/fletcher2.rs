@@ -1072,7 +1072,7 @@ impl Fletcher2 {
             //                  optimizes this code, and uses vpshufb, which is
             //                  an AVX512BW instruction.
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut ab = arch::_mm512_loadu_si512(state.add(0));
             let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
@@ -1138,7 +1138,7 @@ impl Fletcher2 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), ab);
-            arch::_mm512_storeu_si512(state.add(16), cd);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512f_byteswap_impl(state, data) }
@@ -1159,7 +1159,7 @@ impl Fletcher2 {
         #[target_feature(enable = "avx512f")]
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut ab = arch::_mm512_loadu_si512(state.add(0));
             let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
@@ -1178,7 +1178,7 @@ impl Fletcher2 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), ab);
-            arch::_mm512_storeu_si512(state.add(16), cd);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512f_native_impl(state, data) }
@@ -1212,7 +1212,7 @@ impl Fletcher2 {
             );
 
             // Load each octo stream into a zmm register.
-            let state = state.as_ptr() as *mut i32;
+            let state = state.as_ptr() as *mut arch::__m512i;
             let mut ab = arch::_mm512_loadu_si512(state.add(0));
             let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
@@ -1246,7 +1246,7 @@ impl Fletcher2 {
 
             // Save state.
             arch::_mm512_storeu_si512(state.add(0), ab);
-            arch::_mm512_storeu_si512(state.add(16), cd);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512bw_byteswap_impl(state, data) }
