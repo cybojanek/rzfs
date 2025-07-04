@@ -64,18 +64,25 @@ fn benchmark_fletcher2(
 
     // Loop through each implementation.
     for implementation in Fletcher2Implementation::all() {
-        let mut checksum = Fletcher2::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
-        // Loop through native and swap order.
-        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
-            // Skip if not supported.
-            if !implementation.is_supported() {
-                print!(" {:>11}", "n/a");
+        let mut checksum = match Fletcher2::new(*implementation) {
+            Ok(v) => v,
+            Err(
+                _err @ ChecksumError::Unsupported {
+                    checksum: _,
+                    implementation: _,
+                },
+            ) => {
+                // Skip if not supported.
+                println!(" {:>11} {:>11}", "n/a", "n/a");
                 continue;
             }
+        };
 
+        // Loop through native and swap order.
+        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
             let bytes_per_second =
                 benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
 
@@ -101,18 +108,25 @@ fn benchmark_fletcher4(
 
     // Loop through each implementation.
     for implementation in Fletcher4Implementation::all() {
-        let mut checksum = Fletcher4::new(*implementation)?;
         let s = format!("{}", implementation);
         print!("{:>16}", s);
 
-        // Loop through native and swap order.
-        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
-            // Skip if not supported.
-            if !implementation.is_supported() {
-                print!(" {:>11}", "n/a");
+        let mut checksum = match Fletcher4::new(*implementation) {
+            Ok(v) => v,
+            Err(
+                _err @ ChecksumError::Unsupported {
+                    checksum: _,
+                    implementation: _,
+                },
+            ) => {
+                // Skip if not supported.
+                println!(" {:>11} {:>11}", "n/a", "n/a");
                 continue;
             }
+        };
 
+        // Loop through native and swap order.
+        for order in [ENDIAN_ORDER_NATIVE, ENDIAN_ORDER_SWAP] {
             let bytes_per_second =
                 benchmark_checksum(&mut checksum, order, data, iterations, duration_us)?;
 

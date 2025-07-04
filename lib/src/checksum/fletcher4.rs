@@ -121,40 +121,6 @@ impl Fletcher4Implementation {
         &ALL_FLETCHER_4_IMPLEMENTATIONS
     }
 
-    /** Is the implementation supported.
-     */
-    pub fn is_supported(&self) -> bool {
-        match self {
-            Fletcher4Implementation::Generic => true,
-            Fletcher4Implementation::SuperScalar2 => true,
-            Fletcher4Implementation::SuperScalar4 => true,
-
-            #[cfg(feature = "fletcher4-sse2")]
-            Fletcher4Implementation::SSE2 => is_sse2_supported(),
-
-            #[cfg(feature = "fletcher4-ssse3")]
-            Fletcher4Implementation::SSSE3 => is_sse2_supported() && is_ssse3_supported(),
-
-            #[cfg(feature = "fletcher4-avx2")]
-            Fletcher4Implementation::AVX2 => is_avx_supported() && is_avx2_supported(),
-
-            #[cfg(feature = "fletcher4-avx512f")]
-            Fletcher4Implementation::AVX512F => is_avx512f_supported(),
-
-            #[cfg(feature = "fletcher4-avx512bw")]
-            Fletcher4Implementation::AVX512BW => is_avx512f_supported() && is_avx512bw_supported(),
-
-            #[cfg(any(
-                not(feature = "fletcher4-sse2"),
-                not(feature = "fletcher4-ssse3"),
-                not(feature = "fletcher4-avx2"),
-                not(feature = "fletcher4-avx512f"),
-                not(feature = "fletcher4-avx512bw"),
-            ))]
-            _ => false,
-        }
-    }
-
     /// Get the string name of the implementation.
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -176,32 +142,25 @@ impl Fletcher4Implementation {
      * Returns [`ChecksumError`] if the implementation is not supported.
      */
     fn get_implementation_ctx(&self) -> Result<&'static Fletcher4ImplementationCtx, ChecksumError> {
-        if !self.is_supported() {
-            return Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher4,
-                implementation: self.to_str(),
-            });
-        }
-
-        match self {
-            Fletcher4Implementation::Generic => Ok(&FLETCHER_4_IMPL_CTX_GENERIC),
-            Fletcher4Implementation::SuperScalar2 => Ok(&FLETCHER_4_IMPL_CTX_SUPERSCALAR_2),
-            Fletcher4Implementation::SuperScalar4 => Ok(&FLETCHER_4_IMPL_CTX_SUPERSCALAR_4),
+        let ctx = match self {
+            Fletcher4Implementation::Generic => &FLETCHER_4_IMPL_CTX_GENERIC,
+            Fletcher4Implementation::SuperScalar2 => &FLETCHER_4_IMPL_CTX_SUPERSCALAR_2,
+            Fletcher4Implementation::SuperScalar4 => &FLETCHER_4_IMPL_CTX_SUPERSCALAR_4,
 
             #[cfg(feature = "fletcher4-sse2")]
-            Fletcher4Implementation::SSE2 => Ok(&FLETCHER_4_IMPL_CTX_SSE2),
+            Fletcher4Implementation::SSE2 => &FLETCHER_4_IMPL_CTX_SSE2,
 
             #[cfg(feature = "fletcher4-ssse3")]
-            Fletcher4Implementation::SSSE3 => Ok(&FLETCHER_4_IMPL_CTX_SSSE3),
+            Fletcher4Implementation::SSSE3 => &FLETCHER_4_IMPL_CTX_SSSE3,
 
             #[cfg(feature = "fletcher4-avx2")]
-            Fletcher4Implementation::AVX2 => Ok(&FLETCHER_4_IMPL_CTX_AVX2),
+            Fletcher4Implementation::AVX2 => &FLETCHER_4_IMPL_CTX_AVX2,
 
             #[cfg(feature = "fletcher4-avx512f")]
-            Fletcher4Implementation::AVX512F => Ok(&FLETCHER_4_IMPL_CTX_AVX512F),
+            Fletcher4Implementation::AVX512F => &FLETCHER_4_IMPL_CTX_AVX512F,
 
             #[cfg(feature = "fletcher4-avx512bw")]
-            Fletcher4Implementation::AVX512BW => Ok(&FLETCHER_4_IMPL_CTX_AVX512BW),
+            Fletcher4Implementation::AVX512BW => &FLETCHER_4_IMPL_CTX_AVX512BW,
 
             #[cfg(any(
                 not(feature = "fletcher4-sse2"),
@@ -210,11 +169,15 @@ impl Fletcher4Implementation {
                 not(feature = "fletcher4-avx512f"),
                 not(feature = "fletcher4-avx512bw"),
             ))]
-            _ => Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher4,
-                implementation: self.to_str(),
-            }),
-        }
+            _ => {
+                return Err(ChecksumError::Unsupported {
+                    checksum: ChecksumType::Fletcher4,
+                    implementation: self.to_str(),
+                })
+            }
+        };
+
+        Ok(ctx)
     }
 }
 
@@ -230,6 +193,9 @@ type Fletcher4UpdateBlock = fn(state: &mut [u64], data: &[u8]);
 /// Compute the final hash from multiple streams.
 type Fletcher4FinishBlocks = fn(state: &[u64]) -> [u64; FLETCHER_4_U64_COUNT];
 
+/// Is the implementation supported by the CPU.
+type Fletcher4IsSupported = fn() -> bool;
+
 /// Fletcher4 implementation context.
 struct Fletcher4ImplementationCtx {
     /// A multiple of [`FLETCHER_4_BLOCK_SIZE`].
@@ -243,6 +209,9 @@ struct Fletcher4ImplementationCtx {
 
     /// Implementation of [`Fletcher4FinishBlocks`].
     finish_blocks: Fletcher4FinishBlocks,
+
+    /// Is the implementation supported by the CPU.
+    is_supported: Fletcher4IsSupported,
 }
 
 const FLETCHER_4_IMPL_CTX_GENERIC: Fletcher4ImplementationCtx = Fletcher4ImplementationCtx {
@@ -250,6 +219,7 @@ const FLETCHER_4_IMPL_CTX_GENERIC: Fletcher4ImplementationCtx = Fletcher4Impleme
     update_blocks_big: Fletcher4::update_blocks_generic_big,
     update_blocks_little: Fletcher4::update_blocks_generic_little,
     finish_blocks: Fletcher4::finish_blocks_single_stream,
+    is_supported: || true,
 };
 
 const FLETCHER_4_IMPL_CTX_SUPERSCALAR_2: Fletcher4ImplementationCtx = Fletcher4ImplementationCtx {
@@ -257,6 +227,7 @@ const FLETCHER_4_IMPL_CTX_SUPERSCALAR_2: Fletcher4ImplementationCtx = Fletcher4I
     update_blocks_big: Fletcher4::update_blocks_superscalar2_big,
     update_blocks_little: Fletcher4::update_blocks_superscalar2_little,
     finish_blocks: Fletcher4::finish_blocks_dual_stream,
+    is_supported: || true,
 };
 
 const FLETCHER_4_IMPL_CTX_SUPERSCALAR_4: Fletcher4ImplementationCtx = Fletcher4ImplementationCtx {
@@ -264,6 +235,7 @@ const FLETCHER_4_IMPL_CTX_SUPERSCALAR_4: Fletcher4ImplementationCtx = Fletcher4I
     update_blocks_big: Fletcher4::update_blocks_superscalar4_big,
     update_blocks_little: Fletcher4::update_blocks_superscalar4_little,
     finish_blocks: Fletcher4::finish_blocks_quad_stream,
+    is_supported: || true,
 };
 
 #[cfg(feature = "fletcher4-sse2")]
@@ -278,6 +250,7 @@ const FLETCHER_4_IMPL_CTX_SSE2: Fletcher4ImplementationCtx = Fletcher4Implementa
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher4::update_blocks_sse2_native,
     finish_blocks: Fletcher4::finish_blocks_dual_stream,
+    is_supported: is_sse2_supported,
 };
 
 #[cfg(feature = "fletcher4-ssse3")]
@@ -292,6 +265,7 @@ const FLETCHER_4_IMPL_CTX_SSSE3: Fletcher4ImplementationCtx = Fletcher4Implement
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher4::update_blocks_sse2_native,
     finish_blocks: Fletcher4::finish_blocks_dual_stream,
+    is_supported: || is_sse2_supported() && is_ssse3_supported(),
 };
 
 #[cfg(feature = "fletcher4-avx2")]
@@ -306,6 +280,7 @@ const FLETCHER_4_IMPL_CTX_AVX2: Fletcher4ImplementationCtx = Fletcher4Implementa
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher4::update_blocks_avx2_native,
     finish_blocks: Fletcher4::finish_blocks_quad_stream,
+    is_supported: || is_avx_supported() && is_avx2_supported(),
 };
 
 #[cfg(feature = "fletcher4-avx512f")]
@@ -320,6 +295,7 @@ const FLETCHER_4_IMPL_CTX_AVX512F: Fletcher4ImplementationCtx = Fletcher4Impleme
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher4::update_blocks_avx512f_native,
     finish_blocks: Fletcher4::finish_blocks_octo_stream,
+    is_supported: is_avx512f_supported,
 };
 
 #[cfg(feature = "fletcher4-avx512bw")]
@@ -334,6 +310,7 @@ const FLETCHER_4_IMPL_CTX_AVX512BW: Fletcher4ImplementationCtx = Fletcher4Implem
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher4::update_blocks_avx512f_native,
     finish_blocks: Fletcher4::finish_blocks_octo_stream,
+    is_supported: || is_avx512f_supported() && is_avx512bw_supported(),
 };
 
 /// [`crate::phys::ChecksumType::Fletcher4`] implementation.
@@ -398,6 +375,14 @@ impl Fletcher4 {
      */
     pub fn new(implementation: Fletcher4Implementation) -> Result<Fletcher4, ChecksumError> {
         let ctx = implementation.get_implementation_ctx()?;
+
+        if !(ctx.is_supported)() {
+            return Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher4,
+                implementation: implementation.to_str(),
+            });
+        }
+
         Ok(Fletcher4 {
             buffer_fill: 0,
             buffer: Default::default(),
@@ -1823,10 +1808,10 @@ mod tests {
         order: EndianOrder,
         vector: &[u8],
         checksums: &[(usize, [u64; 4])],
-    ) -> Result<(), ChecksumError> {
+    ) {
         // Empty checksum is all zeros.
-        h.reset(order)?;
-        assert_eq!(h.finalize()?, [0, 0, 0, 0]);
+        h.reset(order).unwrap();
+        assert_eq!(h.finalize().unwrap(), [0, 0, 0, 0]);
 
         // Test sizes.
         for (size, checksum) in checksums {
@@ -1835,64 +1820,56 @@ mod tests {
 
             if size <= vector.len() {
                 // Single update call.
-                assert_eq!(h.hash(&vector[0..size], order)?, checksum, "size {}", size);
+                assert_eq!(h.hash(&vector[0..size], order).unwrap(), checksum);
 
                 // Partial update.
-                h.reset(order)?;
+                h.reset(order).unwrap();
                 let mut offset = 0;
 
-                h.update(&vector[0..size / 3])?;
+                h.update(&vector[0..size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..offset + size / 3])?;
+                h.update(&vector[offset..offset + size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..size])?;
+                h.update(&vector[offset..size]).unwrap();
 
-                assert_eq!(h.finalize()?, checksum);
+                assert_eq!(h.finalize().unwrap(), checksum);
             } else {
                 // Multiple calls.
                 let mut todo = size;
-                h.reset(order)?;
+                h.reset(order).unwrap();
 
                 while todo > 0 {
                     let can_do = cmp::min(todo, vector.len());
-                    h.update(&vector[0..can_do])?;
+                    h.update(&vector[0..can_do]).unwrap();
                     todo -= can_do;
                 }
 
-                assert_eq!(h.finalize()?, checksum, "size {}", size);
+                assert_eq!(h.finalize().unwrap(), checksum);
             }
         }
-
-        Ok(())
     }
 
-    fn test_required_implementation(
-        implementation: Fletcher4Implementation,
-    ) -> Result<(), ChecksumError> {
-        let mut h = Fletcher4::new(implementation)?;
+    fn test_required_implementation(implementation: Fletcher4Implementation) {
+        let mut h = Fletcher4::new(implementation).unwrap();
 
         run_test_vector(
             &mut h,
             EndianOrder::Big,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_BIG_CHECKSUMS,
-        )?;
+        );
 
         run_test_vector(
             &mut h,
             EndianOrder::Little,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_LITTLE_CHECKSUMS,
-        )?;
-
-        Ok(())
+        );
     }
 
-    fn test_optional_implementation(
-        implementation: Fletcher4Implementation,
-    ) -> Result<(), ChecksumError> {
+    fn test_optional_implementation(implementation: Fletcher4Implementation) {
         let supported = match Fletcher4::new(implementation) {
             _e @ Err(ChecksumError::Unsupported {
                 checksum: _,
@@ -1901,49 +1878,71 @@ mod tests {
             _ => true,
         };
 
-        match supported {
-            false => Ok(()),
-            true => test_required_implementation(implementation),
+        if supported {
+            test_required_implementation(implementation);
         }
     }
 
     #[test]
-    fn fletcher4_generic() -> Result<(), ChecksumError> {
+    fn fletcher4_all() {
+        assert_eq!(Fletcher4Implementation::all().len(), 8);
+    }
+
+    #[test]
+    fn fletcher4_str() {
+        assert_eq!(format!("{}", Fletcher4Implementation::Generic), "generic");
+        assert_eq!(
+            format!("{}", Fletcher4Implementation::SuperScalar2),
+            "superscalar2"
+        );
+        assert_eq!(
+            format!("{}", Fletcher4Implementation::SuperScalar4),
+            "superscalar4"
+        );
+        assert_eq!(format!("{}", Fletcher4Implementation::SSE2), "sse2");
+        assert_eq!(format!("{}", Fletcher4Implementation::SSSE3), "ssse3");
+        assert_eq!(format!("{}", Fletcher4Implementation::AVX2), "avx2");
+        assert_eq!(format!("{}", Fletcher4Implementation::AVX512F), "avx512f");
+        assert_eq!(format!("{}", Fletcher4Implementation::AVX512BW), "avx512bw");
+    }
+
+    #[test]
+    fn fletcher4_generic() {
         test_required_implementation(Fletcher4Implementation::Generic)
     }
 
     #[test]
-    fn fletcher4_superscalar2() -> Result<(), ChecksumError> {
+    fn fletcher4_superscalar2() {
         test_required_implementation(Fletcher4Implementation::SuperScalar2)
     }
 
     #[test]
-    fn fletcher4_superscalar4() -> Result<(), ChecksumError> {
+    fn fletcher4_superscalar4() {
         test_required_implementation(Fletcher4Implementation::SuperScalar4)
     }
 
     #[test]
-    fn fletcher4_sse2() -> Result<(), ChecksumError> {
+    fn fletcher4_sse2() {
         test_optional_implementation(Fletcher4Implementation::SSE2)
     }
 
     #[test]
-    fn fletcher4_ssse3() -> Result<(), ChecksumError> {
+    fn fletcher4_ssse3() {
         test_optional_implementation(Fletcher4Implementation::SSSE3)
     }
 
     #[test]
-    fn fletcher4_avx2() -> Result<(), ChecksumError> {
+    fn fletcher4_avx2() {
         test_optional_implementation(Fletcher4Implementation::AVX2)
     }
 
     #[test]
-    fn fletcher4_avx512f() -> Result<(), ChecksumError> {
+    fn fletcher4_avx512f() {
         test_optional_implementation(Fletcher4Implementation::AVX512F)
     }
 
     #[test]
-    fn fletcher4_avx512bw() -> Result<(), ChecksumError> {
+    fn fletcher4_avx512bw() {
         test_optional_implementation(Fletcher4Implementation::AVX512BW)
     }
 }
