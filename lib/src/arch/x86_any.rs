@@ -177,3 +177,53 @@ pub(crate) fn is_ssse3_supported() -> bool {
         (cpuid.ecx & MASK_LEAF_PIAFB_ECX_SSSE_3) != 0
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+
+    use crate::arch::x86_any as arch;
+
+    #[test]
+    fn avx() {
+        arch::is_avx_supported();
+    }
+
+    #[test]
+    fn avx2() {
+        arch::is_avx2_supported();
+    }
+
+    #[test]
+    fn avx512() {
+        arch::is_avx512f_supported();
+        arch::is_avx512bw_supported();
+    }
+
+    #[test]
+    fn bmi() {
+        arch::is_bmi1_supported();
+        arch::is_bmi2_supported();
+    }
+
+    #[test]
+    fn sha() {
+        arch::is_sha_supported();
+    }
+
+    #[test]
+    fn sse2() {
+        arch::is_sse2_supported();
+    }
+
+    #[test]
+    fn sse3() {
+        arch::is_sse3_supported();
+    }
+
+    #[test]
+    fn ssse3() {
+        arch::is_ssse3_supported();
+    }
+}

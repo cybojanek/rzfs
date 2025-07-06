@@ -1312,7 +1312,7 @@ impl LabelConfigStorage<'_> {
         let is_spare = list.get_u64(PoolConfigKey::IsSpare.into())?.map(|v| v != 0);
 
         let features_for_read = match list.get_nv_list(PoolConfigKey::FeaturesForRead.into())? {
-            Some(v) => Some(FeatureSet::from_list(&v)?),
+            Some(v) => Some(FeatureSet::from_nv_list(&v)?),
             None => None,
         };
 

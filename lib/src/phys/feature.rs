@@ -17,7 +17,7 @@ use crate::util::Fstr;
  * - NV Name: "compatibility"
  * - Added in [`crate::phys::SpaVersion::V5000`].
  */
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Compatibility<'a> {
     /// Compatibility is off, and all features may be enabled.
     Off,
@@ -645,7 +645,7 @@ impl FeatureSet {
      *
      * Returns [`FeatureSetDecodeError`] in case of decoding error.
      */
-    pub fn from_list(list: &NvList<'_>) -> Result<FeatureSet, FeatureSetDecodeError> {
+    pub fn from_nv_list(list: &NvList<'_>) -> Result<FeatureSet, FeatureSetDecodeError> {
         // Bitmap of features.
         let mut features = 0;
 
@@ -811,16 +811,17 @@ impl Iterator for FeatureSetIterator {
      * ```
      * use rzfs::phys::{Feature,FeatureSet};
      *
-     * // empty
+     * // Empty.
      * let mut feature_set = FeatureSet::default();
      * let mut iter = feature_set.iter();
      * assert!(iter.next().is_none());
      *
-     * // some features
-     * feature_set.insert(Feature::Blake3);
+     * // Insert some features.
      * feature_set.insert(Feature::SpacemapHistogram);
+     * feature_set.insert(Feature::Blake3);
      * feature_set.insert(Feature::EmbeddedData);
      *
+     * // Feaures are returned by enum order.
      * let mut iter = feature_set.iter();
      * assert!(matches!(iter.next(), Some(Feature::Blake3)));
      * assert!(matches!(iter.next(), Some(Feature::EmbeddedData)));
@@ -853,26 +854,243 @@ impl Iterator for FeatureSetIterator {
 #[cfg(test)]
 mod tests {
 
-    use crate::phys::{Feature, FeatureDecodeError, FeatureSet};
+    use crate::phys::{Compatibility, Feature, FeatureSet};
+    use std::error::Error;
 
     #[test]
-    /// Encode and decode all known features.
-    fn feature_encode_decode_all() -> Result<(), FeatureDecodeError> {
-        for feature in Feature::all() {
-            let feature = *feature;
-            let feature_str: &'static str = feature.into();
-            let feature_enum: Feature = feature_str.try_into()?;
-            assert_eq!(feature, feature_enum);
-        }
+    fn compatibility_off_legacy_encode_decode() {
+        // String to enum.
+        assert_eq!(Compatibility::from("off"), Compatibility::Off);
+        assert_eq!(Compatibility::from("legacy"), Compatibility::Legacy);
 
-        Ok(())
+        // Enum to string.
+        assert_eq!(Compatibility::Off.to_string(), "off");
+        assert_eq!(Compatibility::Legacy.to_string(), "legacy");
+
+        let compatibility_str: &str = Compatibility::Off.into();
+        assert_eq!(compatibility_str, Compatibility::Off.to_string());
+
+        let compatibility_str: &str = Compatibility::Legacy.into();
+        assert_eq!(compatibility_str, Compatibility::Legacy.to_string());
     }
 
     #[test]
-    /// Decode an unknown feature.
+    fn compatibility_files_encode_decode() {
+        let s = "a,, b ,c,";
+        let compatibility = Compatibility::from(s);
+        assert_eq!(compatibility.to_string(), s);
+    }
+
+    #[test]
+    fn compatibility_iter() {
+        ////////////////////////////////
+        // off
+        let compatibility = Compatibility::from("off");
+        assert_eq!(compatibility, Compatibility::Off);
+
+        let mut iter = compatibility.iter();
+        assert!(iter.next().is_none());
+
+        ////////////////////////////////
+        // legacy
+        let compatibility = Compatibility::from("legacy");
+        assert_eq!(compatibility, Compatibility::Legacy);
+
+        let mut iter = compatibility.iter();
+        assert!(iter.next().is_none());
+
+        ////////////////////////////////
+        // files (empty)
+        let compatibility = Compatibility::from("");
+        assert_eq!(compatibility, Compatibility::Files(""));
+
+        let mut iter = compatibility.iter();
+        assert_eq!(iter.next().unwrap(), "");
+        assert!(iter.next().is_none());
+
+        ////////////////////////////////
+        // files (one)
+        let compatibility = Compatibility::from("a.txt");
+        assert_eq!(compatibility, Compatibility::Files("a.txt"));
+
+        let mut iter = compatibility.iter();
+        assert_eq!(iter.next().unwrap(), "a.txt");
+        assert!(iter.next().is_none());
+
+        ////////////////////////////////
+        // files (multple, comma separated)
+        let compatibility = Compatibility::from("a,, b ,c,");
+        assert_eq!(compatibility, Compatibility::Files("a,, b ,c,"));
+
+        let mut iter = compatibility.iter();
+        assert_eq!(iter.next().unwrap(), "a");
+        assert_eq!(iter.next().unwrap(), "");
+        assert_eq!(iter.next().unwrap(), " b ");
+        assert_eq!(iter.next().unwrap(), "c");
+        assert_eq!(iter.next().unwrap(), "");
+        assert!(iter.next().is_none());
+
+        ////////////////////////////////
+        // IntoIterator.
+        let mut idx = 0;
+        let expected = ["a", "", " b ", "c", ""];
+        for entry in compatibility {
+            assert_eq!(entry, expected[idx]);
+            idx += 1;
+        }
+    }
+
+    #[test]
+    fn feature_encode_decode_all() {
+        for feature in Feature::all() {
+            let feature = *feature;
+
+            // enum to str.
+            let feature_str: &'static str = feature.into();
+
+            // Check both From<Feature> for &'static str
+            // and Display for Feature return the same values.
+            let feature_string = feature.to_string();
+            assert_eq!(feature_str, feature_string);
+
+            // str to enum.
+            let feature_enum: Feature = feature_str.try_into().unwrap();
+
+            // enums should match.
+            assert_eq!(feature, feature_enum);
+
+            // strs should match.
+            assert_eq!(format!("{}", feature_enum), feature_str);
+        }
+    }
+
+    #[test]
+    fn feature_enum_string() {
+        assert_eq!(
+            Feature::AllocationClasses.to_string(),
+            "org.zfsonlinux:allocation_classes"
+        );
+
+        assert_eq!(
+            Feature::AsyncDestroy.to_string(),
+            "com.delphix:async_destroy"
+        );
+        assert_eq!(Feature::Blake3.to_string(), "org.openzfs:blake3");
+        assert_eq!(
+            Feature::BlockCloning.to_string(),
+            "com.fudosecurity:block_cloning"
+        );
+        assert_eq!(Feature::BookmarkV2.to_string(), "com.datto:bookmark_v2");
+        assert_eq!(
+            Feature::BookmarkWritten.to_string(),
+            "com.delphix:bookmark_written"
+        );
+        assert_eq!(Feature::Bookmarks.to_string(), "com.delphix:bookmarks");
+        assert_eq!(
+            Feature::DeviceRebuild.to_string(),
+            "org.openzfs:device_rebuild"
+        );
+        assert_eq!(
+            Feature::DeviceRemoval.to_string(),
+            "com.delphix:device_removal"
+        );
+        assert_eq!(Feature::Draid.to_string(), "org.openzfs:draid");
+        assert_eq!(Feature::Edonr.to_string(), "org.illumos:edonr");
+        assert_eq!(
+            Feature::EmbeddedData.to_string(),
+            "com.delphix:embedded_data"
+        );
+        assert_eq!(
+            Feature::EmptyBlockPointerObject.to_string(),
+            "com.delphix:empty_bpobj"
+        );
+        assert_eq!(Feature::EnabledTxg.to_string(), "com.delphix:enabled_txg");
+        assert_eq!(Feature::Encryption.to_string(), "com.datto:encryption");
+        assert_eq!(
+            Feature::ExtensibleDataset.to_string(),
+            "com.delphix:extensible_dataset"
+        );
+        assert_eq!(
+            Feature::FilesystemLimits.to_string(),
+            "com.joyent:filesystem_limits"
+        );
+        assert_eq!(Feature::HeadErrorLog.to_string(), "com.delphix:head_errlog");
+        assert_eq!(Feature::HoleBirth.to_string(), "com.delphix:hole_birth");
+        assert_eq!(
+            Feature::LargeBlocks.to_string(),
+            "org.open-zfs:large_blocks"
+        );
+        assert_eq!(
+            Feature::LargeDnode.to_string(),
+            "org.zfsonlinux:large_dnode"
+        );
+        assert_eq!(Feature::LiveList.to_string(), "com.delphix:livelist");
+        assert_eq!(Feature::LogSpaceMap.to_string(), "com.delphix:log_spacemap");
+        assert_eq!(Feature::Lz4Compress.to_string(), "org.illumos:lz4_compress");
+        assert_eq!(
+            Feature::MultiVdevCrashDump.to_string(),
+            "com.joyent:multi_vdev_crash_dump"
+        );
+        assert_eq!(
+            Feature::ObsoleteCounts.to_string(),
+            "com.delphix:obsolete_counts"
+        );
+        assert_eq!(
+            Feature::ProjectQuota.to_string(),
+            "org.zfsonlinux:project_quota"
+        );
+        assert_eq!(
+            Feature::RaidzExpansion.to_string(),
+            "org.openzfs:raidz_expansion"
+        );
+        assert_eq!(
+            Feature::RedactedDatasets.to_string(),
+            "com.delphix:redacted_datasets"
+        );
+        assert_eq!(
+            Feature::RedactionBookmarks.to_string(),
+            "com.delphix:redaction_bookmarks"
+        );
+        assert_eq!(
+            Feature::RedactionListSpill.to_string(),
+            "com.delphix:redaction_list_spill"
+        );
+        assert_eq!(
+            Feature::ResilverDefer.to_string(),
+            "com.datto:resilver_defer"
+        );
+        assert_eq!(Feature::Sha512.to_string(), "org.illumos:sha512");
+        assert_eq!(Feature::Skein.to_string(), "org.illumos:skein");
+        assert_eq!(
+            Feature::SpacemapHistogram.to_string(),
+            "com.delphix:spacemap_histogram"
+        );
+        assert_eq!(Feature::SpacemapV2.to_string(), "com.delphix:spacemap_v2");
+        assert_eq!(
+            Feature::UserObjectAccounting.to_string(),
+            "org.zfsonlinux:userobj_accounting"
+        );
+        assert_eq!(
+            Feature::VdevZapsV2.to_string(),
+            "com.klarasystems:vdev_zaps_v2"
+        );
+        assert_eq!(Feature::ZilSaXattr.to_string(), "org.openzfs:zilsaxattr");
+        assert_eq!(
+            Feature::ZpoolCheckpoint.to_string(),
+            "com.delphix:zpool_checkpoint"
+        );
+        assert_eq!(
+            Feature::ZstdCompress.to_string(),
+            "org.freebsd:zstd_compress"
+        );
+    }
+
+    #[test]
     fn feature_decode_unknown() {
         let res = Feature::try_from("not.a:feature");
-        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert_eq!(format!("{}", err), "Feature decode error, unknown feature");
+        assert!(err.source().is_none());
     }
 
     #[test]
@@ -880,34 +1098,84 @@ mod tests {
         let total_features = Feature::all().len();
         let mut feature_set = FeatureSet::default();
 
+        ////////////////////////////////
         // Add all features.
         for (index, feature) in Feature::all().iter().enumerate() {
+            // Check FeatureSet does not contain Feature.
             assert_eq!(feature_set.is_empty(), index == 0);
             assert_eq!(feature_set.len(), index);
             assert_eq!(feature_set.contains(*feature), false);
 
+            // Insert Feature.
             assert_eq!(feature_set.insert(*feature), true);
             assert_eq!(feature_set.len(), index + 1);
             assert_eq!(feature_set.is_empty(), false);
 
+            // Check FeatureSet contains expected Feature.
+            for (index_2, feature_2) in Feature::all().iter().enumerate() {
+                assert_eq!(feature_set.contains(*feature_2), index_2 <= index);
+            }
+
+            // Iterate over FeatureSet and insert into another FeatureSet to
+            // check for correct FeatureSet iteration.
+            let mut feature_set_2 = FeatureSet::default();
+            for feature_2 in feature_set {
+                assert!(feature_set.contains(feature_2));
+                assert!(feature_set_2.insert(feature_2));
+            }
+            assert_eq!(feature_set_2.len(), feature_set.len());
+
+            // Adding Feature again does nothing.
+            assert_eq!(feature_set.insert(*feature), false);
             for (index_2, feature_2) in Feature::all().iter().enumerate() {
                 assert_eq!(feature_set.contains(*feature_2), index_2 <= index);
             }
         }
 
+        ////////////////////////////////
         // Remove all features.
         for (index, feature) in Feature::all().iter().enumerate() {
+            // Check FeatureSet contains Feature.
             assert_eq!(feature_set.is_empty(), false);
             assert_eq!(feature_set.len(), total_features - index);
             assert_eq!(feature_set.contains(*feature), true);
 
+            // Remove Feature.
             assert_eq!(feature_set.remove(*feature), true);
             assert_eq!(feature_set.len(), total_features - index - 1);
             assert_eq!(feature_set.is_empty(), index == total_features - 1);
 
+            // Check FeatureSet contains expected Feature.
+            for (index_2, feature_2) in Feature::all().iter().enumerate() {
+                assert_eq!(feature_set.contains(*feature_2), index_2 > index);
+            }
+
+            // Iterate over FeatureSet and insert into another FeatureSet to
+            // check for correct FeatureSet iteration.
+            let mut feature_set_2 = FeatureSet::default();
+            for feature_2 in feature_set {
+                assert!(feature_set.contains(feature_2));
+                assert_eq!(feature_set_2.insert(feature_2), true);
+            }
+            assert_eq!(feature_set_2.len(), feature_set.len());
+
+            // Removing Feature again does nothing.
+            assert_eq!(feature_set.remove(*feature), false);
             for (index_2, feature_2) in Feature::all().iter().enumerate() {
                 assert_eq!(feature_set.contains(*feature_2), index_2 > index);
             }
         }
+    }
+
+    #[test]
+    fn feature_set_debug() {
+        let mut feature_set = FeatureSet::default();
+        feature_set.insert(Feature::ZstdCompress);
+        feature_set.insert(Feature::Sha512);
+
+        assert_eq!(
+            format!("{:?}", feature_set),
+            "FeatureSet { feature: Sha512, feature: ZstdCompress }"
+        );
     }
 }

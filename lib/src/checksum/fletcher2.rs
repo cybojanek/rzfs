@@ -121,40 +121,6 @@ impl Fletcher2Implementation {
         &ALL_FLETCHER_2_IMPLEMENTATIONS
     }
 
-    /** Is the implementation supported.
-     */
-    pub fn is_supported(&self) -> bool {
-        match self {
-            Fletcher2Implementation::Generic => true,
-            Fletcher2Implementation::SuperScalar2 => true,
-            Fletcher2Implementation::SuperScalar4 => true,
-
-            #[cfg(feature = "fletcher2-sse2")]
-            Fletcher2Implementation::SSE2 => is_sse2_supported(),
-
-            #[cfg(feature = "fletcher2-ssse3")]
-            Fletcher2Implementation::SSSE3 => is_sse2_supported() && is_ssse3_supported(),
-
-            #[cfg(feature = "fletcher2-avx2")]
-            Fletcher2Implementation::AVX2 => is_avx_supported() && is_avx2_supported(),
-
-            #[cfg(feature = "fletcher2-avx512f")]
-            Fletcher2Implementation::AVX512F => is_avx512f_supported(),
-
-            #[cfg(feature = "fletcher2-avx512bw")]
-            Fletcher2Implementation::AVX512BW => is_avx512f_supported() && is_avx512bw_supported(),
-
-            #[cfg(any(
-                not(feature = "fletcher2-sse2"),
-                not(feature = "fletcher2-ssse3"),
-                not(feature = "fletcher2-avx2"),
-                not(feature = "fletcher2-avx512f"),
-                not(feature = "fletcher2-avx512bw"),
-            ))]
-            _ => false,
-        }
-    }
-
     /// Get the string name of the implementation.
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -176,32 +142,25 @@ impl Fletcher2Implementation {
      * Returns [`ChecksumError`] if the implementation is not supported.
      */
     fn get_implementation_ctx(&self) -> Result<&'static Fletcher2ImplementationCtx, ChecksumError> {
-        if !self.is_supported() {
-            return Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher2,
-                implementation: self.to_str(),
-            });
-        }
-
-        match self {
-            Fletcher2Implementation::Generic => Ok(&FLETCHER_2_IMPL_CTX_GENERIC),
-            Fletcher2Implementation::SuperScalar2 => Ok(&FLETCHER_2_IMPL_CTX_SUPERSCALAR_2),
-            Fletcher2Implementation::SuperScalar4 => Ok(&FLETCHER_2_IMPL_CTX_SUPERSCALAR_4),
+        let ctx = match self {
+            Fletcher2Implementation::Generic => &FLETCHER_2_IMPL_CTX_GENERIC,
+            Fletcher2Implementation::SuperScalar2 => &FLETCHER_2_IMPL_CTX_SUPERSCALAR_2,
+            Fletcher2Implementation::SuperScalar4 => &FLETCHER_2_IMPL_CTX_SUPERSCALAR_4,
 
             #[cfg(feature = "fletcher2-sse2")]
-            Fletcher2Implementation::SSE2 => Ok(&FLETCHER_2_IMPL_CTX_SSE2),
+            Fletcher2Implementation::SSE2 => &FLETCHER_2_IMPL_CTX_SSE2,
 
             #[cfg(feature = "fletcher2-ssse3")]
-            Fletcher2Implementation::SSSE3 => Ok(&FLETCHER_2_IMPL_CTX_SSSE3),
+            Fletcher2Implementation::SSSE3 => &FLETCHER_2_IMPL_CTX_SSSE3,
 
             #[cfg(feature = "fletcher2-avx2")]
-            Fletcher2Implementation::AVX2 => Ok(&FLETCHER_2_IMPL_CTX_AVX2),
+            Fletcher2Implementation::AVX2 => &FLETCHER_2_IMPL_CTX_AVX2,
 
             #[cfg(feature = "fletcher2-avx512f")]
-            Fletcher2Implementation::AVX512F => Ok(&FLETCHER_2_IMPL_CTX_AVX512F),
+            Fletcher2Implementation::AVX512F => &FLETCHER_2_IMPL_CTX_AVX512F,
 
             #[cfg(feature = "fletcher2-avx512bw")]
-            Fletcher2Implementation::AVX512BW => Ok(&FLETCHER_2_IMPL_CTX_AVX512BW),
+            Fletcher2Implementation::AVX512BW => &FLETCHER_2_IMPL_CTX_AVX512BW,
 
             #[cfg(any(
                 not(feature = "fletcher2-sse2"),
@@ -210,11 +169,15 @@ impl Fletcher2Implementation {
                 not(feature = "fletcher2-avx512f"),
                 not(feature = "fletcher2-avx512bw"),
             ))]
-            _ => Err(ChecksumError::Unsupported {
-                checksum: ChecksumType::Fletcher2,
-                implementation: self.to_str(),
-            }),
-        }
+            _ => {
+                return Err(ChecksumError::Unsupported {
+                    checksum: ChecksumType::Fletcher2,
+                    implementation: self.to_str(),
+                })
+            }
+        };
+
+        Ok(ctx)
     }
 }
 
@@ -230,6 +193,9 @@ type Fletcher2UpdateBlock = fn(state: &mut [u64], data: &[u8]);
 /// Compute the final hash from multiple streams.
 type Fletcher2FinishBlocks = fn(state: &[u64]) -> [u64; FLETCHER_2_U64_COUNT];
 
+/// Is the implementation supported by the CPU.
+type Fletcher2IsSupported = fn() -> bool;
+
 /// Fletcher2 implementation context.
 struct Fletcher2ImplementationCtx {
     /// A multiple of [`FLETCHER_2_BLOCK_SIZE`].
@@ -243,6 +209,9 @@ struct Fletcher2ImplementationCtx {
 
     /// Implementation of [`Fletcher2FinishBlocks`].
     finish_blocks: Fletcher2FinishBlocks,
+
+    /// Is the implementation supported by the CPU.
+    is_supported: Fletcher2IsSupported,
 }
 
 const FLETCHER_2_IMPL_CTX_GENERIC: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
@@ -250,6 +219,7 @@ const FLETCHER_2_IMPL_CTX_GENERIC: Fletcher2ImplementationCtx = Fletcher2Impleme
     update_blocks_big: Fletcher2::update_blocks_generic_big,
     update_blocks_little: Fletcher2::update_blocks_generic_little,
     finish_blocks: Fletcher2::finish_blocks_single_stream,
+    is_supported: || true,
 };
 
 const FLETCHER_2_IMPL_CTX_SUPERSCALAR_2: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
@@ -257,6 +227,7 @@ const FLETCHER_2_IMPL_CTX_SUPERSCALAR_2: Fletcher2ImplementationCtx = Fletcher2I
     update_blocks_big: Fletcher2::update_blocks_superscalar2_big,
     update_blocks_little: Fletcher2::update_blocks_superscalar2_little,
     finish_blocks: Fletcher2::finish_blocks_dual_stream,
+    is_supported: || true,
 };
 
 const FLETCHER_2_IMPL_CTX_SUPERSCALAR_4: Fletcher2ImplementationCtx = Fletcher2ImplementationCtx {
@@ -264,6 +235,7 @@ const FLETCHER_2_IMPL_CTX_SUPERSCALAR_4: Fletcher2ImplementationCtx = Fletcher2I
     update_blocks_big: Fletcher2::update_blocks_superscalar4_big,
     update_blocks_little: Fletcher2::update_blocks_superscalar4_little,
     finish_blocks: Fletcher2::finish_blocks_quad_stream,
+    is_supported: || true,
 };
 
 #[cfg(feature = "fletcher2-sse2")]
@@ -278,6 +250,7 @@ const FLETCHER_2_IMPL_CTX_SSE2: Fletcher2ImplementationCtx = Fletcher2Implementa
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher2::update_blocks_sse2_native,
     finish_blocks: Fletcher2::finish_blocks_single_stream,
+    is_supported: is_sse2_supported,
 };
 
 #[cfg(feature = "fletcher2-ssse3")]
@@ -292,6 +265,7 @@ const FLETCHER_2_IMPL_CTX_SSSE3: Fletcher2ImplementationCtx = Fletcher2Implement
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher2::update_blocks_sse2_native,
     finish_blocks: Fletcher2::finish_blocks_single_stream,
+    is_supported: || is_sse2_supported() && is_ssse3_supported(),
 };
 
 #[cfg(feature = "fletcher2-avx2")]
@@ -306,6 +280,7 @@ const FLETCHER_2_IMPL_CTX_AVX2: Fletcher2ImplementationCtx = Fletcher2Implementa
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher2::update_blocks_avx2_native,
     finish_blocks: Fletcher2::finish_blocks_dual_stream,
+    is_supported: || is_avx_supported() && is_avx2_supported(),
 };
 
 #[cfg(feature = "fletcher2-avx512f")]
@@ -320,6 +295,7 @@ const FLETCHER_2_IMPL_CTX_AVX512F: Fletcher2ImplementationCtx = Fletcher2Impleme
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher2::update_blocks_avx512f_native,
     finish_blocks: Fletcher2::finish_blocks_quad_stream,
+    is_supported: is_avx512f_supported,
 };
 
 #[cfg(feature = "fletcher2-avx512bw")]
@@ -334,6 +310,7 @@ const FLETCHER_2_IMPL_CTX_AVX512BW: Fletcher2ImplementationCtx = Fletcher2Implem
     #[cfg(target_endian = "little")]
     update_blocks_little: Fletcher2::update_blocks_avx512f_native,
     finish_blocks: Fletcher2::finish_blocks_quad_stream,
+    is_supported: || is_avx512f_supported() && is_avx512bw_supported(),
 };
 
 /// [`crate::phys::ChecksumType::Fletcher2`] implementation.
@@ -366,6 +343,14 @@ impl Fletcher2 {
      */
     pub fn new(implementation: Fletcher2Implementation) -> Result<Fletcher2, ChecksumError> {
         let ctx = implementation.get_implementation_ctx()?;
+
+        if !(ctx.is_supported)() {
+            return Err(ChecksumError::Unsupported {
+                checksum: ChecksumType::Fletcher2,
+                implementation: implementation.to_str(),
+            });
+        }
+
         Ok(Fletcher2 {
             buffer_fill: 0,
             buffer: [0; FLETCHER_2_BLOCK_SIZE * FLETCHER_2_MAX_SIMD_WIDTH],
@@ -822,38 +807,36 @@ impl Fletcher2 {
 
         #[target_feature(enable = "sse2")]
         unsafe fn update_blocks_sse2_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load value pairs into xmm registers.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut ab = arch::_mm_loadu_si128(state.add(0));
-                let mut cd = arch::_mm_loadu_si128(state.add(1));
+            // Load value pairs into xmm registers.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut ab = arch::_mm_loadu_si128(state.add(0));
+            let mut cd = arch::_mm_loadu_si128(state.add(1));
 
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Decode values.
-                    let v = u64::from_ne_bytes(block[0..8].try_into().unwrap()).swap_bytes();
-                    let w = u64::from_ne_bytes(block[8..16].try_into().unwrap()).swap_bytes();
+            for block in iter.by_ref() {
+                // Decode values.
+                let v = u64::from_ne_bytes(block[0..8].try_into().unwrap()).swap_bytes();
+                let w = u64::from_ne_bytes(block[8..16].try_into().unwrap()).swap_bytes();
 
-                    // Load v and w into an xmm register.
-                    //
-                    // vw[0..64]   = f[n]
-                    // vw[64..128] = f[n+1]
-                    let block: &[u64; 2] = &[v, w];
-                    let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+                // Load v and w into an xmm register.
+                //
+                // vw[0..64]   = f[n]
+                // vw[64..128] = f[n+1]
+                let block: &[u64; 2] = &[v, w];
+                let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Add the values to the lanes.
-                    // a, b += f[n], f[n+1]
-                    // ...
-                    ab = arch::_mm_add_epi64(ab, vw);
-                    cd = arch::_mm_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), ab);
-                arch::_mm_storeu_si128(state.add(1), cd);
+                // Add the values to the lanes.
+                // a, b += f[n], f[n+1]
+                // ...
+                ab = arch::_mm_add_epi64(ab, vw);
+                cd = arch::_mm_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), ab);
+            arch::_mm_storeu_si128(state.add(1), cd);
         }
 
         unsafe { update_blocks_sse2_byteswap_impl(state, data) }
@@ -873,33 +856,31 @@ impl Fletcher2 {
 
         #[target_feature(enable = "sse2")]
         unsafe fn update_blocks_sse2_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load value pairs into xmm registers.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut ab = arch::_mm_loadu_si128(state.add(0));
-                let mut cd = arch::_mm_loadu_si128(state.add(1));
+            // Load value pairs into xmm registers.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut ab = arch::_mm_loadu_si128(state.add(0));
+            let mut cd = arch::_mm_loadu_si128(state.add(1));
 
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load v and w into an xmm register.
-                    //
-                    // vw[0..64]   = f[n]
-                    // vw[64..128] = f[n+1]
-                    let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load v and w into an xmm register.
+                //
+                // vw[0..64]   = f[n]
+                // vw[64..128] = f[n+1]
+                let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Add the values to the lanes.
-                    // a, b += f[n], f[n+1]
-                    // ...
-                    ab = arch::_mm_add_epi64(ab, vw);
-                    cd = arch::_mm_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), ab);
-                arch::_mm_storeu_si128(state.add(1), cd);
+                // Add the values to the lanes.
+                // a, b += f[n], f[n+1]
+                // ...
+                ab = arch::_mm_add_epi64(ab, vw);
+                cd = arch::_mm_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), ab);
+            arch::_mm_storeu_si128(state.add(1), cd);
         }
 
         unsafe { update_blocks_sse2_native_impl(state, data) }
@@ -920,49 +901,47 @@ impl Fletcher2 {
 
         #[target_feature(enable = "sse2,ssse3")]
         unsafe fn update_blocks_ssse3_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load value pairs into xmm registers.
-                let state = state.as_ptr() as *mut arch::__m128i;
-                let mut ab = arch::_mm_loadu_si128(state.add(0));
-                let mut cd = arch::_mm_loadu_si128(state.add(1));
+            // Load value pairs into xmm registers.
+            let state = state.as_ptr() as *mut arch::__m128i;
+            let mut ab = arch::_mm_loadu_si128(state.add(0));
+            let mut cd = arch::_mm_loadu_si128(state.add(1));
 
-                // Set the shuffle value.
-                let shuffle = arch::_mm_set_epi8(
-                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
-                    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm_set_epi8(
+                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
+            );
 
-                // Iterate one block at a time.
-                let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
+            // Iterate one block at a time.
+            let mut iter = data.chunks_exact(FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load block into an xmm register.
-                    let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load block into an xmm register.
+                let vw = arch::_mm_loadu_si128(block.as_ptr() as *const _);
 
-                    // Swap the order of each 8-byte part of vw.
-                    // Each byte of shuffle indicates the byte index of vw.
-                    //
-                    // index = shuffle[0..8]
-                    // vw[0..8] = vw[index * 8..(index + 1) * 8]
-                    // vw[0..8] = vw[56..64]
-                    //
-                    // index = shuffle[8..16]
-                    // vw[8..16] = vw[index * 8..(index + 1) * 8]
-                    // vw[8..16] = vw[48..56]
-                    // ...
-                    let vw = arch::_mm_shuffle_epi8(vw, shuffle);
+                // Swap the order of each 8-byte part of vw.
+                // Each byte of shuffle indicates the byte index of vw.
+                //
+                // index = shuffle[0..8]
+                // vw[0..8] = vw[index * 8..(index + 1) * 8]
+                // vw[0..8] = vw[56..64]
+                //
+                // index = shuffle[8..16]
+                // vw[8..16] = vw[index * 8..(index + 1) * 8]
+                // vw[8..16] = vw[48..56]
+                // ...
+                let vw = arch::_mm_shuffle_epi8(vw, shuffle);
 
-                    // Add the values to the lanes.
-                    // a, b += f[n], f[n+1]
-                    // ...
-                    ab = arch::_mm_add_epi64(ab, vw);
-                    cd = arch::_mm_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm_storeu_si128(state.add(0), ab);
-                arch::_mm_storeu_si128(state.add(1), cd);
+                // Add the values to the lanes.
+                // a, b += f[n], f[n+1]
+                // ...
+                ab = arch::_mm_add_epi64(ab, vw);
+                cd = arch::_mm_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm_storeu_si128(state.add(0), ab);
+            arch::_mm_storeu_si128(state.add(1), cd);
         }
 
         unsafe { update_blocks_ssse3_byteswap_impl(state, data) }
@@ -983,52 +962,50 @@ impl Fletcher2 {
 
         #[target_feature(enable = "avx,avx2")]
         unsafe fn update_blocks_avx2_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
-                let shuffle = arch::_mm256_set_epi8(
-                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f3
-                    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f2
-                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
-                    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm256_set_epi8(
+                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f3
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f2
+                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
+            );
 
-                // Load each dual stream into a ymm register.
-                let state = state.as_ptr() as *mut arch::__m256i;
-                let mut ab = arch::_mm256_lddqu_si256(state.add(0));
-                let mut cd = arch::_mm256_lddqu_si256(state.add(1));
+            // Load each dual stream into a ymm register.
+            let state = state.as_ptr() as *mut arch::__m256i;
+            let mut ab = arch::_mm256_lddqu_si256(state.add(0));
+            let mut cd = arch::_mm256_lddqu_si256(state.add(1));
 
-                // Iterate two blocks at a time.
-                let mut iter = data.chunks_exact(2 * FLETCHER_2_BLOCK_SIZE);
+            // Iterate two blocks at a time.
+            let mut iter = data.chunks_exact(2 * FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 256 bits into a ymm register.
-                    let vwxy = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 256 bits into a ymm register.
+                let vwxy = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
 
-                    // Swap the order of the each 8-byte part of vwxy.
-                    // Each byte of shuffle indicates the byte index of vwxy.
-                    // The shuffle is done on each 128 bit lane, so the indices
-                    // repeat for f0,f1 and f2,f3.
-                    //
-                    // index = shuffle[0..8]
-                    // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
-                    // vwxy[0..8] = vwxy[56..64]
-                    //
-                    // index = shuffle[8..16]
-                    // vwxy[8..16] = vwxy[index * 8..(index + 1) * 8]
-                    // vwxy[8..16] = vwxy[48..56]
-                    // ...
-                    let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
+                // Swap the order of the each 8-byte part of vwxy.
+                // Each byte of shuffle indicates the byte index of vwxy.
+                // The shuffle is done on each 128 bit lane, so the indices
+                // repeat for f0,f1 and f2,f3.
+                //
+                // index = shuffle[0..8]
+                // vwxy[0..8] = vwxy[index * 8..(index + 1) * 8]
+                // vwxy[0..8] = vwxy[56..64]
+                //
+                // index = shuffle[8..16]
+                // vwxy[8..16] = vwxy[index * 8..(index + 1) * 8]
+                // vwxy[8..16] = vwxy[48..56]
+                // ...
+                let vwxy = arch::_mm256_shuffle_epi8(vwxy, shuffle);
 
-                    // a[0], b[0], a[1], b[1] += f[n], f[n+1], f[n+2], f[n+3]
-                    // ...
-                    ab = arch::_mm256_add_epi64(ab, vwxy);
-                    cd = arch::_mm256_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm256_storeu_si256(state.add(0), ab);
-                arch::_mm256_storeu_si256(state.add(1), cd);
+                // a[0], b[0], a[1], b[1] += f[n], f[n+1], f[n+2], f[n+3]
+                // ...
+                ab = arch::_mm256_add_epi64(ab, vwxy);
+                cd = arch::_mm256_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm256_storeu_si256(state.add(0), ab);
+            arch::_mm256_storeu_si256(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx2_byteswap_impl(state, data) }
@@ -1048,29 +1025,27 @@ impl Fletcher2 {
 
         #[target_feature(enable = "avx,avx2")]
         unsafe fn update_blocks_avx2_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each dual stream into a ymm register.
-                let state = state.as_ptr() as *mut arch::__m256i;
-                let mut ab = arch::_mm256_lddqu_si256(state.add(0));
-                let mut cd = arch::_mm256_lddqu_si256(state.add(1));
+            // Load each dual stream into a ymm register.
+            let state = state.as_ptr() as *mut arch::__m256i;
+            let mut ab = arch::_mm256_lddqu_si256(state.add(0));
+            let mut cd = arch::_mm256_lddqu_si256(state.add(1));
 
-                // Iterate two blocks at a time.
-                let mut iter = data.chunks_exact(2 * FLETCHER_2_BLOCK_SIZE);
+            // Iterate two blocks at a time.
+            let mut iter = data.chunks_exact(2 * FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 256 bits into a ymm register.
-                    let vwxy = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 256 bits into a ymm register.
+                let vwxy = arch::_mm256_lddqu_si256(block.as_ptr() as *const _);
 
-                    // a[0], b[0], a[1], b[1] += f[n], f[n+1], f[n+2], f[n+3]
-                    // ...
-                    ab = arch::_mm256_add_epi64(ab, vwxy);
-                    cd = arch::_mm256_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm256_storeu_si256(state.add(0), ab);
-                arch::_mm256_storeu_si256(state.add(1), cd);
+                // a[0], b[0], a[1], b[1] += f[n], f[n+1], f[n+2], f[n+3]
+                // ...
+                ab = arch::_mm256_add_epi64(ab, vwxy);
+                cd = arch::_mm256_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm256_storeu_si256(state.add(0), ab);
+            arch::_mm256_storeu_si256(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx2_native_impl(state, data) }
@@ -1096,76 +1071,74 @@ impl Fletcher2 {
             //                  At the time of this writing, the compiler
             //                  optimizes this code, and uses vpshufb, which is
             //                  an AVX512BW instruction.
-            unsafe {
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut ab = arch::_mm512_loadu_si512(state.add(0));
-                let mut cd = arch::_mm512_loadu_si512(state.add(16));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut arch::__m512i;
+            let mut ab = arch::_mm512_loadu_si512(state.add(0));
+            let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
-                // Iterate four blocks at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
+            // Iterate four blocks at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
 
-                // Use broadcast for the first, and then shift for remaining,
-                // because shift is only one latency and one CPI.
-                // 8xu64 [0x00000000000000ff, ... ]
-                // 8xu64 [0x000000000000ff00, ... ]
+            // Use broadcast for the first, and then shift for remaining,
+            // because shift is only one latency and one CPI.
+            // 8xu64 [0x00000000000000ff, ... ]
+            // 8xu64 [0x000000000000ff00, ... ]
+            // ...
+            let mask0 = arch::_mm512_maskz_set1_epi64(0xff, 0xff);
+            let mask1 = arch::_mm512_slli_epi64(mask0, 8);
+            let mask2 = arch::_mm512_slli_epi64(mask0, 16);
+            let mask3 = arch::_mm512_slli_epi64(mask0, 24);
+            let mask4 = arch::_mm512_slli_epi64(mask0, 32);
+            let mask5 = arch::_mm512_slli_epi64(mask0, 40);
+            let mask6 = arch::_mm512_slli_epi64(mask0, 48);
+            let mask7 = arch::_mm512_slli_epi64(mask0, 56);
+
+            for block in iter.by_ref() {
+                // Load 512 bits into a zmm register.
+                let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
+
+                // Select one byte of each u64 value.
+                let s0 = arch::_mm512_and_epi64(values, mask0);
+                let s1 = arch::_mm512_and_epi64(values, mask1);
+                let s2 = arch::_mm512_and_epi64(values, mask2);
+                let s3 = arch::_mm512_and_epi64(values, mask3);
+                let s4 = arch::_mm512_and_epi64(values, mask4);
+                let s5 = arch::_mm512_and_epi64(values, mask5);
+                let s6 = arch::_mm512_and_epi64(values, mask6);
+                let s7 = arch::_mm512_and_epi64(values, mask7);
+
+                // Shift the selected byte of each u64, to its swapped place.
+                let s0 = arch::_mm512_slli_epi64(s0, 56);
+                let s1 = arch::_mm512_slli_epi64(s1, 40);
+                let s2 = arch::_mm512_slli_epi64(s2, 24);
+                let s3 = arch::_mm512_slli_epi64(s3, 8);
+
+                let s4 = arch::_mm512_srli_epi64(s4, 8);
+                let s5 = arch::_mm512_srli_epi64(s5, 24);
+                let s6 = arch::_mm512_srli_epi64(s6, 40);
+                let s7 = arch::_mm512_srli_epi64(s7, 56);
+
+                // Or the values to get the swapped u64 values.
+                let s01 = arch::_mm512_or_epi64(s0, s1);
+                let s23 = arch::_mm512_or_epi64(s2, s3);
+
+                let s45 = arch::_mm512_or_epi64(s4, s5);
+                let s67 = arch::_mm512_or_epi64(s6, s7);
+
+                let s03 = arch::_mm512_or_epi64(s01, s23);
+                let s47 = arch::_mm512_or_epi64(s45, s67);
+
+                let values = arch::_mm512_or_epi64(s03, s47);
+
+                // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
                 // ...
-                let mask0 = arch::_mm512_maskz_set1_epi64(0xff, 0xff);
-                let mask1 = arch::_mm512_slli_epi64(mask0, 8);
-                let mask2 = arch::_mm512_slli_epi64(mask0, 16);
-                let mask3 = arch::_mm512_slli_epi64(mask0, 24);
-                let mask4 = arch::_mm512_slli_epi64(mask0, 32);
-                let mask5 = arch::_mm512_slli_epi64(mask0, 40);
-                let mask6 = arch::_mm512_slli_epi64(mask0, 48);
-                let mask7 = arch::_mm512_slli_epi64(mask0, 56);
-
-                for block in iter.by_ref() {
-                    // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
-
-                    // Select one byte of each u64 value.
-                    let s0 = arch::_mm512_and_epi64(values, mask0);
-                    let s1 = arch::_mm512_and_epi64(values, mask1);
-                    let s2 = arch::_mm512_and_epi64(values, mask2);
-                    let s3 = arch::_mm512_and_epi64(values, mask3);
-                    let s4 = arch::_mm512_and_epi64(values, mask4);
-                    let s5 = arch::_mm512_and_epi64(values, mask5);
-                    let s6 = arch::_mm512_and_epi64(values, mask6);
-                    let s7 = arch::_mm512_and_epi64(values, mask7);
-
-                    // Shift the selected byte of each u64, to its swapped place.
-                    let s0 = arch::_mm512_slli_epi64(s0, 56);
-                    let s1 = arch::_mm512_slli_epi64(s1, 40);
-                    let s2 = arch::_mm512_slli_epi64(s2, 24);
-                    let s3 = arch::_mm512_slli_epi64(s3, 8);
-
-                    let s4 = arch::_mm512_srli_epi64(s4, 8);
-                    let s5 = arch::_mm512_srli_epi64(s5, 24);
-                    let s6 = arch::_mm512_srli_epi64(s6, 40);
-                    let s7 = arch::_mm512_srli_epi64(s7, 56);
-
-                    // Or the values to get the swapped u64 values.
-                    let s01 = arch::_mm512_or_epi64(s0, s1);
-                    let s23 = arch::_mm512_or_epi64(s2, s3);
-
-                    let s45 = arch::_mm512_or_epi64(s4, s5);
-                    let s67 = arch::_mm512_or_epi64(s6, s7);
-
-                    let s03 = arch::_mm512_or_epi64(s01, s23);
-                    let s47 = arch::_mm512_or_epi64(s45, s67);
-
-                    let values = arch::_mm512_or_epi64(s03, s47);
-
-                    // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    ab = arch::_mm512_add_epi64(ab, values);
-                    cd = arch::_mm512_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(16), cd);
+                ab = arch::_mm512_add_epi64(ab, values);
+                cd = arch::_mm512_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), ab);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512f_byteswap_impl(state, data) }
@@ -1185,29 +1158,27 @@ impl Fletcher2 {
 
         #[target_feature(enable = "avx512f")]
         unsafe fn update_blocks_avx512f_native_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut ab = arch::_mm512_loadu_si512(state.add(0));
-                let mut cd = arch::_mm512_loadu_si512(state.add(16));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut arch::__m512i;
+            let mut ab = arch::_mm512_loadu_si512(state.add(0));
+            let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
-                // Iterate four blocks at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
+            // Iterate four blocks at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 512 bits into a zmm register.
+                let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
 
-                    // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    ab = arch::_mm512_add_epi64(ab, values);
-                    cd = arch::_mm512_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(16), cd);
+                // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
+                // ...
+                ab = arch::_mm512_add_epi64(ab, values);
+                cd = arch::_mm512_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), ab);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512f_native_impl(state, data) }
@@ -1228,56 +1199,54 @@ impl Fletcher2 {
 
         #[target_feature(enable = "avx512f,avx512bw")]
         unsafe fn update_blocks_avx512bw_byteswap_impl(state: &mut [u64], data: &[u8]) {
-            unsafe {
-                // Set the shuffle value.
-                let shuffle = arch::_mm512_set_epi8(
-                    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, // f7
-                    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, // f6
-                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f5
-                    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f4
-                    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, // f3
-                    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, // f2
-                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
-                    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
-                );
+            // Set the shuffle value.
+            let shuffle = arch::_mm512_set_epi8(
+                0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, // f7
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, // f6
+                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f5
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f4
+                0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, // f3
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, // f2
+                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, // f1
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // f0
+            );
 
-                // Load each octo stream into a zmm register.
-                let state = state.as_ptr() as *mut i32;
-                let mut ab = arch::_mm512_loadu_si512(state.add(0));
-                let mut cd = arch::_mm512_loadu_si512(state.add(16));
+            // Load each octo stream into a zmm register.
+            let state = state.as_ptr() as *mut arch::__m512i;
+            let mut ab = arch::_mm512_loadu_si512(state.add(0));
+            let mut cd = arch::_mm512_loadu_si512(state.add(16));
 
-                // Iterate four blocks at a time.
-                let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
+            // Iterate four blocks at a time.
+            let mut iter = data.chunks_exact(4 * FLETCHER_2_BLOCK_SIZE);
 
-                for block in iter.by_ref() {
-                    // Load 512 bits into a zmm register.
-                    let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
+            for block in iter.by_ref() {
+                // Load 512 bits into a zmm register.
+                let values = arch::_mm512_loadu_si512(block.as_ptr() as *const _);
 
-                    // Swap the order of the 8-byte parts of values.
-                    // Each byte of shuffle indicates the byte index of values.
-                    // The shuffle is done on each 256 bit lane, so the indices
-                    // repeat for f0, f1, f2, f3 and f4, f5, f6, f7.
-                    //
-                    // index = shuffle[0..8]
-                    // values[0..8] = values[index * 8..(index + 1) * 8]
-                    // values[0..8] = values[56..64]
-                    //
-                    // index = shuffle[8..16]
-                    // values[8..16] = values[index * 8..(index + 1) * 8]
-                    // values[8..16] = values[48..56]
-                    // ...
-                    let values = arch::_mm512_shuffle_epi8(values, shuffle);
+                // Swap the order of the 8-byte parts of values.
+                // Each byte of shuffle indicates the byte index of values.
+                // The shuffle is done on each 256 bit lane, so the indices
+                // repeat for f0, f1, f2, f3 and f4, f5, f6, f7.
+                //
+                // index = shuffle[0..8]
+                // values[0..8] = values[index * 8..(index + 1) * 8]
+                // values[0..8] = values[56..64]
+                //
+                // index = shuffle[8..16]
+                // values[8..16] = values[index * 8..(index + 1) * 8]
+                // values[8..16] = values[48..56]
+                // ...
+                let values = arch::_mm512_shuffle_epi8(values, shuffle);
 
-                    // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
-                    // ...
-                    ab = arch::_mm512_add_epi64(ab, values);
-                    cd = arch::_mm512_add_epi64(cd, ab);
-                }
-
-                // Save state.
-                arch::_mm512_storeu_si512(state.add(0), ab);
-                arch::_mm512_storeu_si512(state.add(16), cd);
+                // a[0], b[0], ..., a[3], b[3] += f[n], f[n+1], ... , f[n+7]
+                // ...
+                ab = arch::_mm512_add_epi64(ab, values);
+                cd = arch::_mm512_add_epi64(cd, ab);
             }
+
+            // Save state.
+            arch::_mm512_storeu_si512(state.add(0), ab);
+            arch::_mm512_storeu_si512(state.add(1), cd);
         }
 
         unsafe { update_blocks_avx512bw_byteswap_impl(state, data) }
@@ -1576,10 +1545,10 @@ mod tests {
         order: EndianOrder,
         vector: &[u8],
         checksums: &[(usize, [u64; 4])],
-    ) -> Result<(), ChecksumError> {
+    ) {
         // Empty checksum is all zeros.
-        h.reset(order)?;
-        assert_eq!(h.finalize()?, [0, 0, 0, 0]);
+        h.reset(order).unwrap();
+        assert_eq!(h.finalize().unwrap(), [0, 0, 0, 0]);
 
         // Test sizes.
         for (size, checksum) in checksums {
@@ -1588,64 +1557,56 @@ mod tests {
 
             if size <= vector.len() {
                 // Single update call.
-                assert_eq!(h.hash(&vector[0..size], order)?, checksum, "size {}", size);
+                assert_eq!(h.hash(&vector[0..size], order).unwrap(), checksum);
 
                 // Partial update.
-                h.reset(order)?;
+                h.reset(order).unwrap();
                 let mut offset = 0;
 
-                h.update(&vector[0..size / 3])?;
+                h.update(&vector[0..size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..offset + size / 3])?;
+                h.update(&vector[offset..offset + size / 3]).unwrap();
                 offset += size / 3;
 
-                h.update(&vector[offset..size])?;
+                h.update(&vector[offset..size]).unwrap();
 
-                assert_eq!(h.finalize()?, checksum);
+                assert_eq!(h.finalize().unwrap(), checksum);
             } else {
                 // Multiple calls.
                 let mut todo = size;
-                h.reset(order)?;
+                h.reset(order).unwrap();
 
                 while todo > 0 {
                     let can_do = cmp::min(todo, vector.len());
-                    h.update(&vector[0..can_do])?;
+                    h.update(&vector[0..can_do]).unwrap();
                     todo -= can_do;
                 }
 
-                assert_eq!(h.finalize()?, checksum, "size {}", size);
+                assert_eq!(h.finalize().unwrap(), checksum);
             }
         }
-
-        Ok(())
     }
 
-    fn test_required_implementation(
-        implementation: Fletcher2Implementation,
-    ) -> Result<(), ChecksumError> {
-        let mut h = Fletcher2::new(implementation)?;
+    fn test_required_implementation(implementation: Fletcher2Implementation) {
+        let mut h = Fletcher2::new(implementation).unwrap();
 
         run_test_vector(
             &mut h,
             EndianOrder::Big,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_BIG_CHECKSUMS,
-        )?;
+        );
 
         run_test_vector(
             &mut h,
             EndianOrder::Little,
             &TEST_VECTOR_A,
             &TEST_VECTOR_A_LITTLE_CHECKSUMS,
-        )?;
-
-        Ok(())
+        );
     }
 
-    fn test_optional_implementation(
-        implementation: Fletcher2Implementation,
-    ) -> Result<(), ChecksumError> {
+    fn test_optional_implementation(implementation: Fletcher2Implementation) {
         let supported = match Fletcher2::new(implementation) {
             _e @ Err(ChecksumError::Unsupported {
                 checksum: _,
@@ -1654,49 +1615,71 @@ mod tests {
             _ => true,
         };
 
-        match supported {
-            false => Ok(()),
-            true => test_required_implementation(implementation),
+        if supported {
+            test_required_implementation(implementation);
         }
     }
 
     #[test]
-    fn fletcher2_generic() -> Result<(), ChecksumError> {
+    fn fletcher2_all() {
+        assert_eq!(Fletcher2Implementation::all().len(), 8);
+    }
+
+    #[test]
+    fn fletcher2_str() {
+        assert_eq!(format!("{}", Fletcher2Implementation::Generic), "generic");
+        assert_eq!(
+            format!("{}", Fletcher2Implementation::SuperScalar2),
+            "superscalar2"
+        );
+        assert_eq!(
+            format!("{}", Fletcher2Implementation::SuperScalar4),
+            "superscalar4"
+        );
+        assert_eq!(format!("{}", Fletcher2Implementation::SSE2), "sse2");
+        assert_eq!(format!("{}", Fletcher2Implementation::SSSE3), "ssse3");
+        assert_eq!(format!("{}", Fletcher2Implementation::AVX2), "avx2");
+        assert_eq!(format!("{}", Fletcher2Implementation::AVX512F), "avx512f");
+        assert_eq!(format!("{}", Fletcher2Implementation::AVX512BW), "avx512bw");
+    }
+
+    #[test]
+    fn fletcher2_generic() {
         test_required_implementation(Fletcher2Implementation::Generic)
     }
 
     #[test]
-    fn fletcher2_superscalar2() -> Result<(), ChecksumError> {
+    fn fletcher2_superscalar2() {
         test_required_implementation(Fletcher2Implementation::SuperScalar2)
     }
 
     #[test]
-    fn fletcher2_superscalar4() -> Result<(), ChecksumError> {
+    fn fletcher2_superscalar4() {
         test_required_implementation(Fletcher2Implementation::SuperScalar4)
     }
 
     #[test]
-    fn fletcher2_sse2() -> Result<(), ChecksumError> {
+    fn fletcher2_sse2() {
         test_optional_implementation(Fletcher2Implementation::SSE2)
     }
 
     #[test]
-    fn fletcher2_ssse3() -> Result<(), ChecksumError> {
+    fn fletcher2_ssse3() {
         test_optional_implementation(Fletcher2Implementation::SSSE3)
     }
 
     #[test]
-    fn fletcher2_avx2() -> Result<(), ChecksumError> {
+    fn fletcher2_avx2() {
         test_optional_implementation(Fletcher2Implementation::AVX2)
     }
 
     #[test]
-    fn fletcher2_avx512f() -> Result<(), ChecksumError> {
+    fn fletcher2_avx512f() {
         test_optional_implementation(Fletcher2Implementation::AVX512F)
     }
 
     #[test]
-    fn fletcher2_avx512bw() -> Result<(), ChecksumError> {
+    fn fletcher2_avx512bw() {
         test_optional_implementation(Fletcher2Implementation::AVX512BW)
     }
 }
