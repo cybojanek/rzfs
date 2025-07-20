@@ -84,7 +84,7 @@ pub enum VdevType {
 impl Display for VdevType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &'static str = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -357,7 +357,7 @@ impl VdevTreeKey {
 impl Display for VdevTreeKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &'static str = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

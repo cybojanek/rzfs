@@ -351,8 +351,7 @@ impl fmt::Display for LabelVerifyError {
             }
             LabelVerifyError::Mismatch { computed, stored } => write!(
                 f,
-                "Label verify checksum mismatch, computed {:#016x?} stored {:#016x?}",
-                computed, stored,
+                "Label verify checksum mismatch, computed {computed:#016x?} stored {stored:#016x?}",
             ),
             LabelVerifyError::OffsetTooLarge { offset } => {
                 write!(f, "Label verify error, offset is too large {offset}")
