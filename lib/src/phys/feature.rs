@@ -80,7 +80,7 @@ impl<'a> From<Compatibility<'a>> for &'a str {
 impl Display for Compatibility<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &str = self.into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -388,7 +388,7 @@ impl Feature {
 impl Display for Feature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &'static str = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

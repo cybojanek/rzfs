@@ -256,7 +256,7 @@ impl fmt::Display for BinaryDecodeError {
             BinaryDecodeError::InvalidU64Magic { expected, actual } => {
                 write!(
                     f,
-                    "BinaryDecoder error, invalid u64 magic, expected 0x{expected:016x} actual {:#02x?}", actual
+                    "BinaryDecoder error, invalid u64 magic, expected 0x{expected:016x} actual {actual:#02x?}"
                 )
             }
             BinaryDecodeError::InvalidStr {

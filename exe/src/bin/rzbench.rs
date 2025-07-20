@@ -64,8 +64,7 @@ fn benchmark_fletcher2(
 
     // Loop through each implementation.
     for implementation in Fletcher2Implementation::all() {
-        let s = format!("{}", implementation);
-        print!("{:>16}", s);
+        print!("{implementation:>16}");
 
         let mut checksum = match Fletcher2::new(*implementation) {
             Ok(v) => v,
@@ -108,8 +107,7 @@ fn benchmark_fletcher4(
 
     // Loop through each implementation.
     for implementation in Fletcher4Implementation::all() {
-        let s = format!("{}", implementation);
-        print!("{:>16}", s);
+        print!("{implementation:>16}");
 
         let mut checksum = match Fletcher4::new(*implementation) {
             Ok(v) => v,
@@ -152,8 +150,7 @@ fn benchmark_sha256(
 
     // Loop through each implementation.
     for implementation in Sha256Implementation::all() {
-        let s = format!("{}", implementation);
-        print!("{:>16}", s);
+        print!("{implementation:>16}");
 
         let mut checksum = match Sha256::new(*implementation) {
             Ok(v) => v,
@@ -190,7 +187,7 @@ fn benchmark_sha256(
 }
 
 fn print_usage(arg0: &str) {
-    eprintln!("usage: {} fletcher2|fletcher4|sha256", arg0);
+    eprintln!("usage: {arg0} fletcher2|fletcher4|sha256");
 }
 
 fn main() -> ExitCode {

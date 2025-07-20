@@ -413,7 +413,7 @@ impl PoolConfigKey {
 impl Display for PoolConfigKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &'static str = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
