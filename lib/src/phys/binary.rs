@@ -1484,6 +1484,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
         Ok(f64::from_be_bytes(self.buffer.get_8_bytes()?))
     }
 
+    /// XDR does not support i8 values, this is a ZFS extension.
     fn get_i8(&mut self) -> Result<i8, BinaryDecodeError> {
         let offset = self.buffer.offset;
         let value = self.get_i32()?;
@@ -1494,6 +1495,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
         }
     }
 
+    /// XDR does not support i16 values, this is a ZFS extension.
     fn get_i16(&mut self) -> Result<i16, BinaryDecodeError> {
         let offset = self.buffer.offset;
         let value = self.get_i32()?;
@@ -1512,9 +1514,15 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
         Ok(i64::from_be_bytes(self.buffer.get_8_bytes()?))
     }
 
+    /// XDR does not support u8 values, this is a ZFS extension.
     fn get_u8(&mut self) -> Result<u8, BinaryDecodeError> {
         let offset = self.buffer.offset;
-        let value = self.get_u32()?;
+        let mut value = self.get_u32()?;
+
+        // Unsigned values are sign extended above 127.
+        if value >= 0xffffff80 {
+            value -= 0xffffff00;
+        }
 
         match u8::try_from(value) {
             Ok(v) => Ok(v),
@@ -1522,6 +1530,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
         }
     }
 
+    /// XDR does not support u16 values, this is a ZFS extension.
     fn get_u16(&mut self) -> Result<u16, BinaryDecodeError> {
         let offset = self.buffer.offset;
         let value = self.get_u32()?;
@@ -2499,10 +2508,12 @@ impl<'a> BinaryEncoder<'a> for XdrEncoder<'a> {
         self.buffer.put_8_bytes(f64::to_be_bytes(value))
     }
 
+    /// XDR does not support i8 values, this is a ZFS extension.
     fn put_i8(&mut self, value: i8) -> Result<(), BinaryEncodeError> {
         self.put_i32(i32::from(value))
     }
 
+    /// XDR does not support i16 values, this is a ZFS extension.
     fn put_i16(&mut self, value: i16) -> Result<(), BinaryEncodeError> {
         self.put_i32(i32::from(value))
     }
@@ -2515,10 +2526,19 @@ impl<'a> BinaryEncoder<'a> for XdrEncoder<'a> {
         self.buffer.put_8_bytes(i64::to_be_bytes(value))
     }
 
+    /// XDR does not support u8 values, this is a ZFS extension.
     fn put_u8(&mut self, value: u8) -> Result<(), BinaryEncodeError> {
-        self.put_u32(u32::from(value))
+        let mut value = u32::from(value);
+
+        // Unsigned values are sign extended above 127.
+        if value > 127 {
+            value += 0xffffff00;
+        }
+
+        self.put_u32(value)
     }
 
+    /// XDR does not support u16 values, this is a ZFS extension.
     fn put_u16(&mut self, value: u16) -> Result<(), BinaryEncodeError> {
         self.put_u32(u32::from(value))
     }
