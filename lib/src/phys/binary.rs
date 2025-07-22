@@ -2467,7 +2467,7 @@ impl<'a> BinaryEncoder<'a> for XdrEncoder<'a> {
     }
 
     fn put_bool(&mut self, value: bool) -> Result<(), BinaryEncodeError> {
-        self.buffer.put_1_byte(match value {
+        self.put_u32(match value {
             false => 0,
             true => 1,
         })
