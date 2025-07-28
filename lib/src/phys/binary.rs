@@ -781,6 +781,13 @@ pub trait BinaryDecoder<'a> {
     /// Decodes a [`u64`].
     fn get_u64(&mut self) -> Result<u64, BinaryDecodeError>;
 
+    /// Decodes a [`u16`] and converts it to a [`usize`].
+    fn get_usize_16(&mut self) -> Result<usize, BinaryDecodeError> {
+        let value = self.get_u16()?;
+
+        Ok(usize::from(value))
+    }
+
     /// Decodes a [`u32`] and converts it to a [`usize`].
     fn get_usize_32(&mut self) -> Result<usize, BinaryDecodeError> {
         let offset = self.offset();
@@ -948,6 +955,7 @@ impl<'a> GetNValueFromBinaryDecoder<'a> for &'a str {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Big Endian decoder.
+#[derive(Debug)]
 pub struct BigEndianDecoder<'a> {
     buffer: BinaryDecoderBuffer<'a>,
 }
@@ -1023,7 +1031,8 @@ impl<'a> BinaryDecoder<'a> for BigEndianDecoder<'a> {
 
     fn get_bool(&mut self) -> Result<bool, BinaryDecodeError> {
         let offset = self.buffer.offset;
-        let value = self.get_u8()?;
+        // boolean_t is 4 bytes
+        let value = self.get_u32()?;
 
         match value {
             0 => Ok(false),
@@ -1104,6 +1113,7 @@ impl<'a> EndianDecoder<'a> for BigEndianDecoder<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Little Endian decoder.
+#[derive(Debug)]
 pub struct LittleEndianDecoder<'a> {
     buffer: BinaryDecoderBuffer<'a>,
 }
@@ -1179,7 +1189,8 @@ impl<'a> BinaryDecoder<'a> for LittleEndianDecoder<'a> {
 
     fn get_bool(&mut self) -> Result<bool, BinaryDecodeError> {
         let offset = self.buffer.offset;
-        let value = self.get_u8()?;
+        // boolean_t is 4 bytes
+        let value = self.get_u32()?;
 
         match value {
             0 => Ok(false),
@@ -1260,6 +1271,7 @@ impl<'a> EndianDecoder<'a> for LittleEndianDecoder<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Big or Little endian decoder.
+#[derive(Debug)]
 pub enum BigLittleEndianDecoder<'a> {
     /// [`BigEndianDecoder`].
     Big(BigEndianDecoder<'a>),
@@ -1276,6 +1288,23 @@ impl BigLittleEndianDecoder<'_> {
             EndianOrder::Little => {
                 BigLittleEndianDecoder::Little(LittleEndianDecoder::from_bytes(data))
             }
+        }
+    }
+
+    /// Initializes a [`BigLittleEndianDecoder`] from a slice of bytes and [`EndianOrder`].
+    pub fn from_bytes_clamped(
+        data: &[u8],
+        offset: usize,
+        length: usize,
+        order: EndianOrder,
+    ) -> Result<BigLittleEndianDecoder<'_>, BinaryDecodeError> {
+        match order {
+            EndianOrder::Big => Ok(BigLittleEndianDecoder::Big(
+                BigEndianDecoder::from_bytes_clamped(data, offset, length)?,
+            )),
+            EndianOrder::Little => Ok(BigLittleEndianDecoder::Little(
+                LittleEndianDecoder::from_bytes_clamped(data, offset, length)?,
+            )),
         }
     }
 
@@ -1311,11 +1340,33 @@ impl BigLittleEndianDecoder<'_> {
 }
 
 impl<'a, 'b> BigLittleEndianDecoder<'a> {
-    /// Gets the [`BigLittleEndianDecoder::Big`] or [`BigLittleEndianDecoder::Little`] decoder.
+    /// Gets the [`EndianDecoder`].
     pub fn decoder(&'b mut self) -> &'b mut dyn EndianDecoder<'a> {
         match self {
             BigLittleEndianDecoder::Big(decoder) => decoder,
             BigLittleEndianDecoder::Little(decoder) => decoder,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Big/Little endian or XDR decoder.
+#[derive(Debug)]
+pub enum BigLittleXdrEndianDecoder<'a> {
+    /// [`BigLittleEndianDecoder`]
+    BigLittle(BigLittleEndianDecoder<'a>),
+
+    /// [`XdrDecoder`].
+    Xdr(XdrDecoder<'a>),
+}
+
+impl<'a, 'b> BigLittleXdrEndianDecoder<'a> {
+    /// Gets the [`BinaryDecoder`].
+    pub fn decoder(&'b mut self) -> &'b mut dyn BinaryDecoder<'a> {
+        match self {
+            BigLittleXdrEndianDecoder::BigLittle(decoder) => decoder.decoder(),
+            BigLittleXdrEndianDecoder::Xdr(decoder) => decoder,
         }
     }
 }
@@ -2171,7 +2222,8 @@ impl<'a> BinaryEncoder<'a> for BigEndianEncoder<'a> {
     }
 
     fn put_bool(&mut self, value: bool) -> Result<(), BinaryEncodeError> {
-        self.buffer.put_1_byte(match value {
+        // boolean_t is 4 bytes
+        self.put_u32(match value {
             false => 0,
             true => 1,
         })
@@ -2300,7 +2352,8 @@ impl<'a> BinaryEncoder<'a> for LittleEndianEncoder<'a> {
     }
 
     fn put_bool(&mut self, value: bool) -> Result<(), BinaryEncodeError> {
-        self.buffer.put_1_byte(match value {
+        // boolean_t is 4 bytes
+        self.put_u32(match value {
             false => 0,
             true => 1,
         })
