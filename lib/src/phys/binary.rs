@@ -645,7 +645,7 @@ impl<'a> BinaryDecoderBuffer<'a> {
 
     /// Gets a string up to the next NULL byte. Consumes NULL byte.
     fn get_str_null(&mut self) -> Result<&'a str, BinaryDecodeError> {
-        let null_offset = self.offset;
+        let mut null_offset = self.offset;
 
         while null_offset < self.max_offset {
             if self.data[null_offset] == 0 {
@@ -671,6 +671,8 @@ impl<'a> BinaryDecoderBuffer<'a> {
 
                 return Ok(value);
             }
+
+            null_offset += 1;
         }
 
         Err(BinaryDecodeError::MissingNull {
