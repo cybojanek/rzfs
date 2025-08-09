@@ -265,7 +265,7 @@ fn dnode_read_block(
     while level > 0 {
         // Decode the block as an intermediate block.
         let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(&block_bytes, order);
-        let decoder = bl_decoder.decoder();
+        let decoder = bl_decoder.decoder_as_mut();
 
         // Seek to index of block pointer.
         decoder.seek(block_pointer_idxs[level])?;
@@ -343,7 +343,7 @@ fn _dnode_read_dnode(
     match dnode_read_object(blk_devs, dnode, object_id, phys::Dnode::SIZE)? {
         Some((endian, dnode_bytes)) => {
             let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(&dnode_bytes, endian);
-            let decoder = bl_decoder.decoder();
+            let decoder = bl_decoder.decoder_as_mut();
 
             match phys::Dnode::from_decoder(decoder)? {
                 Some(dnode) => Ok(Some((endian, dnode))),
@@ -361,7 +361,7 @@ fn dnode_dump_zap(
 ) -> Result<(), Box<dyn Error>> {
     let (endian, zap_header_block) = dnode_read_block(blk_devs, dnode, 0)?.unwrap();
     let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(&zap_header_block, endian);
-    let decoder = bl_decoder.decoder();
+    let decoder = bl_decoder.decoder_as_mut();
 
     let zap_header = phys::ZapHeader::from_decoder(decoder)?;
 
@@ -410,7 +410,7 @@ fn dnode_dump_zap(
                         dnode_read_block(blk_devs, dnode, *leaf_pointer)?.unwrap();
                     let mut bl_decoder =
                         phys::BigLittleEndianDecoder::from_bytes(&zap_leaf_block_bytes, endian);
-                    let decoder = bl_decoder.decoder();
+                    let decoder = bl_decoder.decoder_as_mut();
 
                     let _zap_leaf_header = phys::ZapLeafHeader::from_decoder(decoder)?;
 
@@ -484,7 +484,7 @@ fn dnode_dump_zap(
                                 &zap_leaf_chunk_data.data,
                                 phys::EndianOrder::Big,
                             );
-                            let dec = bl_dec.decoder();
+                            let dec = bl_dec.decoder_as_mut();
                             value_u64 = Some(dec.get_u64()?);
                         } else if zap_leaf_chunk_entry.value_int_size == 1 {
                             let mut value_bytes = vec![0; todo];
@@ -559,7 +559,7 @@ fn dump_dsl_dataset(
         if let Some((order, block_bytes)) = block_opt {
             let mut object_id = (block_bytes.len() / phys::Dnode::SIZE) * (block_id as usize);
             let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(&block_bytes, order);
-            let decoder = bl_decoder.decoder();
+            let decoder = bl_decoder.decoder_as_mut();
             while !decoder.is_empty() {
                 if let Some(dnode) = phys::Dnode::from_decoder(decoder)? {
                     let dmu_str = format!("{}", dnode.dmu);
@@ -601,7 +601,7 @@ fn dump_dsl_dataset(
 
                     let mut bl_decoder =
                         phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                    let decoder = bl_decoder.decoder();
+                    let decoder = bl_decoder.decoder_as_mut();
 
                     match dnode.bonus_type {
                         phys::DmuType::None => (),
@@ -634,7 +634,7 @@ fn dump_dsl_dataset(
                                     &object_set_bytes,
                                     ptr.order(),
                                 );
-                                let decoder = bl_decoder.decoder();
+                                let decoder = bl_decoder.decoder_as_mut();
                                 let object_set = phys::ObjectSet::from_decoder(decoder)?;
 
                                 dump_dsl_dataset(blk_devs, &object_set, depth + 4)?;
@@ -645,7 +645,7 @@ fn dump_dsl_dataset(
                         phys::DmuType::SpaHistoryOffsets => {
                             let mut bl_decoder =
                                 phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                            let decoder = bl_decoder.decoder();
+                            let decoder = bl_decoder.decoder_as_mut();
                             print!("{:width$}", "", width = depth + 4);
                             print!("pool_create_len: {}", decoder.get_u64()?);
                             print!(", phys_max_off: {}", decoder.get_u64()?);
@@ -655,9 +655,9 @@ fn dump_dsl_dataset(
                         }
                         phys::DmuType::SpaceMapHeader => (),
                         phys::DmuType::Znode => {
-                            let mut bele_decoder =
+                            let mut bl_decoder =
                                 phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                            let decoder = bele_decoder.decoder();
+                            let decoder = bl_decoder.decoder_as_mut();
                             let znode = phys::Znode::from_decoder(decoder)?;
                             println!("{:width$}Znode: {:?}", "", znode, width = depth + 4);
                             match znode.acl {
@@ -672,11 +672,11 @@ fn dump_dsl_dataset(
                                     }
                                 }
                                 phys::Acl::V1(acl) => {
-                                    let mut bele_decoder = phys::BigLittleEndianDecoder::from_bytes(
+                                    let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(
                                         &acl.aces[0..(acl.size) as usize],
                                         order,
                                     );
-                                    let decoder = bele_decoder.decoder();
+                                    let decoder = bl_decoder.decoder_as_mut();
                                     let iterator = phys::AceV1Iterator::from_decoder(decoder)?;
                                     for (index, ace_res) in iterator.enumerate() {
                                         let ace = ace_res?;
@@ -702,7 +702,7 @@ fn dump_dsl_dataset(
                     } else if let phys::DmuType::PackedNvList = dnode.dmu {
                         let mut bl_decoder =
                             phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                        let decoder = bl_decoder.decoder();
+                        let decoder = bl_decoder.decoder_as_mut();
                         let nv_list_size = decoder.get_u64()?;
                         let nv_list_size = usize::try_from(nv_list_size)?;
                         let (_endian, nv_list_bytes) =
@@ -715,7 +715,7 @@ fn dump_dsl_dataset(
                     } else if let phys::DmuType::SpaceMap = dnode.dmu {
                         let mut bl_decoder =
                             phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                        let decoder = bl_decoder.decoder();
+                        let decoder = bl_decoder.decoder_as_mut();
                         let sm_header = phys::SpaceMapHeader::from_decoder(decoder)?;
                         println!(
                             "{:width$} SpaceMapHeader: {sm_header:?}",
@@ -738,7 +738,7 @@ fn dump_dsl_dataset(
 
                             let mut bl_decoder =
                                 phys::BigLittleEndianDecoder::from_bytes(data_to_process, order);
-                            let decoder = bl_decoder.decoder();
+                            let decoder = bl_decoder.decoder_as_mut();
 
                             while !decoder.is_empty() {
                                 let space_map_entry = phys::SpaceMapEntry::from_decoder(decoder)?;
@@ -765,11 +765,11 @@ fn dump_dsl_dataset(
                             let mut size = data.len();
                             match dnode.bonus_type {
                                 phys::DmuType::Znode => {
-                                    let mut bele_decoder = phys::BigLittleEndianDecoder::from_bytes(
+                                    let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(
                                         dnode.bonus_used(),
                                         order,
                                     );
-                                    let decoder = bele_decoder.decoder();
+                                    let decoder = bl_decoder.decoder_as_mut();
                                     let znode = phys::Znode::from_decoder(decoder)?;
                                     if znode.size < (size as u64) {
                                         size = znode.size as usize;
@@ -798,7 +798,7 @@ fn dump_dsl_dataset(
                     } else if let phys::DmuType::BpObject = dnode.dmu {
                         let mut bl_decoder =
                             phys::BigLittleEndianDecoder::from_bytes(dnode.bonus_used(), order);
-                        let decoder = bl_decoder.decoder();
+                        let decoder = bl_decoder.decoder_as_mut();
                         let bp_header = phys::BpObjectHeader::from_decoder(decoder)?;
                         println!(
                             "{:width$} BpObjectHeader: {bp_header:?}",
@@ -817,7 +817,7 @@ fn dump_dsl_dataset(
 
                             let mut bl_decoder =
                                 phys::BigLittleEndianDecoder::from_bytes(&bp_bytes, order);
-                            let decoder = bl_decoder.decoder();
+                            let decoder = bl_decoder.decoder_as_mut();
                             let bp = phys::BlockPointerRegular::from_decoder(decoder)?;
 
                             bp_logical_sectors += bp.logical_sectors;
@@ -842,7 +842,7 @@ fn dump_dsl_dataset(
                     } else if let phys::DmuType::ObjectArray = dnode.dmu {
                         let (order, data) = dnode_read_block(blk_devs, &dnode, 0)?.unwrap();
                         let mut bl_decoder = phys::BigLittleEndianDecoder::from_bytes(&data, order);
-                        let decoder = bl_decoder.decoder();
+                        let decoder = bl_decoder.decoder_as_mut();
                         let mut idx = 0;
                         while !decoder.is_empty() {
                             let v = decoder.get_u64()?;
@@ -902,7 +902,7 @@ fn dump_root(
     let meta_object_set_bytes = block_pointer_read(blk_devs, &uberblock.ptr)?;
     let mut bl_decoder =
         phys::BigLittleEndianDecoder::from_bytes(&meta_object_set_bytes, uberblock.ptr.order());
-    let decoder = bl_decoder.decoder();
+    let decoder = bl_decoder.decoder_as_mut();
     let meta_object_set = phys::ObjectSet::from_decoder(decoder)?;
     println!("os zil: {:?}", meta_object_set.zil_header);
     dump_dsl_dataset(blk_devs, &meta_object_set, 0)?;

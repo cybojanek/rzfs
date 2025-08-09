@@ -375,7 +375,7 @@ impl ChecksumTail {
         bytes: &[u8; ChecksumTail::SIZE],
     ) -> Result<ChecksumTail, ChecksumTailDecodeError> {
         let mut bele_decoder = BigLittleEndianDecoder::from_u64_magic(bytes, ChecksumTail::MAGIC)?;
-        let decoder = bele_decoder.decoder();
+        let decoder = bele_decoder.decoder_as_mut();
 
         Ok(ChecksumTail {
             order: decoder.order(),

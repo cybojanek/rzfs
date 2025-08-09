@@ -250,7 +250,7 @@ impl UberBlock {
             // Else, re-raise error.
             Err(err) => return Err(UberBlockDecodeError::Binary { err }),
         };
-        let decoder = bele_decoder.decoder();
+        let decoder = bele_decoder.decoder_as_mut();
 
         ////////////////////////////////
         // Decode fields.
