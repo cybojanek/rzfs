@@ -1341,7 +1341,15 @@ impl BigLittleEndianDecoder<'_> {
 
 impl<'a, 'b> BigLittleEndianDecoder<'a> {
     /// Gets the [`EndianDecoder`].
-    pub fn decoder(&'b mut self) -> &'b mut dyn EndianDecoder<'a> {
+    pub fn decoder_as_mut(&'b mut self) -> &'b mut dyn EndianDecoder<'a> {
+        match self {
+            BigLittleEndianDecoder::Big(decoder) => decoder,
+            BigLittleEndianDecoder::Little(decoder) => decoder,
+        }
+    }
+
+    /// Gets the [`EndianDecoder`].
+    pub fn decoder_as_ref(&'b self) -> &'b dyn EndianDecoder<'a> {
         match self {
             BigLittleEndianDecoder::Big(decoder) => decoder,
             BigLittleEndianDecoder::Little(decoder) => decoder,
@@ -1363,9 +1371,17 @@ pub enum BigLittleXdrEndianDecoder<'a> {
 
 impl<'a, 'b> BigLittleXdrEndianDecoder<'a> {
     /// Gets the [`BinaryDecoder`].
-    pub fn decoder(&'b mut self) -> &'b mut dyn BinaryDecoder<'a> {
+    pub fn decoder_as_mut(&'b mut self) -> &'b mut dyn BinaryDecoder<'a> {
         match self {
-            BigLittleXdrEndianDecoder::BigLittle(decoder) => decoder.decoder(),
+            BigLittleXdrEndianDecoder::BigLittle(decoder) => decoder.decoder_as_mut(),
+            BigLittleXdrEndianDecoder::Xdr(decoder) => decoder,
+        }
+    }
+
+    /// Gets the [`BinaryDecoder`].
+    pub fn decoder_as_ref(&'b self) -> &'b dyn BinaryDecoder<'a> {
+        match self {
+            BigLittleXdrEndianDecoder::BigLittle(decoder) => decoder.decoder_as_ref(),
             BigLittleXdrEndianDecoder::Xdr(decoder) => decoder,
         }
     }
