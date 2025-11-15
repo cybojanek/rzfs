@@ -73,7 +73,7 @@ const FLETCHER_2_U64_COUNT: usize = 4;
 const FLETCHER_2_MAX_SIMD_WIDTH: usize = 4;
 
 /// Fletcher2 implementation.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Fletcher2Implementation {
     /// Generic.
     Generic,

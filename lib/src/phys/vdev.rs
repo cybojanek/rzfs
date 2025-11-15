@@ -36,7 +36,7 @@ use crate::phys::SECTOR_SHIFT;
  * +-------------+-------------+----------------------------+
  * ```
  */
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VdevType {
     /// A block device.
     Disk,

@@ -86,7 +86,7 @@ const SHA_256_U32_COUNT: usize = 8;
  *   of two blocks.
  * - [`Sha256Implementation::SHA`] uses `SSE2`, `SSSE3`, and Intel `SHA`.
  */
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Sha256Implementation {
     /// Generic.
     Generic,
