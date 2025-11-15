@@ -155,7 +155,7 @@ impl AcePermission {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`AceV0`] and [`AceV1`] type.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum AceType {
     /// Allow principal to perform action requiring permission.

@@ -267,7 +267,7 @@ pub struct BlockPointerEmbedded {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`BlockPointerEmbedded`] type.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlockPointerEmbeddedType {
     /// TODO: Document.
     Data = 0,
