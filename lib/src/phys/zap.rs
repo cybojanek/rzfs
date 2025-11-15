@@ -13,7 +13,7 @@ use crate::phys::{
 ////////////////////////////////////////////////////////////////////////////////
 
 /// ZAP name case normalization.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ZapCaseNormalization {
     /// No case normalization.
     None = 0x00,
@@ -95,7 +95,7 @@ impl error::Error for ZapCaseNormalizationError {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// ZAP name unicode normalization.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ZapUnicodeNormalization {
     /// No unicode normalization.
     None = 0x00,

@@ -8,7 +8,7 @@ use std::error;
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Endian order.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EndianOrder {
     /// Big endian byte order. Most significant byte first.
     Big,

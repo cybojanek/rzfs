@@ -18,7 +18,7 @@ use std::error;
  * [`DmuGenericObjectType::Uint32`], [`DmuGenericObjectType::Uint64`],
  * [`DmuGenericObjectType::Zap`]
  */
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DmuGenericObjectType {
     /// [u8] DMU.
     Uint8 = 0,
@@ -208,7 +208,7 @@ macro_rules! DmuObjectTypeEncrypted {
  * +-----------------------------+-------------+---------------------+--------------------------+
  */
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum DmuType {
     None = 0,

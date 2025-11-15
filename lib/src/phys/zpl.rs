@@ -15,7 +15,7 @@ use crate::phys::{
 
 /** ZFS Posix Layer (ZPL) Version.
  */
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ZplVersion {
     /// ZPL version 1.
     V1 = 1,
@@ -100,7 +100,7 @@ impl error::Error for ZplVersionError {
 ////////////////////////////////////////////////////////////////////////////////
 
 /// [`Znode`] file type.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ZnodeFileType {
     /// Fifo (first-in-first-out) pipe.
