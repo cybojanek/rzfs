@@ -890,7 +890,7 @@ impl ZapMicroIterator<'_, '_> {
         let header = ZapMicroHeader::from_decoder(decoder)?;
 
         // Check entries is a multiple of ZapMicroEntry.
-        if decoder.len() % ZapMicroEntry::SIZE != 0 {
+        if !decoder.len().is_multiple_of(ZapMicroEntry::SIZE) {
             return Err(ZapMicroIteratorError::Size {
                 size: decoder.len(),
             });

@@ -1393,7 +1393,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
     }
 
     fn rewind(&mut self, count: usize) -> Result<(), BinaryDecodeError> {
-        if (count % Self::ALIGNMENT) != 0 {
+        if !count.is_multiple_of(Self::ALIGNMENT) {
             return Err(BinaryDecodeError::RewindAlignment {
                 count,
                 alignment: Self::ALIGNMENT,
@@ -1403,7 +1403,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
     }
 
     fn seek(&mut self, offset: usize) -> Result<(), BinaryDecodeError> {
-        if (offset % Self::ALIGNMENT) != 0 {
+        if !offset.is_multiple_of(Self::ALIGNMENT) {
             return Err(BinaryDecodeError::SeekAlignment {
                 offset,
                 alignment: Self::ALIGNMENT,
@@ -1413,7 +1413,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
     }
 
     fn skip(&mut self, count: usize) -> Result<(), BinaryDecodeError> {
-        if (count % Self::ALIGNMENT) != 0 {
+        if !count.is_multiple_of(Self::ALIGNMENT) {
             return Err(BinaryDecodeError::SkipAlignment {
                 count,
                 alignment: Self::ALIGNMENT,
@@ -1423,7 +1423,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
     }
 
     fn skip_zeros(&mut self, count: usize) -> Result<(), BinaryDecodeError> {
-        if (count % Self::ALIGNMENT) != 0 {
+        if !count.is_multiple_of(Self::ALIGNMENT) {
             return Err(BinaryDecodeError::SkipAlignment {
                 count,
                 alignment: Self::ALIGNMENT,
@@ -1433,7 +1433,7 @@ impl<'a> BinaryDecoder<'a> for XdrDecoder<'a> {
     }
 
     fn is_skip_zeros(&mut self, count: usize) -> Result<bool, BinaryDecodeError> {
-        if (count % Self::ALIGNMENT) != 0 {
+        if !count.is_multiple_of(Self::ALIGNMENT) {
             return Err(BinaryDecodeError::SkipAlignment {
                 count,
                 alignment: Self::ALIGNMENT,
