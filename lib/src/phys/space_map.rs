@@ -243,6 +243,7 @@ impl error::Error for SpaceMapHeaderEncodeError {
 
 /// Space map action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum SpaceMapAction {
     /// Allocate.
     Allocate = 0,

@@ -268,6 +268,7 @@ pub struct BlockPointerEmbedded {
 
 /// [`BlockPointerEmbedded`] type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum BlockPointerEmbeddedType {
     /// TODO: Document.
     Data = 0,

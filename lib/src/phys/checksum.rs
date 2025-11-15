@@ -45,6 +45,7 @@ use crate::phys::{
  * ```
  */
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum ChecksumType {
     /// Use checksum value from parent.
     Inherit = 0,

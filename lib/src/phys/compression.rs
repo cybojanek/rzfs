@@ -27,6 +27,7 @@ use std::error;
  * ```
  */
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum CompressionType {
     /// Use compression value from parent.
     Inherit = 0,

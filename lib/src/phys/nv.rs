@@ -65,6 +65,7 @@ use crate::phys::{
 
 /// Name Value List byte order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum NvEndianOrder {
     /// Big byte order.
     Big = 0,
@@ -119,6 +120,7 @@ impl TryFrom<u8> for NvEndianOrder {
 
 /// Name Value List encoding.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum NvEncoding {
     /// Native binary encoding.
     Native = 0,
@@ -164,6 +166,7 @@ impl TryFrom<u8> for NvEncoding {
 
 /// Name Value List Unique.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum NvUnique {
     /// No unique constraints.
     None = 0,
@@ -214,6 +217,7 @@ impl TryFrom<u8> for NvUnique {
 
 /// Name Value Pair Data Type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
 pub enum NvDataType {
     /// A boolean flag (no value).
     Boolean = 1,
