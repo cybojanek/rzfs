@@ -23,6 +23,7 @@ use std::error;
  * ```
  */
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u64)]
 pub enum PoolState {
     /// In use.
     Active = 0,
@@ -113,6 +114,7 @@ impl error::Error for PoolStateDecodeError {
  * - [`crate::phys::SpaVersion::V5000`].
  */
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u64)]
 pub enum PoolErrata {
     /// No errata.
     None = 0,

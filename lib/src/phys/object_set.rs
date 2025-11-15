@@ -15,6 +15,7 @@ use crate::phys::{
 
 /// [`ObjectSet`] type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u64)]
 pub enum ObjectSetType {
     /// ???
     None = 0,

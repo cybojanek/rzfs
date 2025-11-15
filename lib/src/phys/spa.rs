@@ -16,6 +16,7 @@ use std::error;
  * indicated using [`crate::phys::Feature`].
  */
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u64)]
 pub enum SpaVersion {
     /// SPA version 1.
     V1 = 1,
